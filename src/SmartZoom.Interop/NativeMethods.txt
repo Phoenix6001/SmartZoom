@@ -1,0 +1,22 @@
+// Mouse hook
+SetWindowsHookEx
+UnhookWindowsHookEx
+CallNextHookEx
+MSLLHOOKSTRUCT
+GetMessage
+PostThreadMessage
+GetCurrentThreadId
+GetModuleHandle
+GetDoubleClickTime
+
+// Input injection
+SendInput
+
+// Window/process inspection
+WindowFromPoint
+GetAncestor
+GetWindowThreadProcessId
+GetClassName
+OpenProcess
+QueryFullProcessImageName
+CloseHandle

@@ -1,0 +1,125 @@
+using System.Globalization;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Serilog;
+using Serilog.Events;
+using SmartZoom.App.Hosting;
+using SmartZoom.App.Settings;
+using SmartZoom.App.Tray;
+using SmartZoom.Core.Input;
+using SmartZoom.Core.Routing;
+using SmartZoom.Core.Settings;
+using SmartZoom.Interop;
+using SmartZoom.Interop.Input;
+using SmartZoom.Interop.Windows;
+
+namespace SmartZoom.App;
+
+internal static class Program
+{
+    // A second instance would install a second hook and double every zoom. "Local\" scopes the mutex to
+    // the current logon session, so other signed-in users can still run their own copy.
+    private const string SingleInstanceMutexName = @"Local\SmartZoom.App-9C7B1E52-3F0A-4C1F-8B7D-2E6A5D4C3B21";
+
+    // Deliberately synchronous: WinForms needs an STA thread, and [STAThread] has no effect on async Main
+    // (or top-level statements), whose continuations may resume on MTA thread-pool threads.
+    [STAThread]
+    private static int Main()
+    {
+        using var singleInstance = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out var isFirstInstance);
+        if (!isFirstInstance)
+        {
+            MessageBox.Show("SmartZoom is already running. Look for its icon in the notification area.", "SmartZoom", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return 0;
+        }
+
+        // Applies the csproj's ApplicationHighDpiMode (PerMonitorV2) before any window or hook thread exists.
+        // Threads created afterwards inherit it, which keeps hook coordinates and WindowFromPoint consistent.
+        ApplicationConfiguration.Initialize();
+
+        var paths = AppPaths.CreateDefault();
+        Log.Logger = CreateLogger(paths);
+
+        Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
+        Application.ThreadException += (_, e) => Log.Error(e.Exception, "Unhandled exception on the UI thread.");
+        AppDomain.CurrentDomain.UnhandledException += (_, e) => Log.Fatal(e.ExceptionObject as Exception, "Unhandled exception; terminating.");
+
+        try
+        {
+            using var host = BuildHost(paths);
+            host.Start();
+            Log.ForContext(typeof(Program)).Information("SmartZoom {Version} started.", typeof(Program).Assembly.GetName().Version);
+
+            Application.Run(host.Services.GetRequiredService<TrayApplicationContext>());
+
+            host.StopAsync().GetAwaiter().GetResult();
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Log.Fatal(ex, "SmartZoom failed to start.");
+            MessageBox.Show($"SmartZoom failed to start:\n\n{ex.Message}\n\nDetails are in {paths.LogDirectory}.", "SmartZoom", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return 1;
+        }
+        finally
+        {
+            Log.CloseAndFlush();
+        }
+    }
+
+    private static Serilog.Core.Logger CreateLogger(AppPaths paths) => new LoggerConfiguration()
+        .MinimumLevel.Debug()
+        .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
+        .MinimumLevel.Override("Microsoft.Hosting.Lifetime", LogEventLevel.Information)
+        .Enrich.FromLogContext()
+        .WriteTo.File(
+            Path.Combine(paths.LogDirectory, "smartzoom-.log"),
+            outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}",
+            formatProvider: CultureInfo.InvariantCulture,
+            rollingInterval: RollingInterval.Day,
+            retainedFileCountLimit: 14)
+        .CreateLogger();
+
+    private static IHost BuildHost(AppPaths paths)
+    {
+        var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
+        {
+            ContentRootPath = AppContext.BaseDirectory,
+        });
+
+        builder.Logging.ClearProviders();
+        builder.Services.AddSerilog();
+
+        // "Press Ctrl+C to shut down" and friends are meaningless for a tray app with no console.
+        builder.Services.Configure<ConsoleLifetimeOptions>(options => options.SuppressStatusMessages = true);
+
+        builder.Services.AddSingleton(paths);
+        builder.Services.AddSingleton<SettingsStore>();
+        builder.Services.AddSingleton(sp => sp.GetRequiredService<SettingsStore>().Load());
+        builder.Services.AddSingleton(sp => new ZoomRouter(sp.GetRequiredService<SmartZoomSettings>().Routing));
+        builder.Services.AddSingleton<IWindowInspector, WindowInspector>();
+        builder.Services.AddSingleton<ITriggerSource>(CreateTriggerSource);
+
+        // Hosted services start in registration order: capture must be running before the dispatcher reads from it.
+        builder.Services.AddHostedService<TriggerCaptureService>();
+        builder.Services.AddHostedService<TriggerDispatcher>();
+        builder.Services.AddSingleton<TrayApplicationContext>();
+
+        return builder.Build();
+    }
+
+    private static LowLevelMouseHook CreateTriggerSource(IServiceProvider services)
+    {
+        var settings = services.GetRequiredService<SmartZoomSettings>();
+        var options = new TriggerOptions(
+            settings.Trigger.Button,
+            settings.Trigger.DoubleTapWindowMs ?? SystemInput.DoubleClickTimeMs,
+            settings.Trigger.SwallowClicks);
+
+        return new LowLevelMouseHook(options, services.GetRequiredService<ILogger<LowLevelMouseHook>>())
+        {
+            Enabled = settings.Enabled,
+        };
+    }
+}

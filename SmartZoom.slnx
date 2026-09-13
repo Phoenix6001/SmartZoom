@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SmartZoom.App/SmartZoom.App.csproj" />
+    <Project Path="src/SmartZoom.Core/SmartZoom.Core.csproj" />
+    <Project Path="src/SmartZoom.Interop/SmartZoom.Interop.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SmartZoom.Core.Tests/SmartZoom.Core.Tests.csproj" />
+  </Folder>
+</Solution>

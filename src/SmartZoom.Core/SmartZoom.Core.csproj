@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Platform-agnostic logic only: no Win32, no UI. Everything here is unit-testable. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SmartZoom.Core.Tests" />
+  </ItemGroup>
+
+</Project>

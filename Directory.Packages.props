@@ -1,0 +1,24 @@
+<Project>
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Runtime -->
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
+    <PackageVersion Include="Serilog.Extensions.Hosting" Version="10.0.0" />
+    <PackageVersion Include="Serilog.Sinks.File" Version="7.0.0" />
+
+    <!-- Build-time -->
+    <PackageVersion Include="Microsoft.Windows.CsWin32" Version="0.3.333" />
+
+    <!-- Tests -->
+    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+</Project>

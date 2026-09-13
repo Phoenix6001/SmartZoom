@@ -1,0 +1,30 @@
+<Project>
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- Quality gates: the build fails on warnings and on analyzer findings. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+
+    <Authors>SmartZoom contributors</Authors>
+    <Product>SmartZoom</Product>
+    <Copyright>Copyright (c) 2026 Henok and SmartZoom contributors</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <!-- Missing XML docs on non-public/test code is noise, not a quality signal. -->
+  <PropertyGroup Condition="$(MSBuildProjectName.EndsWith('.Tests'))">
+    <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);CS1591;CA1707</NoWarn>
+  </PropertyGroup>
+
+</Project>

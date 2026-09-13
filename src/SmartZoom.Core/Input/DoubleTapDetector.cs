@@ -1,0 +1,198 @@
+namespace SmartZoom.Core.Input;
+
+/// <summary>
+/// Pure, allocation-free double-tap state machine. It runs *inside* the low-level hook callback,
+/// so every method is O(1) and touches only fields. Not thread-safe: callers serialize access.
+/// </summary>
+/// <remarks>
+/// <para>Timestamps are GetTickCount-style milliseconds (uint, wraps every ~49.7 days); all
+/// arithmetic is unchecked so wrap-around is handled naturally.</para>
+/// <para><b>Pass-through mode</b>: every event reaches the target app; we only observe down events.</para>
+/// <para><b>Swallow mode</b>: at the first press we cannot know whether a second is coming, so we hold
+/// the press back. If the window expires (<see cref="OnTimeout"/>) or a late press arrives, the held
+/// press is handed back as a <see cref="ReplayAction"/> for the host to re-inject.</para>
+/// </remarks>
+public sealed class DoubleTapDetector
+{
+    private enum State : byte
+    {
+        Idle,
+        /// <summary>First press is down (swallowed in swallow mode; merely recorded otherwise).</summary>
+        FirstDown,
+        /// <summary>Swallow mode: first press fully swallowed, waiting for a second down.</summary>
+        FirstUp,
+        /// <summary>Swallow mode: trigger fired, swallowing the matching up.</summary>
+        SecondDown,
+        /// <summary>Swallow mode: a held first press was replayed as Down; let the physical Up through.</summary>
+        PassUp,
+    }
+
+    private static readonly HookDecision Swallowed = new(Swallow: true, Triggered: false, ReplayAction.None);
+
+    private readonly MouseButton _button;
+    private readonly uint _windowMs;
+    private readonly bool _swallow;
+    private State _state;
+    private uint _firstDownTime;
+
+    /// <summary>Creates a detector in the idle state.</summary>
+    /// <param name="options">Trigger configuration.</param>
+    /// <exception cref="ArgumentException">No trigger button was specified.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">The double-tap window is outside 1..5000 ms.</exception>
+    public DoubleTapDetector(TriggerOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (options.Button == MouseButton.None)
+            throw new ArgumentException("A trigger button is required.", nameof(options));
+        if (options.DoubleTapWindowMs is 0 or > 5000)
+            throw new ArgumentOutOfRangeException(nameof(options), options.DoubleTapWindowMs, "Double-tap window must be 1..5000 ms.");
+
+        _button = options.Button;
+        _windowMs = options.DoubleTapWindowMs;
+        _swallow = options.SwallowClicks;
+    }
+
+    /// <summary>The trigger button this detector watches.</summary>
+    public MouseButton Button => _button;
+
+    /// <summary>Maximum milliseconds between the two button-down events.</summary>
+    public uint WindowMs => _windowMs;
+
+    /// <summary>
+    /// When a swallowed press is pending, the tick at which <see cref="OnTimeout"/> should be called.
+    /// Always false in pass-through mode (nothing to replay, so no timer needed).
+    /// </summary>
+    public bool TryGetDeadline(out uint deadlineMs)
+    {
+        if (_swallow && _state is State.FirstDown or State.FirstUp)
+        {
+            deadlineMs = unchecked(_firstDownTime + _windowMs + 1);
+            return true;
+        }
+
+        deadlineMs = 0;
+        return false;
+    }
+
+    /// <summary>Processes one button event from the hook.</summary>
+    /// <param name="button">Button that changed state.</param>
+    /// <param name="isDown">True for button-down, false for button-up.</param>
+    /// <param name="timeMs">Event time on the GetTickCount clock.</param>
+    /// <returns>What the hook should do with this event.</returns>
+    public HookDecision OnButton(MouseButton button, bool isDown, uint timeMs)
+    {
+        if (button != _button)
+            return default;
+
+        return _swallow ? OnSwallowing(isDown, timeMs) : OnPassThrough(isDown, timeMs);
+    }
+
+    /// <summary>Called by the host's timer once the deadline passes. Returns the input to replay, if any.</summary>
+    public ReplayAction OnTimeout(uint nowMs)
+    {
+        if (!_swallow || !IsExpired(nowMs))
+            return ReplayAction.None;
+
+        switch (_state)
+        {
+            case State.FirstDown:
+                // Button is still physically held (long press): release the Down now, let the real Up through later.
+                _state = State.PassUp;
+                return ReplayAction.Down;
+            case State.FirstUp:
+                _state = State.Idle;
+                return ReplayAction.DownUp;
+            default:
+                return ReplayAction.None;
+        }
+    }
+
+    /// <summary>Abandons any in-progress detection (e.g. when the user disables SmartZoom). Returns held input to replay.</summary>
+    public ReplayAction Reset()
+    {
+        var replay = !_swallow ? ReplayAction.None : _state switch
+        {
+            State.FirstDown => ReplayAction.Down,
+            State.FirstUp => ReplayAction.DownUp,
+            _ => ReplayAction.None,
+        };
+        _state = State.Idle;
+        return replay;
+    }
+
+    private HookDecision OnPassThrough(bool isDown, uint timeMs)
+    {
+        if (!isDown)
+            return default;
+
+        if (_state == State.FirstDown && !IsExpired(timeMs))
+        {
+            _state = State.Idle;
+            return new HookDecision(Swallow: false, Triggered: true, ReplayAction.None);
+        }
+
+        Begin(timeMs);
+        return default;
+    }
+
+    private HookDecision OnSwallowing(bool isDown, uint timeMs)
+    {
+        switch (_state)
+        {
+            case State.Idle:
+                if (!isDown)
+                    return default; // Stray up (e.g. button was held when we started) — not ours.
+                Begin(timeMs);
+                return Swallowed;
+
+            case State.FirstDown or State.FirstUp when isDown:
+                if (!IsExpired(timeMs))
+                {
+                    _state = State.SecondDown;
+                    return new HookDecision(Swallow: true, Triggered: true, ReplayAction.None);
+                }
+
+                // Late second press: our timer hasn't fired yet. Hand back the first press (DownUp, even if its
+                // Up was lost, so the app never sees a stuck button) and hold this press as a new first press.
+                Begin(timeMs);
+                return new HookDecision(Swallow: true, Triggered: false, ReplayAction.DownUp);
+
+            case State.FirstDown: // up
+                _state = State.FirstUp;
+                return Swallowed;
+
+            case State.FirstUp: // stray up; nothing held corresponds to it
+                return default;
+
+            case State.SecondDown:
+                if (isDown)
+                {
+                    // Lost the Up of the triggering press; treat this as a fresh first press.
+                    Begin(timeMs);
+                    return Swallowed;
+                }
+                _state = State.Idle;
+                return Swallowed;
+
+            case State.PassUp:
+                if (isDown)
+                {
+                    Begin(timeMs);
+                    return Swallowed;
+                }
+                _state = State.Idle;
+                return default;
+
+            default:
+                return default;
+        }
+    }
+
+    private void Begin(uint timeMs)
+    {
+        _state = State.FirstDown;
+        _firstDownTime = timeMs;
+    }
+
+    private bool IsExpired(uint timeMs) => unchecked(timeMs - _firstDownTime) > _windowMs;
+}
