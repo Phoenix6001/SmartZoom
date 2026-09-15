@@ -29,3 +29,10 @@ CloseHandle
 // Keyboard hook + cursor
 KBDLLHOOKSTRUCT
 GetCursorPos
+
+// Touch injection (browser smart zoom)
+InitializeTouchInjection
+InjectTouchInput
+POINTER_TOUCH_INFO
+EnumChildWindows
+GetDpiForWindow

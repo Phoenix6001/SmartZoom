@@ -107,7 +107,7 @@ public sealed class TriggerSettings
 public sealed class RoutingSettings
 {
     /// <summary>Processes handled by the browser extension.</summary>
-    public IList<string> BrowserProcesses { get; set; } = ["chrome", "msedge", "firefox"];
+    public IList<string> BrowserProcesses { get; set; } = ["chrome", "msedge", "brave", "opera", "vivaldi", "firefox"];
 
     /// <summary>Processes handled by synthesized Ctrl+wheel zoom.</summary>
     public IList<string> CtrlWheelProcesses { get; set; } = ["Acrobat", "AcroRd32", "SumatraPDF", "i_view64", "i_view32", "EXCEL"];
@@ -139,6 +139,26 @@ public sealed class ZoomSettings
 
     /// <summary>Tuning for the generic Ctrl+wheel adapter.</summary>
     public CtrlWheelSettings CtrlWheel { get; set; } = new();
+
+    /// <summary>Tuning for the browser smart-zoom adapter.</summary>
+    public BrowserZoomSettings Browser { get; set; } = new();
+}
+
+/// <summary>Tuning for the browser smart-zoom adapter.</summary>
+public sealed class BrowserZoomSettings
+{
+    /// <summary>Space left between the zoomed block and the viewport edges, in pixels.</summary>
+    public int MarginPx { get; set; } = 16;
+
+    /// <summary>Length of the zoom gesture when <see cref="ZoomSettings.Animate"/> is on.</summary>
+    public int AnimationMs { get; set; } = 180;
+
+    /// <summary>
+    /// Minimum horizontal distance between the gesture's anchor and the window's left/right edges.
+    /// The adapter raises it automatically to the contact spread at <see cref="ZoomSettings.MaxScale"/>
+    /// plus a scrollbar allowance; set it higher only if zooms near window edges still misbehave.
+    /// </summary>
+    public int AnchorInsetPx { get; set; }
 }
 
 /// <summary>Tuning for the generic Ctrl+wheel adapter.</summary>

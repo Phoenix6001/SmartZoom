@@ -11,7 +11,9 @@ using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
 using SmartZoom.Core.Settings;
 using SmartZoom.Core.Zoom;
+using SmartZoom.Core.Zoom.Content;
 using SmartZoom.Interop;
+using SmartZoom.Interop.Accessibility;
 using SmartZoom.Interop.Input;
 using SmartZoom.Interop.Windows;
 
@@ -108,6 +110,13 @@ internal static class Program
             sp.GetRequiredService<IInputInjector>(),
             sp.GetRequiredService<SmartZoomSettings>().Zoom.CtrlWheel,
             sp.GetRequiredService<TimeProvider>()));
+        builder.Services.AddSingleton<IContentHitTester, MsaaContentHitTester>();
+        builder.Services.AddSingleton<IPinchInjector, TouchPinchInjector>();
+        builder.Services.AddSingleton<IZoomAdapter>(sp => new BrowserAdapter(
+            sp.GetRequiredService<IContentHitTester>(),
+            sp.GetRequiredService<IPinchInjector>(),
+            sp.GetRequiredService<SmartZoomSettings>().Zoom,
+            sp.GetRequiredService<ILogger<BrowserAdapter>>()));
         builder.Services.AddSingleton<WindowZoomStateStore>();
         builder.Services.AddSingleton(sp => new ZoomCoordinator(
             sp.GetRequiredService<ZoomRouter>(),

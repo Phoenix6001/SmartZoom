@@ -61,7 +61,7 @@ public sealed class WindowInspector : IWindowInspector
         return owner == processId;
     }
 
-    private static string GetClassName(HWND window)
+    internal static string GetClassName(HWND window)
     {
         Span<char> buffer = stackalloc char[MaxClassNameLength + 1];
         var length = PInvoke.GetClassName(window, buffer);

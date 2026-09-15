@@ -9,13 +9,15 @@ and routes it to a per-application zoom strategy:
 
 | Target | Strategy | Precision |
 |---|---|---|
-| Chrome, Edge, Firefox | Browser extension over native messaging: hit-tests the DOM element under the cursor and fits it to the viewport | Exact, element-aware |
+| Chrome, Edge, Brave, Opera, Vivaldi (any Chromium browser) | Native smart zoom: finds the paragraph/image under the cursor through the browser's accessibility tree and pinch-zooms it to fill the window — no extension needed | Element-aware, visual zoom (no reflow), exact restore |
+| Firefox | Ctrl+wheel for now (see roadmap) | Approximate |
 | Word, PowerPoint | Office object model (COM) | Exact zoom, exact restore |
 | PDF viewers, Excel, image viewers | Synthesized Ctrl+wheel centered on the cursor | Approximate |
 | Everything else | Ignored | — |
 
-> **Status:** early development. Ctrl+wheel zoom with toggle-back works for the configured PDF,
-> image and spreadsheet apps; browser and Office adapters are next. See [Roadmap](#roadmap).
+> **Status:** early development. Smart zoom works in Chromium browsers; Ctrl+wheel zoom with
+> toggle-back works for the configured PDF, image and spreadsheet apps; Office adapters are next.
+> See [Roadmap](#roadmap).
 
 ## Requirements
 
@@ -70,10 +72,18 @@ SmartZoom after editing.
     "MaxScale": 3.0,
     "Animate": true,
     "FallbackToCtrlWheel": true,   // use Ctrl+wheel when a richer adapter can't act
-    "CtrlWheel": { "Ticks": 6, "IntervalMs": 20 }
+    "CtrlWheel": { "Ticks": 6, "IntervalMs": 20 },
+    "Browser": {
+      "MarginPx": 16,              // space between the zoomed block and the window edge
+      "AnimationMs": 180,          // zoom gesture length when Animate is on
+      "AnchorInsetPx": 0           // extra keep-out from window edges; computed automatically when 0
+    }
   }
 }
 ```
+
+Note that lists such as `BrowserProcesses` are stored in the file as they were when it was created;
+new defaults added by later versions are not merged in. Add entries yourself if you upgrade.
 
 To try SmartZoom on an app that isn't listed but zooms with Ctrl+wheel (Windows 11 Notepad, for
 example), add it to `Overrides`: `"Overrides": { "notepad": "CtrlWheel" }`.
@@ -129,6 +139,14 @@ Design notes:
   end, so `WindowFromPoint` is correct on mixed-DPI multi-monitor setups.
 - **Replayed input is tagged** in `dwExtraInfo` so the hook ignores its own injections. Input
   injected by other software, such as button remappers, is still processed.
+- **Browser smart zoom needs no extension.** Chromium browsers expose the page through Microsoft
+  Active Accessibility; SmartZoom performs the same handshake a screen reader does to make the
+  browser build its accessibility tree, hit-tests the element under the cursor, picks the enclosing
+  paragraph/image/table, and then injects a two-finger touch pinch (`InjectTouchInput`). Chromium
+  turns a touch pinch into *visual-viewport* zoom: the rendered page is scaled without re-layout,
+  and pinching back past 1.0 clamps to the exact original view, which is what makes the toggle
+  exact. Because both synthetic contacts must land inside the browser window, the gesture's anchor
+  is kept `AnchorInsetPx` away from the window edges.
 
 ## Troubleshooting
 
@@ -154,13 +172,19 @@ depending on which window is focused.
   the exact previous level. Zooming with the app's own controls in between also throws the
   toggle off; SmartZoom only remembers how far *it* zoomed.
 - Toggle state is per top-level window, not per document or tab.
+- Browser smart zoom: the achieved scale can differ from the planned one by a few percent (the
+  gesture recognizer's slop is compensated with a measured constant). Blocks very close to the
+  window's left or right edge can't be placed exactly, because the gesture's contacts must stay
+  inside the window. Pages that disable pinch zoom (`user-scalable=no`) can't be smart-zoomed and
+  fall back to Ctrl+wheel.
 
 ## Roadmap
 
 1. ✅ **M1** Tray app, mouse hook, double-tap detection, target routing diagnostics
 2. ✅ **M2** Ctrl+wheel adapter with per-window toggle state
-3. **M3** Native messaging host and Chrome extension with element-aware zoom
-4. **M4** Edge and Firefox support, per-user installer for native messaging manifests
+2½. ✅ **M2.5** Keyboard hotkeys and multiple simultaneous triggers
+3. ✅ **M3** Native smart zoom in Chromium browsers (accessibility hit-test + touch pinch)
+4. **M4** Firefox verification, per-user installer
 5. **M5** Word and PowerPoint COM adapters with exact restore
 6. **M6** Settings UI, live reload, multi-monitor and mixed-DPI polish
 
