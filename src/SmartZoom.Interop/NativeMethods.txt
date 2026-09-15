@@ -11,12 +11,21 @@ GetDoubleClickTime
 
 // Input injection
 SendInput
+MapVirtualKey
+GetAsyncKeyState
+VIRTUAL_KEY
+WHEEL_DELTA
 
 // Window/process inspection
 WindowFromPoint
 GetAncestor
+IsWindow
 GetWindowThreadProcessId
 GetClassName
 OpenProcess
 QueryFullProcessImageName
 CloseHandle
+
+// Keyboard hook + cursor
+KBDLLHOOKSTRUCT
+GetCursorPos

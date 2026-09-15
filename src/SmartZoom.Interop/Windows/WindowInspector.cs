@@ -48,6 +48,19 @@ public sealed class WindowInspector : IWindowInspector
             HitClassName: GetClassName(hit));
     }
 
+    /// <inheritdoc />
+    public bool IsWindowAlive(nint window, uint processId)
+    {
+        var hwnd = new HWND(window);
+        if (!PInvoke.IsWindow(hwnd))
+        {
+            return false;
+        }
+
+        _ = PInvoke.GetWindowThreadProcessId(hwnd, out var owner);
+        return owner == processId;
+    }
+
     private static string GetClassName(HWND window)
     {
         Span<char> buffer = stackalloc char[MaxClassNameLength + 1];

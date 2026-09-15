@@ -10,6 +10,7 @@ using SmartZoom.App.Tray;
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
 using SmartZoom.Core.Settings;
+using SmartZoom.Core.Zoom;
 using SmartZoom.Interop;
 using SmartZoom.Interop.Input;
 using SmartZoom.Interop.Windows;
@@ -101,6 +102,21 @@ internal static class Program
         builder.Services.AddSingleton<IWindowInspector, WindowInspector>();
         builder.Services.AddSingleton<ITriggerSource>(CreateTriggerSource);
 
+        builder.Services.AddSingleton(TimeProvider.System);
+        builder.Services.AddSingleton<IInputInjector, SendInputInjector>();
+        builder.Services.AddSingleton<IZoomAdapter>(sp => new CtrlWheelAdapter(
+            sp.GetRequiredService<IInputInjector>(),
+            sp.GetRequiredService<SmartZoomSettings>().Zoom.CtrlWheel,
+            sp.GetRequiredService<TimeProvider>()));
+        builder.Services.AddSingleton<WindowZoomStateStore>();
+        builder.Services.AddSingleton(sp => new ZoomCoordinator(
+            sp.GetRequiredService<ZoomRouter>(),
+            sp.GetServices<IZoomAdapter>(),
+            sp.GetRequiredService<WindowZoomStateStore>(),
+            sp.GetRequiredService<IWindowInspector>(),
+            sp.GetRequiredService<SmartZoomSettings>().Zoom.FallbackToCtrlWheel,
+            sp.GetRequiredService<ILogger<ZoomCoordinator>>()));
+
         // Hosted services start in registration order: capture must be running before the dispatcher reads from it.
         builder.Services.AddHostedService<TriggerCaptureService>();
         builder.Services.AddHostedService<TriggerDispatcher>();
@@ -109,15 +125,13 @@ internal static class Program
         return builder.Build();
     }
 
-    private static LowLevelMouseHook CreateTriggerSource(IServiceProvider services)
+    private static LowLevelInputHook CreateTriggerSource(IServiceProvider services)
     {
         var settings = services.GetRequiredService<SmartZoomSettings>();
-        var options = new TriggerOptions(
-            settings.Trigger.Button,
-            settings.Trigger.DoubleTapWindowMs ?? SystemInput.DoubleClickTimeMs,
-            settings.Trigger.SwallowClicks);
+        var systemDoubleClick = SystemInput.DoubleClickTimeMs;
+        var triggers = settings.Triggers.Select(t => t.ToDefinition(systemDoubleClick)).ToList();
 
-        return new LowLevelMouseHook(options, services.GetRequiredService<ILogger<LowLevelMouseHook>>())
+        return new LowLevelInputHook(triggers, services.GetRequiredService<ILogger<LowLevelInputHook>>())
         {
             Enabled = settings.Enabled,
         };

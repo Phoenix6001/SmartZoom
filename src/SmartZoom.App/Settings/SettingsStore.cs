@@ -18,8 +18,9 @@ internal sealed partial class SettingsStore(AppPaths paths, ILogger<SettingsStor
     };
 
     /// <summary>
-    /// Reads the settings file, creating it with defaults on first run. A malformed file is left untouched
-    /// (so the user's edits aren't destroyed) and defaults are used for this session.
+    /// Reads the settings file, creating it with defaults on first run and upgrading older layouts in
+    /// place. A malformed file is left untouched (so the user's edits aren't destroyed) and defaults
+    /// are used for this session.
     /// </summary>
     public SmartZoomSettings Load()
     {
@@ -34,8 +35,18 @@ internal sealed partial class SettingsStore(AppPaths paths, ILogger<SettingsStor
 
         try
         {
-            using var stream = File.OpenRead(file);
-            var settings = JsonSerializer.Deserialize<SmartZoomSettings>(stream, JsonOptions) ?? new SmartZoomSettings();
+            SmartZoomSettings settings;
+            using (var stream = File.OpenRead(file))
+            {
+                settings = JsonSerializer.Deserialize<SmartZoomSettings>(stream, JsonOptions) ?? new SmartZoomSettings();
+            }
+
+            if (settings.Migrate())
+            {
+                Save(settings);
+                LogMigrated(file);
+            }
+
             LogLoaded(file);
             return settings;
         }
@@ -62,6 +73,9 @@ internal sealed partial class SettingsStore(AppPaths paths, ILogger<SettingsStor
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Loaded settings from {File}.")]
     private partial void LogLoaded(string file);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Upgraded {File} to the current settings layout.")]
+    private partial void LogMigrated(string file);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Settings file {File} is not valid JSON; using defaults for this session. Fix or delete the file.")]
     private partial void LogInvalidFile(Exception exception, string file);

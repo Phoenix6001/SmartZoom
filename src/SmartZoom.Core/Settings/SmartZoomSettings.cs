@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
 
@@ -9,30 +10,97 @@ public sealed class SmartZoomSettings
     /// <summary>Master switch; when false the hook passes all input through.</summary>
     public bool Enabled { get; set; } = true;
 
-    /// <summary>Trigger gesture configuration.</summary>
-    public TriggerSettings Trigger { get; set; } = new();
+    /// <summary>Gestures that fire SmartZoom. Any of them works; mouse buttons and hotkeys can be mixed.</summary>
+    public IList<TriggerSettings> Triggers { get; set; } = [TriggerSettings.CreateDefault()];
+
+    /// <summary>Pre-M2.5 single trigger. Read for migration only; never written.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public TriggerSettings? Trigger { get; set; }
 
     /// <summary>Which applications are handled, and how.</summary>
     public RoutingSettings Routing { get; set; } = new();
 
     /// <summary>Zoom behavior shared by all adapters.</summary>
     public ZoomSettings Zoom { get; set; } = new();
+
+    /// <summary>
+    /// Brings older files up to date: moves a legacy <see cref="Trigger"/> into <see cref="Triggers"/>.
+    /// </summary>
+    /// <returns>True if anything changed and the file should be rewritten.</returns>
+    public bool Migrate()
+    {
+        if (Trigger is null)
+            return false;
+
+        if (Triggers.Count == 0 || (Triggers.Count == 1 && Triggers[0].IsDefault()))
+            Triggers = [Trigger];
+
+        Trigger = null;
+        return true;
+    }
 }
 
-/// <summary>Trigger gesture configuration.</summary>
+/// <summary>One trigger gesture. Set exactly one of <see cref="Mouse"/> or <see cref="Keys"/>.</summary>
 public sealed class TriggerSettings
 {
-    /// <summary>Button whose double-press fires the trigger.</summary>
-    public MouseButton Button { get; set; } = MouseButton.XButton2;
+    /// <summary>The out-of-the-box trigger: double-tap of the Forward button.</summary>
+    public static TriggerSettings CreateDefault() => new() { Mouse = MouseButton.XButton2 };
 
-    /// <summary>Maximum time between presses in milliseconds; null uses the system double-click time.</summary>
+    /// <summary>Mouse button that fires the trigger. Leave unset for a hotkey trigger.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public MouseButton? Mouse { get; set; }
+
+    /// <summary>Pre-M2.5 name of <see cref="Mouse"/>. Read for migration only; never written.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public MouseButton? Button
+    {
+        get => null;
+        set
+        {
+            if (value is not null)
+                Mouse = value;
+        }
+    }
+
+    /// <summary>Key combination that fires the trigger, e.g. "Ctrl+Alt+Z", "F9" or a bare "Ctrl" for double-tap.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Keys { get; set; }
+
+    /// <summary>
+    /// Presses per trigger: 2 (double-tap, the default, safe for an input that also has another job)
+    /// or 1 (every press, ideal for an input dedicated to SmartZoom).
+    /// </summary>
+    public int TapCount { get; set; } = 2;
+
+    /// <summary>For double-tap, the maximum time between presses in milliseconds; null uses the system double-click time.</summary>
     public uint? DoubleTapWindowMs { get; set; }
 
     /// <summary>
-    /// Hide trigger presses from the target application. Single presses are then delayed by the
-    /// double-tap window before being replayed, which is noticeable on XButton back/forward.
+    /// Hide the trigger's presses from the target application. With double-tap, single presses are
+    /// then delayed by the double-tap window before being replayed (noticeable on Back/Forward buttons).
+    /// With single tap there is no delay.
     /// </summary>
     public bool SwallowClicks { get; set; }
+
+    /// <summary>Builds the runtime definition.</summary>
+    /// <param name="systemDoubleClickTimeMs">Used when <see cref="DoubleTapWindowMs"/> is null.</param>
+    /// <exception cref="InvalidOperationException">Neither or both of <see cref="Mouse"/> and <see cref="Keys"/> are set.</exception>
+    /// <exception cref="FormatException"><see cref="Keys"/> is not a valid combination.</exception>
+    public TriggerDefinition ToDefinition(uint systemDoubleClickTimeMs)
+    {
+        var tap = new TapOptions(TapCount, DoubleTapWindowMs ?? systemDoubleClickTimeMs, SwallowClicks);
+
+        return (Mouse, Keys) switch
+        {
+            (not null and not MouseButton.None, null) => new MouseButtonTrigger(Mouse.Value, tap),
+            (null or MouseButton.None, { Length: > 0 }) => new HotkeyTrigger(KeyCombo.Parse(Keys), tap),
+            (null or MouseButton.None, _) => throw new InvalidOperationException("A trigger needs either \"Mouse\" or \"Keys\"."),
+            _ => throw new InvalidOperationException("A trigger can't have both \"Mouse\" and \"Keys\"; use two triggers."),
+        };
+    }
+
+    internal bool IsDefault() =>
+        Mouse == MouseButton.XButton2 && Keys is null && TapCount == 2 && DoubleTapWindowMs is null && !SwallowClicks;
 }
 
 /// <summary>Process-to-adapter routing. Process names are image names without ".exe", case-insensitive.</summary>
@@ -65,4 +133,20 @@ public sealed class ZoomSettings
 
     /// <summary>Animate zoom transitions where the adapter supports it.</summary>
     public bool Animate { get; set; } = true;
+
+    /// <summary>When a richer adapter can't act (e.g. no browser extension connected), use Ctrl+wheel instead.</summary>
+    public bool FallbackToCtrlWheel { get; set; } = true;
+
+    /// <summary>Tuning for the generic Ctrl+wheel adapter.</summary>
+    public CtrlWheelSettings CtrlWheel { get; set; } = new();
+}
+
+/// <summary>Tuning for the generic Ctrl+wheel adapter.</summary>
+public sealed class CtrlWheelSettings
+{
+    /// <summary>Wheel detents sent per zoom. Most apps step 10–25% per detent.</summary>
+    public int Ticks { get; set; } = 6;
+
+    /// <summary>Pause between detents so the app doesn't coalesce them; 0 sends them back to back.</summary>
+    public int IntervalMs { get; set; } = 20;
 }

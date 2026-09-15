@@ -2,7 +2,7 @@ using System.Threading.Channels;
 
 namespace SmartZoom.Core.Input;
 
-/// <summary>Produces double-tap triggers. The Windows implementation is a low-level mouse hook.</summary>
+/// <summary>Produces trigger events. The Windows implementation is a pair of low-level mouse and keyboard hooks.</summary>
 public interface ITriggerSource
 {
     /// <summary>Triggers in the order they were detected. Never completes while the source is running.</summary>
