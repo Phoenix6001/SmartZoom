@@ -12,9 +12,11 @@ using SmartZoom.Core.Routing;
 using SmartZoom.Core.Settings;
 using SmartZoom.Core.Zoom;
 using SmartZoom.Core.Zoom.Content;
+using SmartZoom.Core.Zoom.Office;
 using SmartZoom.Interop;
 using SmartZoom.Interop.Accessibility;
 using SmartZoom.Interop.Input;
+using SmartZoom.Interop.Office;
 using SmartZoom.Interop.Windows;
 
 namespace SmartZoom.App;
@@ -117,6 +119,15 @@ internal static class Program
             sp.GetRequiredService<IPinchInjector>(),
             sp.GetRequiredService<SmartZoomSettings>().Zoom,
             sp.GetRequiredService<ILogger<BrowserAdapter>>()));
+        builder.Services.AddSingleton<IWordAutomation, WordAutomation>();
+        // Word: object-model steps only. Driving the motion with a touch pinch is smoother, but Word commits
+        // the pinch result asynchronously and the exact restore became unreliable; see WordComAdapter.
+        builder.Services.AddSingleton<IZoomAdapter>(sp => new WordComAdapter(
+            sp.GetRequiredService<IWordAutomation>(),
+            pinch: null,
+            sp.GetRequiredService<SmartZoomSettings>().Zoom,
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<ILogger<WordComAdapter>>()));
         builder.Services.AddSingleton<WindowZoomStateStore>();
         builder.Services.AddSingleton(sp => new ZoomCoordinator(
             sp.GetRequiredService<ZoomRouter>(),

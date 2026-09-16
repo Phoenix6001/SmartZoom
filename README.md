@@ -11,12 +11,13 @@ and routes it to a per-application zoom strategy:
 |---|---|---|
 | Chrome, Edge, Brave, Opera, Vivaldi (any Chromium browser) | Native smart zoom: finds the paragraph/image under the cursor through the browser's accessibility tree and pinch-zooms it to fill the window — no extension needed | Element-aware, visual zoom (no reflow), exact restore |
 | Firefox | Ctrl+wheel for now (see roadmap) | Approximate |
-| Word, PowerPoint | Office object model (COM) | Exact zoom, exact restore |
+| Word | Smart zoom through Word's object model: the paragraph, table or picture under the cursor is zoomed to fill the document pane; the previous zoom and scroll position are restored exactly | Element-aware, exact restore |
+| PowerPoint | Office object model (COM), planned | — |
 | PDF viewers, Excel, image viewers | Synthesized Ctrl+wheel centered on the cursor | Approximate |
 | Everything else | Ignored | — |
 
-> **Status:** early development. Smart zoom works in Chromium browsers; Ctrl+wheel zoom with
-> toggle-back works for the configured PDF, image and spreadsheet apps; Office adapters are next.
+> **Status:** early development. Smart zoom works in Chromium browsers and Word; Ctrl+wheel zoom with
+> toggle-back works for the configured PDF, image and spreadsheet apps; Acrobat and PowerPoint are next.
 > See [Roadmap](#roadmap).
 
 ## Requirements
@@ -177,6 +178,9 @@ depending on which window is focused.
   window's left or right edge can't be placed exactly, because the gesture's contacts must stay
   inside the window. Pages that disable pinch zoom (`user-scalable=no`) can't be smart-zoomed and
   fall back to Ctrl+wheel.
+- Word smart zoom changes the document zoom level in steps, so the motion is not as fluid as the
+  browsers' pinch: Word re-lays out the page at every level. Word's own status-bar zoom slider shows
+  the change and the value returns to the original on the second trigger.
 
 ## Roadmap
 
@@ -185,7 +189,7 @@ depending on which window is focused.
 2½. ✅ **M2.5** Keyboard hotkeys and multiple simultaneous triggers
 3. ✅ **M3** Native smart zoom in Chromium browsers (accessibility hit-test + touch pinch)
 4. **M4** Firefox verification, per-user installer
-5. **M5** Word and PowerPoint COM adapters with exact restore
+5. 🔧 **M5** Office and PDF readers: Word ✅, Acrobat, Excel, PowerPoint
 6. **M6** Settings UI, live reload, multi-monitor and mixed-DPI polish
 
 ## License
