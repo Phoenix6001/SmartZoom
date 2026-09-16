@@ -151,12 +151,11 @@ public sealed class BrowserZoomSettings
     public int MarginPx { get; set; } = 16;
 
     /// <summary>Length of the zoom gesture when <see cref="ZoomSettings.Animate"/> is on.</summary>
-    public int AnimationMs { get; set; } = 180;
+    public int AnimationMs { get; set; } = 280;
 
     /// <summary>
-    /// Minimum horizontal distance between the gesture's anchor and the window's left/right edges.
-    /// The adapter raises it automatically to the contact spread at <see cref="ZoomSettings.MaxScale"/>
-    /// plus a scrollbar allowance; set it higher only if zooms near window edges still misbehave.
+    /// Minimum distance between the gesture's anchor and the window edges, in pixels. Normally not needed:
+    /// the gesture orients its contacts to stay inside the window on its own.
     /// </summary>
     public int AnchorInsetPx { get; set; }
 }

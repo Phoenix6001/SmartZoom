@@ -47,6 +47,31 @@ public sealed class SmartZoomPlannerTests
         Assert.Equal(Cursor.Y, plan.Anchor.Y);
     }
 
+    [Theory]
+    [InlineData(2000, 1800, 250, 100)] // bottom-right corner
+    [InlineData(460, 425, 250, 100)]   // top-left corner
+    [InlineData(1500, 1850, 300, 90)]  // bottom edge, middle
+    public void Zoomed_view_never_reaches_outside_the_current_viewport(int left, int top, int width, int height)
+    {
+        var block = PixelRect.FromSize(left, top, width, height);
+        var cursor = new ScreenPoint(left + (width / 2), top + (height / 2));
+
+        var plan = _planner.Plan(block, Viewport, cursor)!.Value;
+
+        // The region that fills the screen after zooming: its top-left maps to the viewport's top-left.
+        var s = plan.Scale;
+        var regionLeft = plan.Anchor.X + ((Viewport.Left - plan.Anchor.X) / s) - Viewport.Left;
+        var regionTop = plan.Anchor.Y + ((Viewport.Top - plan.Anchor.Y) / s) - Viewport.Top;
+        Assert.InRange(regionLeft, -1.0, Viewport.Width - (Viewport.Width / s) + 1.0);
+        Assert.InRange(regionTop, -1.0, Viewport.Height - (Viewport.Height / s) + 1.0);
+
+        // And the block is still on screen after zooming.
+        var mappedLeft = plan.Anchor.X + ((block.Left - plan.Anchor.X) * s);
+        var mappedTop = plan.Anchor.Y + ((block.Top - plan.Anchor.Y) * s);
+        Assert.InRange(mappedLeft, Viewport.Left - 1.0, Viewport.Right + 1.0);
+        Assert.InRange(mappedTop, Viewport.Top - 1.0, Viewport.Bottom + 1.0);
+    }
+
     [Fact]
     public void Scale_is_capped_at_max()
     {

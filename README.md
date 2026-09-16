@@ -75,8 +75,8 @@ SmartZoom after editing.
     "CtrlWheel": { "Ticks": 6, "IntervalMs": 20 },
     "Browser": {
       "MarginPx": 16,              // space between the zoomed block and the window edge
-      "AnimationMs": 180,          // zoom gesture length when Animate is on
-      "AnchorInsetPx": 0           // extra keep-out from window edges; computed automatically when 0
+      "AnimationMs": 280,          // zoom gesture length when Animate is on
+      "AnchorInsetPx": 0           // extra keep-out from window edges; normally not needed
     }
   }
 }
@@ -145,8 +145,8 @@ Design notes:
   paragraph/image/table, and then injects a two-finger touch pinch (`InjectTouchInput`). Chromium
   turns a touch pinch into *visual-viewport* zoom: the rendered page is scaled without re-layout,
   and pinching back past 1.0 clamps to the exact original view, which is what makes the toggle
-  exact. Because both synthetic contacts must land inside the browser window, the gesture's anchor
-  is kept `AnchorInsetPx` away from the window edges.
+  exact. Both synthetic contacts must land inside the browser window and off its scrollbar, so the
+  gesture places them on a horizontal line when there is room and on a vertical line near the edges.
 
 ## Troubleshooting
 

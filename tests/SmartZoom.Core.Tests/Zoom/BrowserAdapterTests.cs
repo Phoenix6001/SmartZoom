@@ -36,7 +36,11 @@ public sealed class BrowserAdapterTests
         var result = await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None);
 
         Assert.Equal(ZoomInStatus.Applied, result.Status);
-        var pinch = Assert.Single(_pinch.Calls);
+        // Zoom-in is preceded by an instant baseline pinch-out that undoes any leftover visual zoom.
+        Assert.Equal(2, _pinch.Calls.Count);
+        Assert.Equal(0.9 / 3.0, _pinch.Calls[0].Factor, precision: 9);
+        Assert.Equal(TimeSpan.Zero, _pinch.Calls[0].Duration);
+        var pinch = _pinch.Calls[1];
         Assert.Equal(1874.0 / (949 + 32), pinch.Factor, precision: 6);
         Assert.Equal(TimeSpan.FromMilliseconds(180), pinch.Duration);
         Assert.Equal(pinch.Factor, Assert.IsType<BrowserAdapter.RestoreState>(result.RestoreState).Plan.Scale);
@@ -48,30 +52,30 @@ public sealed class BrowserAdapterTests
         _hits.Result = ParagraphHit;
         var adapter = Create();
         var result = await adapter.ZoomInAsync(Brave, Cursor, CancellationToken.None);
-        var zoomIn = _pinch.Calls[0];
+        var zoomIn = _pinch.Calls[1];
 
         await adapter.ZoomOutAsync(Brave, result.RestoreState!, CancellationToken.None);
 
-        var zoomOut = _pinch.Calls[1];
+        var zoomOut = _pinch.Calls[2];
         Assert.Equal(zoomIn.Anchor, zoomOut.Anchor);
         Assert.Equal(0.9 / zoomIn.Factor, zoomOut.Factor, precision: 9);
     }
 
     [Fact]
-    public async Task No_content_is_unhandled_so_the_coordinator_can_fall_back()
+    public async Task No_content_is_reported_handled_so_the_coordinator_never_page_zooms_a_browser()
     {
         _hits.Result = null;
 
-        Assert.Equal(ZoomInStatus.Unhandled, (await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None)).Status);
+        Assert.Equal(ZoomInStatus.SelfManaged, (await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None)).Status);
         Assert.Empty(_pinch.Calls);
     }
 
     [Fact]
-    public async Task No_block_is_unhandled()
+    public async Task No_block_is_reported_handled()
     {
         _hits.Result = new ContentHit([new ContentNode(ContentRole.Document, Viewport)], Viewport);
 
-        Assert.Equal(ZoomInStatus.Unhandled, (await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None)).Status);
+        Assert.Equal(ZoomInStatus.SelfManaged, (await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None)).Status);
     }
 
     [Fact]
@@ -82,7 +86,7 @@ public sealed class BrowserAdapterTests
             Viewport);
 
         // 1800 of 1874 px is 96% of the viewport: too wide for the block selector, so nothing to zoom.
-        Assert.Equal(ZoomInStatus.Unhandled, (await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None)).Status);
+        Assert.Equal(ZoomInStatus.SelfManaged, (await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None)).Status);
 
         _hits.Result = new ContentHit(
             [new ContentNode(ContentRole.Group, PixelRect.FromSize(470, 800, 1680, 300)), new ContentNode(ContentRole.Document, Viewport)],
@@ -94,12 +98,12 @@ public sealed class BrowserAdapterTests
     }
 
     [Fact]
-    public async Task Rejected_pinch_is_unhandled()
+    public async Task Rejected_pinch_is_reported_handled()
     {
         _hits.Result = ParagraphHit;
         _pinch.Succeeds = false;
 
-        Assert.Equal(ZoomInStatus.Unhandled, (await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None)).Status);
+        Assert.Equal(ZoomInStatus.SelfManaged, (await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None)).Status);
     }
 
     [Fact]
@@ -109,21 +113,26 @@ public sealed class BrowserAdapterTests
 
         await Create(animate: false).ZoomInAsync(Brave, Cursor, CancellationToken.None);
 
-        Assert.Equal(TimeSpan.Zero, _pinch.Calls[0].Duration);
+        Assert.Equal(TimeSpan.Zero, _pinch.Calls[1].Duration);
     }
 
     [Fact]
-    public async Task Anchor_stays_clear_of_the_edges_by_the_contact_spread_plus_scrollbar()
+    public async Task Contacts_are_confined_to_the_viewport_minus_the_scrollbar_and_the_anchor_is_not_clamped_for_it()
     {
-        // A small image at the far right wants an anchor near the right edge; the fake spreads 60 * 3 = 180 px
-        // at MaxScale, so with the 24 px scrollbar allowance the anchor must stay 204 px inside.
+        // A small image at the far right: the anchor may sit near the edge (the injector will orient the
+        // contacts vertically), but the contact area must exclude the scrollbar strip.
         var image = new ContentNode(ContentRole.Image, PixelRect.FromSize(Viewport.Right - 270, 700, 250, 160));
         _hits.Result = new ContentHit([image, new ContentNode(ContentRole.Document, Viewport)], Viewport);
 
-        await Create().ZoomInAsync(Brave, new ScreenPoint(Viewport.Right - 150, 780), CancellationToken.None);
+        var result = await Create().ZoomInAsync(Brave, new ScreenPoint(Viewport.Right - 150, 780), CancellationToken.None);
 
-        var anchor = Assert.Single(_pinch.Calls).Anchor;
-        Assert.InRange(anchor.X, Viewport.Left + 204, Viewport.Right - 1 - 204);
+        var call = _pinch.Calls[1];
+        Assert.Equal(Viewport.Right - 56, call.Bounds.Right);
+        Assert.Equal(Viewport.Left, call.Bounds.Left);
+        Assert.True(call.Anchor.X > Viewport.Right - 200, "anchor should stay where the fit math puts it, near the right edge");
+
+        await Create().ZoomOutAsync(Brave, result.RestoreState!, CancellationToken.None);
+        Assert.Equal(call.Bounds, _pinch.Calls[2].Bounds);
     }
 
     [Fact]
@@ -141,13 +150,11 @@ public sealed class BrowserAdapterTests
     {
         public bool Succeeds { get; set; } = true;
 
-        public int MaxContactOffset(double factor) => (int)Math.Ceiling(60 * Math.Max(factor, 1 / factor));
+        public List<(ScreenPoint Anchor, double Factor, TimeSpan Duration, PixelRect Bounds)> Calls { get; } = [];
 
-        public List<(ScreenPoint Anchor, double Factor, TimeSpan Duration)> Calls { get; } = [];
-
-        public Task<bool> PinchAsync(ScreenPoint anchor, double factor, TimeSpan duration, CancellationToken cancellationToken)
+        public Task<bool> PinchAsync(ScreenPoint anchor, double factor, TimeSpan duration, PixelRect bounds, CancellationToken cancellationToken)
         {
-            Calls.Add((anchor, factor, duration));
+            Calls.Add((anchor, factor, duration, bounds));
             return Task.FromResult(Succeeds);
         }
     }

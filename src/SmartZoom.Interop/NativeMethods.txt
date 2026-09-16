@@ -36,3 +36,5 @@ InjectTouchInput
 POINTER_TOUCH_INFO
 EnumChildWindows
 GetDpiForWindow
+SetCursorPos
+GetWindowRect

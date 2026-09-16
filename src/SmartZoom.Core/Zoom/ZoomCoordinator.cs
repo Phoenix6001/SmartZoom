@@ -90,7 +90,7 @@ public sealed partial class ZoomCoordinator
                 return ZoomAction.ZoomedIn;
 
             case ZoomInStatus.SelfManaged:
-                LogZoomedIn(target.ProcessName, kind);
+                LogHandled(target.ProcessName, kind);
                 return ZoomAction.ZoomedIn;
 
             default:
@@ -104,6 +104,9 @@ public sealed partial class ZoomCoordinator
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Zoomed out {Process} via {Adapter}.")]
     private partial void LogZoomedOut(string? process, AdapterKind adapter);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{Adapter} handled the trigger in {Process} with nothing to undo (see its own log line for what it did).")]
+    private partial void LogHandled(string? process, AdapterKind adapter);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "{Adapter} could not handle {Process}; falling back to CtrlWheel.")]
     private partial void LogFallingBack(string? process, AdapterKind adapter);
