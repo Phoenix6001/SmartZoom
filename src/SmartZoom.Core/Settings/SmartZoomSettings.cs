@@ -106,11 +106,14 @@ public sealed class TriggerSettings
 /// <summary>Process-to-adapter routing. Process names are image names without ".exe", case-insensitive.</summary>
 public sealed class RoutingSettings
 {
-    /// <summary>Processes handled by the browser extension.</summary>
+    /// <summary>Browsers handled by the native smart zoom (accessibility hit-test + touch pinch): Chromium-based browsers and Firefox.</summary>
     public IList<string> BrowserProcesses { get; set; } = ["chrome", "msedge", "brave", "opera", "vivaldi", "firefox"];
 
     /// <summary>Processes handled by synthesized Ctrl+wheel zoom.</summary>
-    public IList<string> CtrlWheelProcesses { get; set; } = ["Acrobat", "AcroRd32", "SumatraPDF", "i_view64", "i_view32", "EXCEL"];
+    public IList<string> CtrlWheelProcesses { get; set; } = ["i_view64", "i_view32", "EXCEL"];
+
+    /// <summary>Processes zoomed with their own keyboard shortcuts (<see cref="ZoomSettings.Keys"/>): readers with fit-width / fit-page commands.</summary>
+    public IList<string> KeyProcesses { get; set; } = ["Acrobat", "AcroRd32", "SumatraPDF"];
 
     /// <summary>Processes handled through the Word object model.</summary>
     public IList<string> WordProcesses { get; set; } = ["WINWORD"];
@@ -142,6 +145,19 @@ public sealed class ZoomSettings
 
     /// <summary>Tuning for the browser smart-zoom adapter.</summary>
     public BrowserZoomSettings Browser { get; set; } = new();
+
+    /// <summary>Shortcuts for the keyboard-shortcut adapter.</summary>
+    public KeyZoomSettings Keys { get; set; } = new();
+}
+
+/// <summary>Shortcuts sent by the keyboard-shortcut adapter. Defaults are Acrobat's and Sumatra's fit width / fit page.</summary>
+public sealed class KeyZoomSettings
+{
+    /// <summary>Combination sent on the first press; by default "fit width", which fills the window with the page.</summary>
+    public string ZoomInKeys { get; set; } = "Ctrl+2";
+
+    /// <summary>Combination sent on the second press; by default "fit page", which shows the whole page again.</summary>
+    public string ZoomOutKeys { get; set; } = "Ctrl+0";
 }
 
 /// <summary>Tuning for the browser smart-zoom adapter.</summary>

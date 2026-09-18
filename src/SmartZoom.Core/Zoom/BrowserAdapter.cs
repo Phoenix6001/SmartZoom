@@ -20,8 +20,25 @@ public sealed partial class BrowserAdapter : IZoomAdapter
     // are 17 px at 100% scaling and 51 px at 300%; the injector keeps contacts out of this strip.
     private const int ScrollbarAllowance = 56;
 
-    // The anchor itself only needs to be off the very edge; the injector orients the contacts to fit.
-    private const int EdgeInset = 8;
+    // Windows gives touch a generous grip on a window's resize borders: a contact that goes down on the
+    // viewport's outermost pixels (the viewport starts 8 px inside the window rect in Chromium, and a contact
+    // 8 px inside the rect still grabbed the border on a 200% display, 12 px did not) resizes the window
+    // instead of pinching, and a converging zoom-out then drags the window edge ~150 px inward. Contacts stay
+    // this far inside the viewport on the sides the window frame can touch.
+    private const int ResizeBorderAllowance = 24;
+
+    // The anchor stays where the contacts may go: inside the resize-border allowance plus the injector's own 4 px
+    // edge margin. A pinch around an anchor outside the contact area is done around a substitute focus plus a
+    // one-finger pan, and a pan that pushes the content past the layout viewport's edge scrolls the page, which
+    // zooming back out does not undo (an 8 px residual scroll was measured). A slightly inset anchor is free:
+    // the browser clamps the visual viewport at the page edge, so the block lands a few pixels further in.
+    private const int EdgeInset = ResizeBorderAllowance + 4;
+
+    // After resetting a stuck visual zoom, the browser needs a moment before its accessibility rects are right
+    // again. One more look is all it gets: the reset is instant, and a cold accessibility tree costs the hit tester
+    // ~600 ms of wake-up retries per look, so three looks kept the user waiting 2.4 s (and their next press was dropped).
+    private static readonly TimeSpan ResetSettle = TimeSpan.FromMilliseconds(200);
+    private const int ResetAttempts = 1;
 
     private readonly IContentHitTester _hitTester;
     private readonly IPinchInjector _pinch;
@@ -70,8 +87,28 @@ public sealed partial class BrowserAdapter : IZoomAdapter
         var block = _blocks.Select(hit);
         if (block is null)
         {
-            LogNoBlock(target.ProcessName, hit.Chain.Count);
-            return ZoomInResult.SelfManaged;
+            // Maybe the page is still visually zoomed from an earlier zoom this app has forgotten (restarted, or
+            // the restore did not take): accessibility rects are then off-screen or wrong and nothing qualifies.
+            // Zooming out below 1.0 is invisible on a page that is not zoomed and resets one that is; look again.
+            await _pinch.PinchAsync(ClampInto(point, hit.Viewport), RestoreOvershoot / _planner.MaxScale, TimeSpan.Zero, ContactBounds(hit.Viewport), cancellationToken).ConfigureAwait(false);
+            for (var attempt = 0; attempt < ResetAttempts && block is null; attempt++)
+            {
+                await Task.Delay(ResetSettle, cancellationToken).ConfigureAwait(false);
+                hit = await _hitTester.HitTestAsync(target, point, cancellationToken).ConfigureAwait(false);
+                block = hit is null ? null : _blocks.Select(hit);
+            }
+
+            if (hit is null || block is null)
+            {
+                LogNoBlock(target.ProcessName, hit?.Chain.Count ?? 0);
+                if (hit is not null && _logger.IsEnabled(LogLevel.Debug))
+                {
+                    var path = string.Join(" < ", hit.Chain.Select(n => $"{n.Role} {n.Bounds.Width}x{n.Bounds.Height}@({n.Bounds.Left},{n.Bounds.Top})"));
+                    LogPath(path, hit.Viewport.Width, hit.Viewport.Height);
+                }
+
+                return ZoomInResult.SelfManaged;
+            }
         }
 
         var plan = _planner.Plan(block.Bounds, hit.Viewport, point, _insets);
@@ -99,9 +136,29 @@ public sealed partial class BrowserAdapter : IZoomAdapter
         return ZoomInResult.Applied(new RestoreState(p, bounds));
     }
 
-    // Where synthetic contacts may land: the viewport minus the vertical scrollbar strip on the right.
-    private static PixelRect ContactBounds(PixelRect viewport) =>
-        viewport with { Right = Math.Max(viewport.Left + 1, viewport.Right - ScrollbarAllowance) };
+    private static ScreenPoint ClampInto(ScreenPoint point, PixelRect rect) =>
+        new(ClampWithInset(point.X, rect.Left, rect.Right - 1), ClampWithInset(point.Y, rect.Top, rect.Bottom - 1));
+
+    // Clamp into [min + EdgeInset, max - EdgeInset]; a range narrower than two insets (a tiny viewport) yields its middle.
+    private static int ClampWithInset(int value, int min, int max)
+    {
+        var low = min + EdgeInset;
+        var high = max - EdgeInset;
+        return low > high ? (min + max) / 2 : Math.Clamp(value, low, high);
+    }
+
+    // Where synthetic contacts may land: the viewport minus the vertical scrollbar strip on the right and minus
+    // the window's touch resize zone on the other sides (the scrollbar strip already covers it on the right).
+    internal static PixelRect ContactBounds(PixelRect viewport)
+    {
+        var left = viewport.Left + ResizeBorderAllowance;
+        var top = viewport.Top + ResizeBorderAllowance;
+        return new PixelRect(
+            left,
+            top,
+            Math.Max(left + 1, viewport.Right - ScrollbarAllowance),
+            Math.Max(top + 1, viewport.Bottom - ResizeBorderAllowance));
+    }
 
     /// <inheritdoc />
     public async Task ZoomOutAsync(TargetInfo target, object restoreState, CancellationToken cancellationToken)
@@ -123,6 +180,9 @@ public sealed partial class BrowserAdapter : IZoomAdapter
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Smart zoom unavailable: no zoomable block on the {Depth}-node path under the cursor in {Process}. Nothing was zoomed.")]
     private partial void LogNoBlock(string? process, int depth);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Path under the cursor (leaf first) in a {ViewportWidth}x{ViewportHeight} viewport: {Path}")]
+    private partial void LogPath(string path, int viewportWidth, int viewportHeight);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "{Role} block ({Width} px) already fills the {ViewportWidth} px viewport in {Process}; nothing to zoom.")]
     private partial void LogAlreadyFits(string? process, ContentRole role, int width, int viewportWidth);

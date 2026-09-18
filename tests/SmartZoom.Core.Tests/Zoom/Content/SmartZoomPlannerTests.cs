@@ -20,12 +20,27 @@ public sealed class SmartZoomPlannerTests
     }
 
     [Fact]
-    public void Scaling_around_the_anchor_puts_the_block_left_edge_on_the_left_margin()
+    public void Scaling_around_the_anchor_centres_the_block_with_the_margins_either_side()
     {
         var plan = _planner.Plan(Paragraph, Viewport, Cursor)!.Value;
 
         var mappedLeft = plan.Anchor.X + ((Paragraph.Left - plan.Anchor.X) * plan.Scale);
-        Assert.InRange(mappedLeft, Viewport.Left + 16 - 1.0, Viewport.Left + 16 + 1.0);
+        var mappedRight = plan.Anchor.X + ((Paragraph.Right - plan.Anchor.X) * plan.Scale);
+        Assert.InRange(mappedLeft - Viewport.Left, 16.0, 40.0);
+        Assert.InRange(Math.Abs((mappedLeft - Viewport.Left) - (Viewport.Right - mappedRight)), 0.0, 2.0);
+    }
+
+    [Fact]
+    public void Narrow_block_is_centred_rather_than_pushed_to_the_left_margin()
+    {
+        // A small picture in the middle of the page reaches the scale cap; it should grow in place.
+        var picture = PixelRect.FromSize(1300, 900, 250, 180);
+
+        var plan = _planner.Plan(picture, Viewport, new ScreenPoint(1400, 980))!.Value;
+
+        Assert.Equal(3.0, plan.Scale);
+        var mappedCentre = plan.Anchor.X + ((picture.CenterX - plan.Anchor.X) * plan.Scale);
+        Assert.InRange(mappedCentre, Viewport.CenterX - 2.0, Viewport.CenterX + 2.0);
     }
 
     [Fact]

@@ -34,7 +34,15 @@ GetCursorPos
 InitializeTouchInjection
 InjectTouchInput
 POINTER_TOUCH_INFO
+CreateSyntheticPointerDevice
+InjectSyntheticPointerInput
+POINTER_TYPE_INFO
 EnumChildWindows
 GetDpiForWindow
 SetCursorPos
 GetWindowRect
+
+// Window activation (keyboard-shortcut zoom)
+SetForegroundWindow
+GetForegroundWindow
+AttachThreadInput

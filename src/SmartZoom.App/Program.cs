@@ -119,6 +119,13 @@ internal static class Program
             sp.GetRequiredService<IPinchInjector>(),
             sp.GetRequiredService<SmartZoomSettings>().Zoom,
             sp.GetRequiredService<ILogger<BrowserAdapter>>()));
+        builder.Services.AddSingleton<IWindowActivator, WindowActivator>();
+        builder.Services.AddSingleton<IZoomAdapter>(sp => new KeyZoomAdapter(
+            sp.GetRequiredService<IInputInjector>(),
+            sp.GetRequiredService<IWindowActivator>(),
+            sp.GetRequiredService<SmartZoomSettings>().Zoom.Keys,
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<ILogger<KeyZoomAdapter>>()));
         builder.Services.AddSingleton<IWordAutomation, WordAutomation>();
         // Word: object-model steps only. Driving the motion with a touch pinch is smoother, but Word commits
         // the pinch result asynchronously and the exact restore became unreliable; see WordComAdapter.

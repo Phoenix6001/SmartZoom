@@ -9,7 +9,7 @@ namespace SmartZoom.Core.Tests.Zoom;
 public sealed class ZoomCoordinatorTests
 {
     private static readonly ScreenPoint Point = new(10, 10);
-    private static readonly TargetInfo Pdf = new(0x100, 0x101, 1, "SumatraPDF", "R", "H");
+    private static readonly TargetInfo Pdf = new(0x100, 0x101, 1, "i_view64", "R", "H");
     private static readonly TargetInfo Browser = new(0x200, 0x201, 2, "chrome", "R", "H");
     private static readonly TargetInfo Word = new(0x300, 0x301, 3, "WINWORD", "R", "H");
     private static readonly TargetInfo Unknown = new(0x400, 0x401, 4, "notepad", "R", "H");

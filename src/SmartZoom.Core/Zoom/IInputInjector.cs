@@ -5,6 +5,15 @@ public enum ModifierKey
 {
     /// <summary>The Control key.</summary>
     Control,
+
+    /// <summary>The Alt key.</summary>
+    Alt,
+
+    /// <summary>The Shift key.</summary>
+    Shift,
+
+    /// <summary>The Windows key.</summary>
+    Win,
 }
 
 /// <summary>Synthesizes user input. The Windows implementation wraps <c>SendInput</c>.</summary>
@@ -24,4 +33,8 @@ public interface IInputInjector
     /// <summary>Whether the user is physically holding a modifier right now.</summary>
     /// <param name="key">Which modifier.</param>
     bool IsModifierDown(ModifierKey key);
+
+    /// <summary>Taps a key combination: presses its modifiers, taps the key, releases the modifiers.</summary>
+    /// <param name="combo">The combination, e.g. Ctrl+2.</param>
+    bool TrySendKeyCombo(Input.KeyCombo combo);
 }

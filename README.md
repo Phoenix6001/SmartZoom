@@ -10,14 +10,16 @@ and routes it to a per-application zoom strategy:
 | Target | Strategy | Precision |
 |---|---|---|
 | Chrome, Edge, Brave, Opera, Vivaldi (any Chromium browser) | Native smart zoom: finds the paragraph/image under the cursor through the browser's accessibility tree and pinch-zooms it to fill the window — no extension needed | Element-aware, visual zoom (no reflow), exact restore |
-| Firefox | Ctrl+wheel for now (see roadmap) | Approximate |
+| Firefox | Native smart zoom, the same way: the block under the cursor comes from Firefox's accessibility tree and is pinch-zoomed through a synthetic touch device that Firefox accepts as a touch screen | Element-aware, visual zoom (no reflow), exact restore |
 | Word | Smart zoom through Word's object model: the paragraph, table or picture under the cursor is zoomed to fill the document pane; the previous zoom and scroll position are restored exactly | Element-aware, exact restore |
 | PowerPoint | Office object model (COM), planned | — |
-| PDF viewers, Excel, image viewers | Synthesized Ctrl+wheel centered on the cursor | Approximate |
+| Acrobat, Acrobat Reader, SumatraPDF | The reader's own shortcuts: the first press fits the page to the window width (Ctrl+2), the second shows the whole page again (Ctrl+0) | Exact, never drifts |
+| Excel, image viewers | Synthesized Ctrl+wheel centered on the cursor | Approximate |
 | Everything else | Ignored | — |
 
-> **Status:** early development. Smart zoom works in Chromium browsers and Word; Ctrl+wheel zoom with
-> toggle-back works for the configured PDF, image and spreadsheet apps; Acrobat and PowerPoint are next.
+> **Status:** early development. Smart zoom works in Chromium browsers, Firefox and Word; Acrobat and Sumatra
+> toggle between fit width and fit page; Ctrl+wheel zoom with toggle-back works for the configured image and
+> spreadsheet apps; Excel and PowerPoint are next.
 > See [Roadmap](#roadmap).
 
 ## Requirements
@@ -62,8 +64,9 @@ SmartZoom after editing.
     { "Keys": "Ctrl", "TapCount": 2 }   // double-tap a bare modifier
   ],
   "Routing": {
-    "BrowserProcesses": ["chrome", "msedge", "firefox"],
-    "CtrlWheelProcesses": ["Acrobat", "AcroRd32", "SumatraPDF", "i_view64", "i_view32", "EXCEL"],
+    "BrowserProcesses": ["chrome", "msedge", "brave", "opera", "vivaldi", "firefox"],
+    "CtrlWheelProcesses": ["i_view64", "i_view32", "EXCEL"],
+    "KeyProcesses": ["Acrobat", "AcroRd32", "SumatraPDF"],
     "WordProcesses": ["WINWORD"],
     "PowerPointProcesses": ["POWERPNT"],
     "Overrides": { "EXCEL": "None" } // per-process override; wins over the lists
@@ -74,6 +77,7 @@ SmartZoom after editing.
     "Animate": true,
     "FallbackToCtrlWheel": true,   // use Ctrl+wheel when a richer adapter can't act
     "CtrlWheel": { "Ticks": 6, "IntervalMs": 20 },
+    "Keys": { "ZoomInKeys": "Ctrl+2", "ZoomOutKeys": "Ctrl+0" },   // shortcuts for the KeyProcesses
     "Browser": {
       "MarginPx": 16,              // space between the zoomed block and the window edge
       "AnimationMs": 280,          // zoom gesture length when Animate is on
@@ -148,6 +152,11 @@ Design notes:
   and pinching back past 1.0 clamps to the exact original view, which is what makes the toggle
   exact. Both synthetic contacts must land inside the browser window and off its scrollbar, so the
   gesture places them on a horizontal line when there is room and on a vertical line near the edges.
+  Firefox exposes the same accessibility tree (with IAccessible2 roles) from its top-level window, but
+  it deliberately treats every two-finger gesture from the `InjectTouchInput` virtual digitizer as a
+  touchpad scroll (its workaround for touchpads that emulate touch through that API), so for Firefox
+  the same pinch is injected through a `CreateSyntheticPointerDevice` touch device, which Firefox
+  handles as a real touch screen.
 
 ## Troubleshooting
 
@@ -188,8 +197,8 @@ depending on which window is focused.
 2. ✅ **M2** Ctrl+wheel adapter with per-window toggle state
 2½. ✅ **M2.5** Keyboard hotkeys and multiple simultaneous triggers
 3. ✅ **M3** Native smart zoom in Chromium browsers (accessibility hit-test + touch pinch)
-4. **M4** Firefox verification, per-user installer
-5. 🔧 **M5** Office and PDF readers: Word ✅, Acrobat, Excel, PowerPoint
+4. 🔧 **M4** Firefox ✅, per-user installer
+5. 🔧 **M5** Office and PDF readers: Word ✅, Acrobat ✅, Excel, PowerPoint
 6. **M6** Settings UI, live reload, multi-monitor and mixed-DPI polish
 
 ## License

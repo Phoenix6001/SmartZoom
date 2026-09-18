@@ -71,11 +71,29 @@ public sealed class BrowserAdapterTests
     }
 
     [Fact]
-    public async Task No_block_is_reported_handled()
+    public async Task No_block_resets_a_possibly_stuck_zoom_and_looks_again_before_giving_up()
     {
         _hits.Result = new ContentHit([new ContentNode(ContentRole.Document, Viewport)], Viewport);
 
         Assert.Equal(ZoomInStatus.SelfManaged, (await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None)).Status);
+
+        // One instant pinch-out (invisible on an unzoomed page, a reset on a zoomed one) and one more look.
+        var reset = Assert.Single(_pinch.Calls);
+        Assert.Equal(0.9 / 3.0, reset.Factor, precision: 9);
+        Assert.Equal(TimeSpan.Zero, reset.Duration);
+        Assert.Equal(2, _hits.Calls);
+    }
+
+    [Fact]
+    public async Task Block_found_after_the_reset_is_zoomed()
+    {
+        _hits.Result = new ContentHit([new ContentNode(ContentRole.Document, Viewport)], Viewport);
+        _hits.Next = ParagraphHit;
+
+        var result = await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None);
+
+        Assert.Equal(ZoomInStatus.Applied, result.Status);
+        Assert.Equal(3, _pinch.Calls.Count); // reset, baseline, zoom-in
     }
 
     [Fact]
@@ -94,7 +112,9 @@ public sealed class BrowserAdapterTests
 
         // 1680 px qualifies as a block but the resulting scale (1.09) is below MinScale.
         Assert.Equal(ZoomInStatus.SelfManaged, (await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None)).Status);
-        Assert.Empty(_pinch.Calls);
+
+        // The first case made one instant reset pinch (see the stuck-zoom test); the second made no gesture at all.
+        Assert.Single(_pinch.Calls);
     }
 
     [Fact]
@@ -128,7 +148,7 @@ public sealed class BrowserAdapterTests
 
         var call = _pinch.Calls[1];
         Assert.Equal(Viewport.Right - 56, call.Bounds.Right);
-        Assert.Equal(Viewport.Left, call.Bounds.Left);
+        Assert.Equal(Viewport.Left + 24, call.Bounds.Left);
         Assert.True(call.Anchor.X > Viewport.Right - 200, "anchor should stay where the fit math puts it, near the right edge");
 
         await Create().ZoomOutAsync(Brave, result.RestoreState!, CancellationToken.None);
@@ -136,14 +156,51 @@ public sealed class BrowserAdapterTests
     }
 
     [Fact]
+    public void Contacts_keep_clear_of_the_window_resize_border_on_every_side()
+    {
+        // A touch contact on the viewport's outermost pixels grabs the window's resize border (measured: 8 px
+        // inside the window rect resizes, 12 px does not) and a pinch then drags the window edge instead.
+        var bounds = BrowserAdapter.ContactBounds(PixelRect.FromSize(1891, 85, 1793, 1527));
+
+        Assert.Equal(new PixelRect(1891 + 24, 85 + 24, 1891 + 1793 - 56, 85 + 1527 - 24), bounds);
+    }
+
+    [Fact]
+    public void Contact_bounds_of_a_tiny_viewport_never_collapse()
+    {
+        var bounds = BrowserAdapter.ContactBounds(PixelRect.FromSize(100, 100, 30, 30));
+
+        Assert.Equal(1, bounds.Width);
+        Assert.Equal(1, bounds.Height);
+    }
+
+    [Fact]
+    public async Task Reset_in_a_viewport_smaller_than_the_edge_insets_pinches_around_its_middle()
+    {
+        // Narrower than two edge insets: there is no inset range to clamp the cursor into.
+        var tiny = PixelRect.FromSize(100, 100, 40, 30);
+        _hits.Result = new ContentHit([new ContentNode(ContentRole.Document, tiny)], tiny);
+
+        Assert.Equal(ZoomInStatus.SelfManaged, (await Create().ZoomInAsync(Brave, new ScreenPoint(101, 101), CancellationToken.None)).Status);
+
+        Assert.Equal(new ScreenPoint(119, 114), Assert.Single(_pinch.Calls).Anchor);
+    }
+
+    [Fact]
     public async Task Zoom_out_rejects_foreign_state() =>
         await Assert.ThrowsAsync<ArgumentException>(() => Create().ZoomOutAsync(Brave, "nope", CancellationToken.None));
 
+    // Answers the first hit-test with Result and any later one with Next (when set).
     private sealed class FakeHitTester : IContentHitTester
     {
         public ContentHit? Result { get; set; }
 
-        public Task<ContentHit?> HitTestAsync(TargetInfo target, ScreenPoint point, CancellationToken cancellationToken) => Task.FromResult(Result);
+        public ContentHit? Next { get; set; }
+
+        public int Calls { get; private set; }
+
+        public Task<ContentHit?> HitTestAsync(TargetInfo target, ScreenPoint point, CancellationToken cancellationToken) =>
+            Task.FromResult(++Calls == 1 || Next is null ? Result : Next);
     }
 
     private sealed class FakePinch : IPinchInjector

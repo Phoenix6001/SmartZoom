@@ -19,6 +19,9 @@ public enum AdapterKind
 
     /// <summary>Microsoft PowerPoint object model.</summary>
     PowerPointCom,
+
+    /// <summary>The application's own keyboard shortcuts, e.g. fit width and fit page in a PDF reader.</summary>
+    Keys,
 }
 
 /// <summary>Maps a process image name to the zoom strategy that should handle it.</summary>
@@ -34,6 +37,7 @@ public sealed class ZoomRouter
 
         Add(settings.BrowserProcesses, AdapterKind.Browser);
         Add(settings.CtrlWheelProcesses, AdapterKind.CtrlWheel);
+        Add(settings.KeyProcesses, AdapterKind.Keys);
         Add(settings.WordProcesses, AdapterKind.WordCom);
         Add(settings.PowerPointProcesses, AdapterKind.PowerPointCom);
 

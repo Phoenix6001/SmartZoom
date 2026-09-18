@@ -93,6 +93,6 @@ public sealed class TriggerSettingsTests
         Assert.Contains("\"Mouse\"", json, StringComparison.Ordinal);
         Assert.DoesNotContain("\"Trigger\":", json, StringComparison.Ordinal);
         Assert.DoesNotContain("\"Button\"", json, StringComparison.Ordinal);
-        Assert.DoesNotContain("\"Keys\"", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"Keys\"", JsonSerializer.Serialize(settings.Triggers, Json), StringComparison.Ordinal); // a mouse trigger has no hotkey field
     }
 }

@@ -13,10 +13,14 @@ using IAccessible = Accessibility.IAccessible;
 namespace SmartZoom.Interop.Accessibility;
 
 /// <summary>
-/// Hit-tests web content in Chromium-based browsers (Chrome, Edge, Brave, Opera, Vivaldi, ...) through
-/// Microsoft Active Accessibility, the API those browsers expose by default.
+/// Hit-tests web content in Chromium-based browsers (Chrome, Edge, Brave, Opera, Vivaldi, ...) and in
+/// Firefox through Microsoft Active Accessibility, the API those browsers expose by default.
 /// </summary>
 /// <remarks>
+/// <para>
+/// Gecko (Firefox) answers <c>accHitTest</c> from its top-level <c>MozillaWindowClass</c> window as soon as a
+/// client connects, and reports paragraphs and sections with IAccessible2 roles (see <see cref="AccessibleRoles"/>).
+/// </para>
 /// <para>
 /// Chromium builds its accessibility tree lazily. The first <c>WM_GETOBJECT</c> only produces a native root
 /// with an empty web-content placeholder; the full DOM tree appears once a client behaves like a screen
@@ -31,9 +35,7 @@ namespace SmartZoom.Interop.Accessibility;
 /// </remarks>
 public sealed partial class MsaaContentHitTester(ILogger<MsaaContentHitTester> logger) : IContentHitTester
 {
-    private const string ChromiumRenderWindowClass = "Chrome_RenderWidgetHostHWND";
     private const uint ObjIdClient = 0xFFFFFFFC;
-    private const int RoleDocument = 15;
     private const int NavDirFirstChild = 0x7;
     private const int MaxHitTestAttempts = 12;
     private const int HitTestRetryDelayMs = 50;
@@ -59,15 +61,20 @@ public sealed partial class MsaaContentHitTester(ILogger<MsaaContentHitTester> l
 
     private ContentHit? HitTest(TargetInfo target, ScreenPoint point, CancellationToken cancellationToken)
     {
-        var render = FindRenderWindow(target);
+        var gecko = BrowserWindows.IsGecko(target.RootClassName);
+        var render = FindRenderWindow(target, gecko);
         if (render.IsNull)
             return null;
 
         try
         {
-            var root = GetRoot(render, point);
+            // Gecko's tree is complete from the first call; the screen-reader handshake is Chromium's need.
+            var root = GetRoot(render, point, wake: !gecko);
             if (root is null)
                 return null;
+
+            // Where to ask the tree about; differs from the cursor only while the tree reports a stale page zoom.
+            var query = point;
 
             for (var attempt = 1; ; attempt++)
             {
@@ -75,8 +82,25 @@ public sealed partial class MsaaContentHitTester(ILogger<MsaaContentHitTester> l
 
                 // accHitTest sometimes stops at the document even when the tree is awake (points between
                 // elements, some layouts); walking the children by rectangle finds the enclosing block then.
-                var chain = BuildChain(DeepenByBounds(Descend(root, point), point));
+                var chain = BuildChain(DeepenByBounds(Descend(root, query), query));
                 var document = chain.FirstOrDefault(n => n.Role == ContentRole.Document);
+
+                // A Chromium tree left at the scale of an earlier pinch answers in its own, zoomed coordinates
+                // (see StalePageZoom): ask again where it believes the cursor is, then translate its answer back.
+                var stale = document is null || gecko ? null : StalePageZoom.Detect(document.Bounds, WindowRect(render, document.Bounds));
+                var expectedQuery = stale?.ToReported(point) ?? point;
+                if (expectedQuery != query && attempt < MaxHitTestAttempts)
+                {
+                    query = expectedQuery;
+                    continue;
+                }
+
+                if (stale is { } zoom)
+                {
+                    LogStaleZoom(target.ProcessName, zoom.Scale);
+                    chain = [.. chain.Select(n => n with { Bounds = zoom.ToActual(n.Bounds) })];
+                    document = chain.First(n => n.Role == ContentRole.Document);
+                }
 
                 // Anything narrower than the document means we're inside real content. Right after the
                 // wake-up the path may instead end above the document or stop at a page-wide placeholder,
@@ -112,7 +136,9 @@ public sealed partial class MsaaContentHitTester(ILogger<MsaaContentHitTester> l
                 }
 
                 // A single handshake right after the window appeared can be too early; nudging again is cheap.
-                Wake(root, point);
+                if (!gecko)
+                    Wake(root, point);
+
                 Thread.Sleep(HitTestRetryDelayMs);
             }
         }
@@ -130,10 +156,7 @@ public sealed partial class MsaaContentHitTester(ILogger<MsaaContentHitTester> l
     // so the viewport is their intersection, or the window rectangle alone when the two don't overlap.
     private static PixelRect Viewport(PixelRect document, HWND render)
     {
-        if (!PInvoke.GetWindowRect(render, out var rect))
-            return document;
-
-        var window = new PixelRect(rect.left, rect.top, rect.right, rect.bottom);
+        var window = WindowRect(render, document);
         var intersection = new PixelRect(
             Math.Max(document.Left, window.Left),
             Math.Max(document.Top, window.Top),
@@ -143,15 +166,23 @@ public sealed partial class MsaaContentHitTester(ILogger<MsaaContentHitTester> l
         return intersection.IsEmpty ? window : intersection;
     }
 
-    private static HWND FindRenderWindow(TargetInfo target)
+    private static PixelRect WindowRect(HWND window, PixelRect fallback) =>
+        PInvoke.GetWindowRect(window, out var rect) ? new PixelRect(rect.left, rect.top, rect.right, rect.bottom) : fallback;
+
+    // The window whose accessible root exposes the page: Chromium's render widget, or Gecko's top-level window
+    // (its content is drawn by a disabled child window that has no accessible tree of its own).
+    private static HWND FindRenderWindow(TargetInfo target, bool gecko)
     {
-        if (target.HitClassName == ChromiumRenderWindowClass)
+        if (gecko)
+            return new HWND(target.RootWindow);
+
+        if (target.HitClassName == BrowserWindows.ChromiumRenderWindowClass)
             return new HWND(target.HitWindow);
 
         var found = HWND.Null;
         PInvoke.EnumChildWindows(new HWND(target.RootWindow), (child, _) =>
         {
-            if (WindowInspector.GetClassName(child) == ChromiumRenderWindowClass)
+            if (WindowInspector.GetClassName(child) == BrowserWindows.ChromiumRenderWindowClass)
             {
                 found = child;
                 return false;
@@ -163,7 +194,7 @@ public sealed partial class MsaaContentHitTester(ILogger<MsaaContentHitTester> l
         return found;
     }
 
-    private IAccessible? GetRoot(HWND render, ScreenPoint point)
+    private IAccessible? GetRoot(HWND render, ScreenPoint point, bool wake)
     {
         if (_roots.TryGetValue(render, out var cached))
             return cached;
@@ -175,7 +206,9 @@ public sealed partial class MsaaContentHitTester(ILogger<MsaaContentHitTester> l
             return null;
         }
 
-        Wake(root, point);
+        if (wake)
+            Wake(root, point);
+
         _roots[render] = root;
         return root;
     }
@@ -340,8 +373,8 @@ public sealed partial class MsaaContentHitTester(ILogger<MsaaContentHitTester> l
         for (var depth = 0; depth < MaxChainDepth && current is not null; depth++)
         {
             var role = GetRole(current, child);
-            chain.Add(new ContentNode(MapRole(role), GetBounds(current, child)));
-            if (role == RoleDocument)
+            chain.Add(new ContentNode(AccessibleRoles.Map(role), GetBounds(current, child)));
+            if (role == AccessibleRoles.Document)
                 break;
 
             child = 0;
@@ -376,20 +409,6 @@ public sealed partial class MsaaContentHitTester(ILogger<MsaaContentHitTester> l
         return PixelRect.FromSize(left, top, width, height);
     }
 
-    // MSAA ROLE_SYSTEM_* values. Chromium reports paragraphs and sections as GROUPING.
-    private static ContentRole MapRole(int role) => role switch
-    {
-        RoleDocument => ContentRole.Document,
-        20 => ContentRole.Group,      // ROLE_SYSTEM_GROUPING
-        41 or 42 => ContentRole.Text, // ROLE_SYSTEM_STATICTEXT, ROLE_SYSTEM_TEXT
-        30 => ContentRole.Link,       // ROLE_SYSTEM_LINK
-        40 => ContentRole.Image,      // ROLE_SYSTEM_GRAPHIC
-        24 => ContentRole.Table,      // ROLE_SYSTEM_TABLE
-        33 => ContentRole.List,       // ROLE_SYSTEM_LIST
-        34 => ContentRole.ListItem,   // ROLE_SYSTEM_LISTITEM
-        _ => ContentRole.Other,
-    };
-
     [DllImport("oleacc.dll", ExactSpelling = true)]
     private static extern int AccessibleObjectFromWindow(HWND hwnd, uint dwId, in Guid riid, [MarshalAs(UnmanagedType.Interface)] out IAccessible? ppvObject);
 
@@ -401,6 +420,9 @@ public sealed partial class MsaaContentHitTester(ILogger<MsaaContentHitTester> l
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Accessibility bounds in {Process} are stale (element at ({Left}, {Top}) does not contain the cursor at ({X}, {Y})); skipping this press rather than zooming the wrong place.")]
     private partial void LogStaleBounds(string? process, int left, int top, int x, int y);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "The accessibility tree of {Process} still reports the page pinch-zoomed x{Scale:F3}; translating its coordinates.")]
+    private partial void LogStaleZoom(string? process, double scale);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Accessibility call failed in {Process}; dropping the cached root.")]
     private partial void LogComFailure(Exception exception, string? process);

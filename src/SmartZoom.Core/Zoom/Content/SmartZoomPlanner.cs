@@ -51,8 +51,10 @@ public sealed record SmartZoomPlanner(double MinScale = 1.1, double MaxScale = 3
         var regionHeight = viewport.Height / scale;
         var margin = Margin / scale;
 
-        // Horizontal: block's left edge on the left margin.
-        var regionLeft = block.Left - viewport.Left - margin;
+        // Horizontal: centre the block. For a block that fills the width this is its left edge on the left
+        // margin; a narrow one (a picture at the scale cap) stays where it is and grows in place, instead of
+        // sliding to the margin, which reads as scrolling rather than zooming.
+        var regionLeft = block.CenterX - viewport.Left - (regionWidth / 2);
 
         // Vertical: centre the block if it fits; otherwise keep the pointed-at line where it is.
         var blockCenterY = block.CenterY - viewport.Top;

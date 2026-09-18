@@ -68,6 +68,40 @@ public sealed class BlockSelectorTests
     }
 
     [Fact]
+    public void Narrow_but_tall_column_such_as_a_table_of_contents_is_a_block()
+    {
+        // Wikipedia's table of contents in a window narrowed to 1328 px: 188 px wide, 519 px tall.
+        var viewport = PixelRect.FromSize(1555, 85, 1328, 1527);
+        var toc = new ContentNode(ContentRole.Group, PixelRect.FromSize(1583, 106, 188, 519));
+        var sidebar = new ContentNode(ContentRole.Group, PixelRect.FromSize(1583, 106, 188, 562));
+        var column = new ContentNode(ContentRole.Group, PixelRect.FromSize(1555, -7569, 1313, 27017));
+        var hit = new ContentHit([toc, toc, sidebar, column, new ContentNode(ContentRole.Document, viewport)], viewport);
+
+        Assert.Same(toc, _selector.Select(hit));
+    }
+
+    [Fact]
+    public void Narrow_and_short_candidates_are_still_skipped()
+    {
+        var icon = new ContentNode(ContentRole.Group, PixelRect.FromSize(1583, 106, 120, 120));
+        var hit = new ContentHit([icon, Document], Viewport);
+
+        Assert.Null(_selector.Select(hit));
+    }
+
+    [Fact]
+    public void Containers_many_screens_tall_are_never_chosen_even_when_narrow_enough()
+    {
+        // A narrow window: the paragraph is wider than 90% of the viewport, so it no longer qualifies; the
+        // article column above it would, by width, but it is 29 000 px tall. Nothing is zoomed.
+        var narrow = PixelRect.FromSize(455, 420, 1200, 1527);
+        var paragraph = new ContentNode(ContentRole.Group, PixelRect.FromSize(470, 1133, 1150, 105));
+        var hit = new ContentHit([paragraph, Article, Main, Body, Document], narrow);
+
+        Assert.Null(_selector.Select(hit));
+    }
+
+    [Fact]
     public void Controls_are_not_blocks()
     {
         var button = new ContentNode(ContentRole.Other, PixelRect.FromSize(900, 900, 400, 60));
