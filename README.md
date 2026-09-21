@@ -13,13 +13,12 @@ and routes it to a per-application zoom strategy:
 | Firefox | Native smart zoom, the same way: the block under the cursor comes from Firefox's accessibility tree and is pinch-zoomed through a synthetic touch device that Firefox accepts as a touch screen | Element-aware, visual zoom (no reflow), exact restore |
 | Word | Smart zoom through Word's object model: the paragraph, table or picture under the cursor is zoomed to fill the document pane; the previous zoom and scroll position are restored exactly | Element-aware, exact restore |
 | Excel | Smart zoom through Excel's object model: the block of data under the cursor — the surrounding island of filled cells, or the cells a chart or picture covers — is zoomed to fill the worksheet pane, and the view is scrolled to the row you pointed at | Element-aware, exact restore |
-| PowerPoint | Office object model (COM), planned | — |
 | Acrobat, Acrobat Reader, SumatraPDF | An animated pinch around the cursor, the same gesture the browsers get: what you pointed at stays where it is and grows. The second press animates the magnification away and lands on the reader's own "fit page" | Animated, follows the cursor, never drifts |
 | Image viewers | Synthesized Ctrl+wheel centered on the cursor | Approximate |
 | Everything else | Ignored | — |
 
 > **Status:** early development. Smart zoom works in Chromium browsers, Firefox, Word, Excel and PDF readers;
-> Ctrl+wheel zoom with toggle-back works for the configured image apps; PowerPoint is next.
+> Ctrl+wheel zoom with toggle-back works for the configured image apps. PowerPoint is not supported yet.
 > See [Roadmap](#roadmap).
 
 ## Requirements
@@ -36,7 +35,7 @@ dotnet test
 dotnet run --project src/SmartZoom.App
 ```
 
-SmartZoom runs in the notification area. Right-click the icon for **Enabled**, **Open settings file**,
+SmartZoom runs in the notification area. Right-click the icon for **Enabled**, **Open settings file (restart to apply)**,
 **Open log folder**, and **Exit**.
 
 Publish a single-file executable:
@@ -64,13 +63,12 @@ SmartZoom after editing.
     { "Keys": "Ctrl", "TapCount": 2 }   // double-tap a bare modifier
   ],
   "Routing": {
-    "BrowserProcesses": ["chrome", "msedge", "brave", "opera", "vivaldi", "firefox"],
-    "CtrlWheelProcesses": ["i_view64", "i_view32"],
-    "KeyProcesses": ["Acrobat", "AcroRd32", "SumatraPDF"],
-    "WordProcesses": ["WINWORD"],
-    "ExcelProcesses": ["EXCEL"],
-    "PowerPointProcesses": ["POWERPNT"],
-    "Overrides": { "EXCEL": "None" } // per-process override; wins over the lists
+    // Which application gets which strategy. Only the ones you want to change:
+    // every adapter already claims the applications it was written for.
+    "Apps": {
+      "notepad": "CtrlWheel",    // an app SmartZoom doesn't know about
+      "EXCEL": "None"            // ... and one you'd rather it left alone
+    }
   },
   "Zoom": {
     "MinScale": 1.1,
@@ -78,29 +76,36 @@ SmartZoom after editing.
     "Animate": true,
     "FallbackToCtrlWheel": true,   // use Ctrl+wheel when a richer adapter can't act
     "CtrlWheel": { "Ticks": 6, "IntervalMs": 20 },
-    "Reader": {                            // the KeyProcesses: PDF readers
-      "Gesture": true,                     // animated pinch around the cursor
-      "Scale": 2.0,                        // how much it magnifies
+    "Smart": {                     // shared by browsers, Word and Excel
+      "MarginPx": 16,              // space between the zoomed block and the window edge
+      "AnimationMs": 280           // zoom animation length when Animate is on
+    },
+    "Reader": {                            // PDF readers
+      "Mode": "Pinch",                     // or "Shortcuts" for a reader that ignores touch
+      "Magnification": 2.0,                // fixed factor; MinScale/MaxScale do not clamp it
       "AnimationMs": 300,
-      "ZoomInKeys": "Ctrl+2",              // with "Gesture": false, fit width instead
+      "ZoomInKeys": "Ctrl+2",              // "Shortcuts" mode: fit width
       "ZoomOutKeys": "Ctrl+0",             // the zoom the second press lands on
       "FollowCursor": true,                // ... scrolling what you pointed at to the top first
-      "MarginPx": 16
+      "TopGapPx": 16                       // gap left above it
     },
     "Browser": {
-      "MarginPx": 16,              // space between the zoomed block and the window edge
-      "AnimationMs": 280,          // zoom gesture length when Animate is on
       "AnchorInsetPx": 0           // extra keep-out from window edges; normally not needed
     }
+  },
+  "Logging": {
+    "Level": "Debug"               // Debug, Information, Warning, Error: how much reaches the log file
   }
 }
 ```
 
-Note that lists such as `BrowserProcesses` are stored in the file as they were when it was created;
-new defaults added by later versions are not merged in. Add entries yourself if you upgrade.
+The defaults live in the code, not in your file, so upgrading SmartZoom brings support for new
+applications with it. `Routing.Apps` is only for overriding them.
 
-To try SmartZoom on an app that isn't listed but zooms with Ctrl+wheel (Windows 11 Notepad, for
-example), add it to `Overrides`: `"Overrides": { "notepad": "CtrlWheel" }`.
+The strategies you can name are `Browser`, `Reader`, `WordCom`, `ExcelCom`, `CtrlWheel`, and `None` to
+switch SmartZoom off for an application. To try SmartZoom on an app that isn't listed but zooms with
+Ctrl+wheel (Windows 11 Notepad, for example), give it `"CtrlWheel"`. Naming a strategy that doesn't
+exist is reported in the log and falls back to Ctrl+wheel rather than doing nothing.
 
 Each entry in `Triggers` is either a **mouse button** (`"Mouse"`) or a **key combination** (`"Keys"`).
 All of them are active at once, so a desktop mouse button and a laptop hotkey can live in one file.
@@ -134,38 +139,22 @@ Logs are written to `%LOCALAPPDATA%\SmartZoom\logs` (rolling daily, 14 days kept
 
 ## Architecture
 
-```
-src/
-  SmartZoom.Core/      Platform-independent logic: trigger state machine, routing, settings model.
-                       No Win32; fully unit-tested.
-  SmartZoom.Interop/   Win32 via CsWin32, behind interfaces declared in Core.
-  SmartZoom.App/       WinForms tray app and composition root (Generic Host + Serilog).
-tests/
-  SmartZoom.Core.Tests/
-```
+Three projects. `SmartZoom.Core` holds every decision and never touches Win32, which is what makes it
+testable. `SmartZoom.Interop` holds all the P/Invoke, COM and screen access, behind interfaces declared in
+Core. `SmartZoom.App` is the tray icon, the generic host and the composition root.
 
-Design notes:
+A press travels from a low-level hook, through tap detection, to a dispatcher that resolves the window under
+the cursor, a router that picks a strategy for that application, and an adapter that performs the zoom and
+returns whatever it needs to undo it.
 
-- **Low-level mouse hook, not Raw Input.** Only a hook can swallow events. The hook owns a dedicated
-  thread that just pumps messages. Its callback runs an allocation-free state machine under a short lock
-  and hands work to channels, because Windows silently removes hooks that exceed `LowLevelHooksTimeout`.
-- **Per-Monitor V2 DPI awareness.** Hook coordinates are physical pixels and are kept physical end to
-  end, so `WindowFromPoint` is correct on mixed-DPI multi-monitor setups.
-- **Replayed input is tagged** in `dwExtraInfo` so the hook ignores its own injections. Input
-  injected by other software, such as button remappers, is still processed.
-- **Browser smart zoom needs no extension.** Chromium browsers expose the page through Microsoft
-  Active Accessibility; SmartZoom performs the same handshake a screen reader does to make the
-  browser build its accessibility tree, hit-tests the element under the cursor, picks the enclosing
-  paragraph/image/table, and then injects a two-finger touch pinch (`InjectTouchInput`). Chromium
-  turns a touch pinch into *visual-viewport* zoom: the rendered page is scaled without re-layout,
-  and pinching back past 1.0 clamps to the exact original view, which is what makes the toggle
-  exact. Both synthetic contacts must land inside the browser window and off its scrollbar, so the
-  gesture places them on a horizontal line when there is room and on a vertical line near the edges.
-  Firefox exposes the same accessibility tree (with IAccessible2 roles) from its top-level window, but
-  it deliberately treats every two-finger gesture from the `InjectTouchInput` virtual digitizer as a
-  touchpad scroll (its workaround for touchpads that emulate touch through that API), so for Firefox
-  the same pinch is injected through a `CreateSyntheticPointerDevice` touch device, which Firefox
-  handles as a real touch screen.
+- [docs/architecture.md](docs/architecture.md) follows one press end to end.
+- [docs/adding-an-application.md](docs/adding-an-application.md) is how to support another application, with
+  or without writing code.
+- [docs/decisions.md](docs/decisions.md) explains why it works this way, including the approaches that were
+  tried and abandoned.
+- [docs/measurements.md](docs/measurements.md) records what every gesture constant was measured against.
+- [docs/testing.md](docs/testing.md) is the manual acceptance run, because automated tests cannot tell you
+  whether a zoom looked right.
 
 ## Troubleshooting
 
@@ -212,7 +201,7 @@ depending on which window is focused.
   instead of reversing a change is what makes the second press exact however many times it is
   pressed. The view comes back within about a line of text, and the first gesture also switches
   Acrobat into its touch mode, which widens its toolbars once and shifts the page slightly.
-- A reader that ignores touch should have `Zoom.Reader.Gesture` set to false. SmartZoom then uses the
+- A reader that ignores touch should have `Zoom.Reader.Mode` set to `"Shortcuts"`. SmartZoom then uses the
   reader's own fit-width and fit-page shortcuts, which are exact but jump rather than animate, and
   scrolls the block under the cursor to the top first. That scroll is measured from the screen,
   because readers expose no scroll position; on a page it cannot read — a blank area, or one whose
@@ -226,8 +215,19 @@ depending on which window is focused.
 2½. ✅ **M2.5** Keyboard hotkeys and multiple simultaneous triggers
 3. ✅ **M3** Native smart zoom in Chromium browsers (accessibility hit-test + touch pinch)
 4. 🔧 **M4** Firefox ✅, per-user installer
-5. 🔧 **M5** Office and PDF readers: Word ✅, Acrobat ✅, Excel ✅, PowerPoint
+5. 🔧 **M5** Office and PDF readers: Word ✅, Acrobat ✅, Excel ✅, PowerPoint (unclaimed — see
+   [docs/adding-an-application.md](docs/adding-an-application.md))
 6. **M6** Settings UI, live reload, multi-monitor and mixed-DPI polish
+
+## Contributing
+
+Bug reports, measurements on hardware that is not the author's, and support for one more application are all
+welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers getting it building and what a pull request needs;
+[docs/adding-an-application.md](docs/adding-an-application.md) covers adding an application, which often needs
+no code at all.
+
+Everyone taking part is expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md). Security issues go
+through [SECURITY.md](SECURITY.md) rather than a public issue.
 
 ## License
 

@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
+
+
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
 using SmartZoom.Core.Settings;
@@ -14,27 +16,33 @@ public sealed class ZoomCoordinatorTests
     private static readonly TargetInfo Word = new(0x300, 0x301, 3, "WINWORD", "R", "H");
     private static readonly TargetInfo Unknown = new(0x400, 0x401, 4, "notepad", "R", "H");
 
-    private readonly ScriptedAdapter _ctrlWheel = new(AdapterKind.CtrlWheel);
-    private readonly ScriptedAdapter _browser = new(AdapterKind.Browser);
+    private readonly ScriptedAdapter _ctrlWheel = new(CtrlWheelAdapter.Descriptor);
+    private readonly ScriptedAdapter _browser = new(BrowserAdapter.Descriptor);
     private readonly WindowZoomStateStore _store = new();
     private readonly FakeWindowInspector _windows = new();
 
-    private ZoomCoordinator Create(bool fallback = true) => new(
-        new ZoomRouter(new RoutingSettings()),
-        [_ctrlWheel, _browser],
-        _store,
-        _windows,
-        fallback,
-        NullLogger<ZoomCoordinator>.Instance);
+    private ZoomCoordinator Create(bool fallback = true, IDictionary<string, AdapterId>? apps = null)
+    {
+        var adapters = new[] { _ctrlWheel, _browser };
+        var routing = new RoutingSettings { Apps = apps ?? new Dictionary<string, AdapterId>(StringComparer.OrdinalIgnoreCase) };
+
+        return new ZoomCoordinator(
+            new ZoomRouter(adapters.Select(a => a.Descriptor), routing, NullLogger<ZoomRouter>.Instance),
+            adapters,
+            _store,
+            _windows,
+            fallback,
+            NullLogger<ZoomCoordinator>.Instance);
+    }
 
     [Fact]
     public async Task First_trigger_zooms_in_second_zooms_out_with_the_saved_state()
     {
         var coordinator = Create();
 
-        Assert.Equal(ZoomAction.ZoomedIn, await coordinator.HandleTriggerAsync(Pdf, Point, CancellationToken.None));
-        Assert.Equal(ZoomAction.ZoomedOut, await coordinator.HandleTriggerAsync(Pdf, Point, CancellationToken.None));
-        Assert.Equal(ZoomAction.ZoomedIn, await coordinator.HandleTriggerAsync(Pdf, Point, CancellationToken.None));
+        Assert.Equal(ZoomAction.ZoomedIn, (await coordinator.HandleTriggerAsync(Pdf, Point, CancellationToken.None)).Action);
+        Assert.Equal(ZoomAction.ZoomedOut, (await coordinator.HandleTriggerAsync(Pdf, Point, CancellationToken.None)).Action);
+        Assert.Equal(ZoomAction.ZoomedIn, (await coordinator.HandleTriggerAsync(Pdf, Point, CancellationToken.None)).Action);
 
         Assert.Equal(["in", "out:state-1", "in"], _ctrlWheel.Calls);
         Assert.Equal(1, _store.Count);
@@ -47,32 +55,47 @@ public sealed class ZoomCoordinatorTests
         var otherPdf = Pdf with { RootWindow = 0x110, HitWindow = 0x111 };
 
         await coordinator.HandleTriggerAsync(Pdf, Point, CancellationToken.None);
-        Assert.Equal(ZoomAction.ZoomedIn, await coordinator.HandleTriggerAsync(otherPdf, Point, CancellationToken.None));
-        Assert.Equal(ZoomAction.ZoomedOut, await coordinator.HandleTriggerAsync(Pdf, Point, CancellationToken.None));
-        Assert.Equal(ZoomAction.ZoomedOut, await coordinator.HandleTriggerAsync(otherPdf, Point, CancellationToken.None));
+        Assert.Equal(ZoomAction.ZoomedIn, (await coordinator.HandleTriggerAsync(otherPdf, Point, CancellationToken.None)).Action);
+        Assert.Equal(ZoomAction.ZoomedOut, (await coordinator.HandleTriggerAsync(Pdf, Point, CancellationToken.None)).Action);
+        Assert.Equal(ZoomAction.ZoomedOut, (await coordinator.HandleTriggerAsync(otherPdf, Point, CancellationToken.None)).Action);
     }
 
     [Fact]
     public async Task Unknown_process_is_ignored()
     {
-        Assert.Equal(ZoomAction.Ignored, await Create().HandleTriggerAsync(Unknown, Point, CancellationToken.None));
+        Assert.Equal(ZoomAction.Ignored, (await Create().HandleTriggerAsync(Unknown, Point, CancellationToken.None)).Action);
         Assert.Empty(_ctrlWheel.Calls);
     }
 
     [Fact]
-    public async Task Process_with_no_registered_adapter_is_ignored()
+    public async Task Process_routed_to_an_adapter_this_build_does_not_have_falls_back_instead_of_doing_nothing()
     {
-        Assert.Equal(ZoomAction.Ignored, await Create().HandleTriggerAsync(Word, Point, CancellationToken.None));
+        // The PowerPoint bug class: settings named a strategy nobody implements, and a press there did
+        // nothing at all - no zoom, no fallback, no warning.
+        var apps = new Dictionary<string, AdapterId>(StringComparer.OrdinalIgnoreCase) { ["WINWORD"] = new("WordCom") };
+
+        Assert.Equal(ZoomAction.ZoomedIn, (await Create(apps: apps).HandleTriggerAsync(Word, Point, CancellationToken.None)).Action);
+        Assert.Equal(["in"], _ctrlWheel.Calls);
+    }
+
+    [Fact]
+    public async Task An_application_switched_off_with_None_is_ignored()
+    {
+        var apps = new Dictionary<string, AdapterId>(StringComparer.OrdinalIgnoreCase) { ["chrome"] = AdapterId.None };
+
+        Assert.Equal(ZoomAction.Ignored, (await Create(apps: apps).HandleTriggerAsync(Browser, Point, CancellationToken.None)).Action);
+        Assert.Empty(_browser.Calls);
+        Assert.Empty(_ctrlWheel.Calls);
     }
 
     [Fact]
     public async Task Self_managed_adapter_is_invoked_again_to_toggle_back()
     {
-        _browser.Result = ZoomInResult.SelfManaged;
+        _browser.Result = ZoomInResult.Handled;
         var coordinator = Create();
 
-        Assert.Equal(ZoomAction.ZoomedIn, await coordinator.HandleTriggerAsync(Browser, Point, CancellationToken.None));
-        Assert.Equal(ZoomAction.ZoomedIn, await coordinator.HandleTriggerAsync(Browser, Point, CancellationToken.None));
+        Assert.Equal(ZoomAction.ZoomedIn, (await coordinator.HandleTriggerAsync(Browser, Point, CancellationToken.None)).Action);
+        Assert.Equal(ZoomAction.ZoomedIn, (await coordinator.HandleTriggerAsync(Browser, Point, CancellationToken.None)).Action);
 
         Assert.Equal(["in", "in"], _browser.Calls);
         Assert.Equal(0, _store.Count);
@@ -84,8 +107,8 @@ public sealed class ZoomCoordinatorTests
         _browser.Result = ZoomInResult.Unhandled;
         var coordinator = Create();
 
-        Assert.Equal(ZoomAction.ZoomedIn, await coordinator.HandleTriggerAsync(Browser, Point, CancellationToken.None));
-        Assert.Equal(ZoomAction.ZoomedOut, await coordinator.HandleTriggerAsync(Browser, Point, CancellationToken.None));
+        Assert.Equal(ZoomAction.ZoomedIn, (await coordinator.HandleTriggerAsync(Browser, Point, CancellationToken.None)).Action);
+        Assert.Equal(ZoomAction.ZoomedOut, (await coordinator.HandleTriggerAsync(Browser, Point, CancellationToken.None)).Action);
 
         Assert.Equal(["in"], _browser.Calls);
         Assert.Equal(["in", "out:state-1"], _ctrlWheel.Calls);
@@ -96,7 +119,7 @@ public sealed class ZoomCoordinatorTests
     {
         _browser.Result = ZoomInResult.Unhandled;
 
-        Assert.Equal(ZoomAction.Unhandled, await Create(fallback: false).HandleTriggerAsync(Browser, Point, CancellationToken.None));
+        Assert.Equal(ZoomAction.Unhandled, (await Create(fallback: false).HandleTriggerAsync(Browser, Point, CancellationToken.None)).Action);
         Assert.Empty(_ctrlWheel.Calls);
     }
 
@@ -108,7 +131,7 @@ public sealed class ZoomCoordinatorTests
 
         _windows.Dead.Add(Pdf.RootWindow);
 
-        Assert.Equal(ZoomAction.ZoomedIn, await coordinator.HandleTriggerAsync(Pdf, Point, CancellationToken.None));
+        Assert.Equal(ZoomAction.ZoomedIn, (await coordinator.HandleTriggerAsync(Pdf, Point, CancellationToken.None)).Action);
         Assert.Equal(["in", "in"], _ctrlWheel.Calls);
     }
 
@@ -117,15 +140,15 @@ public sealed class ZoomCoordinatorTests
     {
         _ctrlWheel.Result = ZoomInResult.Unhandled;
 
-        Assert.Equal(ZoomAction.Unhandled, await Create().HandleTriggerAsync(Pdf, Point, CancellationToken.None));
+        Assert.Equal(ZoomAction.Unhandled, (await Create().HandleTriggerAsync(Pdf, Point, CancellationToken.None)).Action);
         Assert.Equal(0, _store.Count);
     }
 
-    private sealed class ScriptedAdapter(AdapterKind kind) : IZoomAdapter
+    private sealed class ScriptedAdapter(AdapterDescriptor descriptor) : IZoomAdapter
     {
         private int _zoomIns;
 
-        public AdapterKind Kind => kind;
+        public AdapterDescriptor Descriptor => descriptor;
 
         /// <summary>Null means "Applied with a fresh state object each time".</summary>
         public ZoomInResult? Result { get; set; }

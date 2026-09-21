@@ -14,27 +14,31 @@ namespace SmartZoom.Core.Zoom;
 /// if the app clamps at its maximum zoom, some of the "in" ticks did nothing and the "out" burst
 /// overshoots. Applications with an exact zoom API get a dedicated adapter instead.
 /// </remarks>
-public sealed class CtrlWheelAdapter(IInputInjector injector, CtrlWheelSettings settings, TimeProvider timeProvider) : IZoomAdapter
+public sealed class CtrlWheelAdapter(IInputInjector injector, CtrlWheelSettings settings, TimeProvider timeProvider)
+    : ZoomAdapter<CtrlWheelAdapter.RestoreState>(Descriptor)
 {
-    /// <inheritdoc />
-    public AdapterKind Kind => AdapterKind.CtrlWheel;
+    /// <summary>How this adapter is named in settings, and what it handles out of the box.</summary>
+    /// <remarks>
+    /// It claims almost nothing by default because it is the fallback every other adapter falls back
+    /// *to*: applications land here by being routed here, not by being listed.
+    /// </remarks>
+    public static AdapterDescriptor Descriptor { get; } = new(
+        "CtrlWheel",
+        ["i_view64", "i_view32"],
+        "Ctrl+wheel",
+        "Synthesized Ctrl+wheel ticks. Works in anything that zooms with the wheel, but only as precisely as that application does.");
 
     /// <inheritdoc />
-    public async Task<ZoomInResult> ZoomInAsync(TargetInfo target, ScreenPoint point, CancellationToken cancellationToken)
+    protected override async Task<ZoomInResult> ZoomInAsync(TargetInfo target, ScreenPoint point, CancellationToken cancellationToken)
     {
         var ticks = await SendBurstAsync(settings.Ticks, cancellationToken).ConfigureAwait(false);
         return ticks == 0 ? ZoomInResult.Unhandled : ZoomInResult.Applied(new RestoreState(ticks));
     }
 
     /// <inheritdoc />
-    public async Task ZoomOutAsync(TargetInfo target, object restoreState, CancellationToken cancellationToken)
+    protected override async Task ZoomOutAsync(TargetInfo target, RestoreState restoreState, CancellationToken cancellationToken)
     {
-        if (restoreState is not RestoreState state)
-        {
-            throw new ArgumentException($"Expected {nameof(RestoreState)} from a previous zoom-in.", nameof(restoreState));
-        }
-
-        await SendBurstAsync(-state.Ticks, cancellationToken).ConfigureAwait(false);
+        await SendBurstAsync(-restoreState.Ticks, cancellationToken).ConfigureAwait(false);
     }
 
     /// <returns>The number of ticks that were actually delivered, signed like <paramref name="ticks"/>.</returns>
@@ -82,5 +86,5 @@ public sealed class CtrlWheelAdapter(IInputInjector injector, CtrlWheelSettings 
 
     /// <summary>How far a window was zoomed in, so the same distance can be undone.</summary>
     /// <param name="Ticks">Wheel ticks delivered; positive.</param>
-    internal sealed record RestoreState(int Ticks);
+    public sealed record RestoreState(int Ticks);
 }

@@ -26,7 +26,7 @@ public sealed class WindowZoomStateStore
     }
 
     /// <summary>Records that <paramref name="target"/>'s root window was zoomed by <paramref name="adapter"/>.</summary>
-    public void Save(TargetInfo target, AdapterKind adapter, object restoreState)
+    public void Save(TargetInfo target, AdapterId adapter, object restoreState)
     {
         ArgumentNullException.ThrowIfNull(target);
         ArgumentNullException.ThrowIfNull(restoreState);
@@ -38,7 +38,7 @@ public sealed class WindowZoomStateStore
     }
 
     /// <summary>Removes and returns the saved state for <paramref name="target"/>'s root window, if the same process still owns it.</summary>
-    public bool TryTake(TargetInfo target, out AdapterKind adapter, out object restoreState)
+    public bool TryTake(TargetInfo target, out AdapterId adapter, out object restoreState)
     {
         ArgumentNullException.ThrowIfNull(target);
 
@@ -52,7 +52,7 @@ public sealed class WindowZoomStateStore
             }
         }
 
-        adapter = AdapterKind.None;
+        adapter = AdapterId.None;
         restoreState = null!;
         return false;
     }
@@ -79,5 +79,5 @@ public sealed class WindowZoomStateStore
         }
     }
 
-    private sealed record Entry(uint ProcessId, AdapterKind Adapter, object RestoreState);
+    private sealed record Entry(uint ProcessId, AdapterId Adapter, object RestoreState);
 }

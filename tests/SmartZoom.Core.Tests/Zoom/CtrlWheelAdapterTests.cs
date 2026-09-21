@@ -12,8 +12,8 @@ public sealed class CtrlWheelAdapterTests
 
     private readonly FakeInputInjector _injector = new();
 
-    private CtrlWheelAdapter Create(int ticks = 3) =>
-        new(_injector, new CtrlWheelSettings { Ticks = ticks, IntervalMs = 0 }, TimeProvider.System);
+    private IZoomAdapter Create(int ticks = 3) =>
+        new CtrlWheelAdapter(_injector, new CtrlWheelSettings { Ticks = ticks, IntervalMs = 0 }, TimeProvider.System);
 
     [Fact]
     public async Task Zoom_in_holds_ctrl_around_a_burst_of_upward_ticks()
@@ -84,7 +84,7 @@ public sealed class CtrlWheelAdapterTests
     public async Task Cancellation_between_ticks_still_releases_ctrl()
     {
         using var cts = new CancellationTokenSource();
-        var adapter = new CtrlWheelAdapter(_injector, new CtrlWheelSettings { Ticks = 5, IntervalMs = 10_000 }, TimeProvider.System);
+        IZoomAdapter adapter = new CtrlWheelAdapter(_injector, new CtrlWheelSettings { Ticks = 5, IntervalMs = 10_000 }, TimeProvider.System);
         cts.CancelAfter(50);
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => adapter.ZoomInAsync(Target, Point, cts.Token));

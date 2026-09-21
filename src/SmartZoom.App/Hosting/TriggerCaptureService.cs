@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Hosting;
+
 using SmartZoom.Core.Input;
 
 namespace SmartZoom.App.Hosting;

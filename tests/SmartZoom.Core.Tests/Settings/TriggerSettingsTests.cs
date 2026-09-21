@@ -1,5 +1,6 @@
 ﻿using System.Text.Json;
 using System.Text.Json.Serialization;
+
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Settings;
 
@@ -50,93 +51,41 @@ public sealed class TriggerSettingsTests
         Assert.Throws<FormatException>(() => new TriggerSettings { Keys = "Ctrl+" }.ToDefinition(SystemDoubleClick));
 
     [Fact]
-    public void Legacy_single_trigger_is_migrated_into_the_list()
+    public void The_written_file_carries_no_shapes_that_were_left_behind()
     {
-        const string legacy = """
-            { "Trigger": { "Button": "Middle", "TapCount": 1, "SwallowClicks": true, "DoubleTapWindowMs": 700 } }
-            """;
-
-        var settings = JsonSerializer.Deserialize<SmartZoomSettings>(legacy, Json)!;
-
-        Assert.True(settings.Migrate());
-        Assert.Null(settings.Trigger);
-        var trigger = Assert.Single(settings.Triggers);
-        Assert.Equal(MouseButton.Middle, trigger.Mouse);
-        Assert.Equal(1, trigger.TapCount);
-        Assert.True(trigger.SwallowClicks);
-        Assert.Equal(700u, trigger.DoubleTapWindowMs);
-        Assert.False(settings.Migrate(), "second migration must be a no-op");
-    }
-
-    [Fact]
-    public void Legacy_trigger_does_not_override_an_explicit_list()
-    {
-        const string json = """
-            { "Trigger": { "Button": "Middle" }, "Triggers": [ { "Keys": "F9" } ] }
-            """;
-
-        var settings = JsonSerializer.Deserialize<SmartZoomSettings>(json, Json)!;
-
-        Assert.True(settings.Migrate());
-        var trigger = Assert.Single(settings.Triggers);
-        Assert.Equal("F9", trigger.Keys);
-    }
-
-    [Fact]
-    public void The_old_Keys_section_becomes_the_Reader_section()
-    {
-        const string legacy = """
-            { "Zoom": { "Keys": { "Scale": 2.5, "ZoomOutKeys": "Ctrl+1" } } }
-            """;
-
-        var settings = JsonSerializer.Deserialize<SmartZoomSettings>(legacy, Json)!;
-
-        Assert.True(settings.Migrate());
-        Assert.Null(settings.Zoom.Keys);
-        Assert.Equal(2.5, settings.Zoom.Reader.Scale);
-        Assert.Equal("Ctrl+1", settings.Zoom.Reader.ZoomOutKeys);
-        Assert.DoesNotContain("\"Keys\": {", JsonSerializer.Serialize(settings, Json), StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void A_file_with_both_sections_keeps_the_newer_one()
-    {
-        const string both = """
-            { "Zoom": { "Keys": { "Scale": 2.5 }, "Reader": { "Scale": 1.4, "Gesture": false } } }
-            """;
-
-        var settings = JsonSerializer.Deserialize<SmartZoomSettings>(both, Json)!;
-
-        Assert.True(settings.Migrate());
-        Assert.Null(settings.Zoom.Keys);
-        Assert.Equal(1.4, settings.Zoom.Reader.Scale);
-        Assert.False(settings.Zoom.Reader.Gesture);
-    }
-
-    [Fact]
-    public void A_file_that_already_uses_the_Reader_section_is_left_alone()
-    {
-        const string current = """
-            { "Zoom": { "Reader": { "Scale": 1.5 } } }
-            """;
-
-        var settings = JsonSerializer.Deserialize<SmartZoomSettings>(current, Json)!;
-
-        Assert.False(settings.Migrate());
-        Assert.Equal(1.5, settings.Zoom.Reader.Scale);
-    }
-
-    [Fact]
-    public void Serialized_form_uses_the_new_names_only()
-    {
+        // There is no migration code any more, so the model must not grow properties nobody writes.
         var settings = new SmartZoomSettings();
 
         var json = JsonSerializer.Serialize(settings, Json);
 
         Assert.Contains("\"Triggers\"", json, StringComparison.Ordinal);
         Assert.Contains("\"Mouse\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"Apps\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"Smart\"", json, StringComparison.Ordinal);
         Assert.DoesNotContain("\"Trigger\":", json, StringComparison.Ordinal);
         Assert.DoesNotContain("\"Button\"", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"Overrides\"", json, StringComparison.Ordinal);
         Assert.DoesNotContain("\"Keys\"", JsonSerializer.Serialize(settings.Triggers, Json), StringComparison.Ordinal); // a mouse trigger has no hotkey field
+    }
+
+    [Fact]
+    public void A_file_from_an_older_version_still_loads_and_takes_the_new_defaults()
+    {
+        // The keys it carries for shapes that are gone are simply ignored.
+        const string Old = """
+            {
+              "Triggers": [ { "Mouse": "XButton2", "TapCount": 1 } ],
+              "Routing": { "BrowserProcesses": ["brave"], "Overrides": {} },
+              "Zoom": { "Browser": { "MarginPx": 40, "AnimationMs": 999 }, "Keys": { "Scale": 2.5 } }
+            }
+            """;
+
+        var settings = JsonSerializer.Deserialize<SmartZoomSettings>(Old, Json)!;
+
+        Assert.Single(settings.Triggers);
+        Assert.Equal(MouseButton.XButton2, settings.Triggers[0].Mouse);
+        Assert.Empty(settings.Routing.Apps);
+        Assert.Equal(16, settings.Zoom.Smart.MarginPx);
+        Assert.Equal(2.0, settings.Zoom.Reader.Magnification);
     }
 }

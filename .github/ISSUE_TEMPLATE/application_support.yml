@@ -1,0 +1,62 @@
+name: Support another application
+description: Ask for smart zoom in an application SmartZoom does not handle well
+labels: [application support]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Many applications need no code at all. If yours zooms with Ctrl and the mouse wheel, add one line to
+        `%APPDATA%\SmartZoom\settings.json` and restart:
+
+        ```jsonc
+        "Routing": { "Overrides": { "yourapp": "CtrlWheel" } }
+        ```
+
+        Please try that first and tell us whether it worked — it may be a documentation fix rather than a
+        feature.
+
+  - type: input
+    id: application
+    attributes:
+      label: Application and version
+    validations:
+      required: true
+
+  - type: input
+    id: process
+    attributes:
+      label: Process name
+      description: The name in Task Manager's Details tab, without .exe
+      placeholder: AcroRd32
+    validations:
+      required: true
+
+  - type: dropdown
+    id: ctrl-wheel
+    attributes:
+      label: Does Ctrl and the mouse wheel zoom it?
+      options:
+        - "Yes, and routing it to CtrlWheel works well enough"
+        - "Yes, but the result is poor: it zooms the wrong part, or drifts"
+        - "No, Ctrl and the wheel do nothing"
+        - "I have not tried"
+    validations:
+      required: true
+
+  - type: textarea
+    id: better
+    attributes:
+      label: What would a good zoom do here?
+      description: >
+        What is the thing under the cursor that should fill the window — a paragraph, a cell, a page, a
+        drawing? Does the application have its own fit-width or zoom-to-selection command?
+    validations:
+      required: true
+
+  - type: textarea
+    id: automation
+    attributes:
+      label: Does it expose anything to automate?
+      description: >
+        An object model, an accessibility tree, keyboard shortcuts for zoom levels. Anything you know helps;
+        "no idea" is a fine answer.

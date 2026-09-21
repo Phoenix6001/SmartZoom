@@ -1,8 +1,11 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
+
 using Microsoft.Extensions.Logging;
+
 using SmartZoom.Core.Input;
+
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.UI.WindowsAndMessaging;
@@ -39,21 +42,6 @@ namespace SmartZoom.Interop.Input;
 /// </remarks>
 public sealed partial class LowLevelInputHook : ITriggerSource, IDisposable
 {
-    private const int HcAction = 0;
-    private const uint WmKeyDown = 0x0100;
-    private const uint WmKeyUp = 0x0101;
-    private const uint WmSysKeyDown = 0x0104;
-    private const uint WmSysKeyUp = 0x0105;
-    private const uint WmMButtonDown = 0x0207;
-    private const uint WmMButtonUp = 0x0208;
-    private const uint WmXButtonDown = 0x020B;
-    private const uint WmXButtonUp = 0x020C;
-    private const uint WmQuit = 0x0012;
-    private const ushort XButton1 = 0x0001;
-    private const ushort XButton2 = 0x0002;
-    private const uint LlmhfInjectedMask = 0x3;   // LLMHF_INJECTED | LLMHF_LOWER_IL_INJECTED
-    private const uint LlkhfInjectedMask = 0x12;  // LLKHF_INJECTED | LLKHF_LOWER_IL_INJECTED
-
     private const int StateCreated = 0;
     private const int StateRunning = 1;
     private const int StateStopped = 2;
@@ -194,7 +182,7 @@ public sealed partial class LowLevelInputHook : ITriggerSource, IDisposable
         if (Interlocked.CompareExchange(ref _state, StateStopped, StateRunning) != StateRunning)
             return;
 
-        if (!PInvoke.PostThreadMessage(_hookThreadId, WmQuit, default, default))
+        if (!PInvoke.PostThreadMessage(_hookThreadId, MouseMessages.WmQuit, default, default))
             LogStopFailed(Marshal.GetLastPInvokeError());
 
         _hookThread?.Join(TimeSpan.FromSeconds(2));
@@ -268,16 +256,16 @@ public sealed partial class LowLevelInputHook : ITriggerSource, IDisposable
 
     private unsafe LRESULT MouseCallback(int code, WPARAM wParam, LPARAM lParam)
     {
-        if (code == HcAction)
+        if (code == MouseMessages.HcAction)
         {
             try
             {
                 var info = (MSLLHOOKSTRUCT*)lParam.Value;
-                if (TryMapButton((uint)wParam.Value, info->mouseData, out var button, out var isDown)
+                if (MouseMessages.TryMapButton((uint)wParam.Value, info->mouseData, out var button, out var isDown)
                     && TryFindMouseTrigger(button, out var trigger))
                 {
                     if (_observe)
-                        _observations.Writer.TryWrite(new InputObservation(trigger.Definition.DisplayName, isDown, info->time, (info->flags & LlmhfInjectedMask) != 0, Ours: info->dwExtraInfo == InputInjection.Tag));
+                        _observations.Writer.TryWrite(new InputObservation(trigger.Definition.DisplayName, isDown, info->time, (info->flags & MouseMessages.MouseInjectedMask) != 0, Ours: info->dwExtraInfo == InputInjection.Tag));
 
                     if (info->dwExtraInfo != InputInjection.Tag
                         && Process(trigger, isDown, info->time, new ScreenPoint(info->pt.X, info->pt.Y)))
@@ -297,14 +285,13 @@ public sealed partial class LowLevelInputHook : ITriggerSource, IDisposable
 
     private unsafe LRESULT KeyboardCallback(int code, WPARAM wParam, LPARAM lParam)
     {
-        if (code == HcAction)
+        if (code == MouseMessages.HcAction)
         {
             try
             {
                 var info = (KBDLLHOOKSTRUCT*)lParam.Value;
                 var message = (uint)wParam.Value;
-                var isDown = message is WmKeyDown or WmSysKeyDown;
-                if ((isDown || message is WmKeyUp or WmSysKeyUp) && ProcessKey((ushort)info->vkCode, isDown, info))
+                if (MouseMessages.IsKeyTransition(message, out var isDown) && ProcessKey((ushort)info->vkCode, isDown, info))
                     return new LRESULT(1);
             }
             catch (Exception ex) when (ReportCallbackFault(ex))
@@ -334,7 +321,7 @@ public sealed partial class LowLevelInputHook : ITriggerSource, IDisposable
                     continue;
 
                 if (_observe)
-                    _observations.Writer.TryWrite(new InputObservation(trigger.Definition.DisplayName, isDown, info->time, ((uint)info->flags & LlkhfInjectedMask) != 0, Ours: false));
+                    _observations.Writer.TryWrite(new InputObservation(trigger.Definition.DisplayName, isDown, info->time, ((uint)info->flags & MouseMessages.KeyboardInjectedMask) != 0, Ours: false));
 
                 if (!_enabled)
                     continue;
@@ -476,33 +463,6 @@ public sealed partial class LowLevelInputHook : ITriggerSource, IDisposable
     {
         ThreadPool.UnsafeQueueUserWorkItem(static state => state.Hook.LogCallbackFault(state.Exception), (Hook: this, Exception: exception), preferLocal: false);
         return true;
-    }
-
-    private static bool TryMapButton(uint message, uint mouseData, out MouseButton button, out bool isDown)
-    {
-        switch (message)
-        {
-            case WmMButtonDown or WmMButtonUp:
-                button = MouseButton.Middle;
-                isDown = message == WmMButtonDown;
-                return true;
-
-            case WmXButtonDown or WmXButtonUp:
-                // For X buttons the high word of mouseData identifies which one.
-                button = (ushort)(mouseData >> 16) switch
-                {
-                    XButton1 => MouseButton.XButton1,
-                    XButton2 => MouseButton.XButton2,
-                    _ => MouseButton.None,
-                };
-                isDown = message == WmXButtonDown;
-                return button != MouseButton.None;
-
-            default:
-                button = MouseButton.None;
-                isDown = false;
-                return false;
-        }
     }
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Input hooks installed. Triggers: {Triggers}.")]

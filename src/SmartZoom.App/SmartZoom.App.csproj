@@ -13,7 +13,14 @@
 
     <!-- Tray app has no public API surface. -->
     <NoWarn>$(NoWarn);CS1591</NoWarn>
+
+    <ApplicationIcon>Resources\SmartZoom.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <!-- The same icon for the notification area, so the tray picks the size the display scaling wants. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\SmartZoom.ico" />
+  </ItemGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <PublishSingleFile>true</PublishSingleFile>

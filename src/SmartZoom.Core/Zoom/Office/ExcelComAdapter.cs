@@ -1,5 +1,7 @@
 using System.Runtime.InteropServices;
+
 using Microsoft.Extensions.Logging;
+
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
 using SmartZoom.Core.Settings;
@@ -17,7 +19,7 @@ namespace SmartZoom.Core.Zoom.Office;
 /// Doing the arithmetic here instead would mean converting between Excel's points, logical pixels and
 /// physical pixels, and getting the row headers and scrollbar right on every display scale.
 /// </remarks>
-public sealed partial class ExcelComAdapter : IZoomAdapter
+public sealed partial class ExcelComAdapter : ZoomAdapter<ExcelViewState>
 {
     private const int MinExcelZoom = 10;
     private const int MaxExcelZoom = 400;
@@ -36,6 +38,7 @@ public sealed partial class ExcelComAdapter : IZoomAdapter
     /// <param name="zoom">Zoom limits and margin.</param>
     /// <param name="logger">Logger.</param>
     public ExcelComAdapter(IExcelAutomation excel, ZoomSettings zoom, ILogger<ExcelComAdapter> logger)
+        : base(Descriptor)
     {
         ArgumentNullException.ThrowIfNull(zoom);
 
@@ -43,14 +46,18 @@ public sealed partial class ExcelComAdapter : IZoomAdapter
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _minScale = zoom.MinScale;
         _maxScale = zoom.MaxScale;
-        _margin = zoom.Browser.MarginPx;
+        _margin = zoom.Smart.MarginPx;
     }
 
-    /// <inheritdoc />
-    public AdapterKind Kind => AdapterKind.ExcelCom;
+    /// <summary>How this adapter is named in settings, and what it handles out of the box.</summary>
+    public static AdapterDescriptor Descriptor { get; } = new(
+        "ExcelCom",
+        ["EXCEL"],
+        "Microsoft Excel",
+        "Finds the block of cells or the chart under the cursor and has Excel zoom to fit it, keeping the cell you pointed at on screen.");
 
     /// <inheritdoc />
-    public async Task<ZoomInResult> ZoomInAsync(TargetInfo target, ScreenPoint point, CancellationToken cancellationToken)
+    protected override async Task<ZoomInResult> ZoomInAsync(TargetInfo target, ScreenPoint point, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(target);
 
@@ -63,11 +70,11 @@ public sealed partial class ExcelComAdapter : IZoomAdapter
         {
             before = window.GetState();
 
-            var found = window.TryFitBlockAt(point);
+            var found = window.ApplyFitToBlockAt(point);
             if (found is not { } block)
             {
                 LogNoBlock(target.ProcessName);
-                return ZoomInResult.SelfManaged;
+                return ZoomInResult.Handled;
             }
 
             // Leave the same gap at the sides as the browsers and Word do.
@@ -80,7 +87,7 @@ public sealed partial class ExcelComAdapter : IZoomAdapter
             {
                 window.Restore(before);
                 LogAlreadyFits(target.ProcessName, block.Rows, block.Columns);
-                return ZoomInResult.SelfManaged;
+                return ZoomInResult.Handled;
             }
 
             var targetZoom = Math.Clamp((int)Math.Round(before.ZoomPercent * Math.Min(scale, _maxScale)), MinExcelZoom, MaxExcelZoom);
@@ -99,16 +106,16 @@ public sealed partial class ExcelComAdapter : IZoomAdapter
         {
             LogComFailure(ex, target.ProcessName);
             TryRestore(window, before);
-            return ZoomInResult.SelfManaged;
+            return ZoomInResult.Handled;
         }
     }
 
     /// <inheritdoc />
-    public async Task ZoomOutAsync(TargetInfo target, object restoreState, CancellationToken cancellationToken)
+    protected override async Task ZoomOutAsync(TargetInfo target, ExcelViewState restoreState, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(target);
-        if (restoreState is not ExcelViewState state)
-            throw new ArgumentException($"Expected {nameof(ExcelViewState)} from a previous zoom-in.", nameof(restoreState));
+
+        var state = restoreState;
 
         using var window = await _excel.AttachAsync(target, cancellationToken).ConfigureAwait(false);
         if (window is null)

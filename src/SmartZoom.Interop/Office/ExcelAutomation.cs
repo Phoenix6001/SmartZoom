@@ -1,10 +1,13 @@
 using System.Runtime.InteropServices;
+
 using Microsoft.CSharp.RuntimeBinder;
 using Microsoft.Extensions.Logging;
+
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
 using SmartZoom.Core.Zoom.Office;
 using SmartZoom.Interop.Windows;
+
 using Windows.Win32;
 using Windows.Win32.Foundation;
 
@@ -91,22 +94,22 @@ public sealed partial class ExcelAutomation(ILogger<ExcelAutomation> logger) : I
             return new ExcelViewState((int)w.Zoom, (int)w.ScrollRow, (int)w.ScrollColumn);
         });
 
-        public ExcelBlock? TryFitBlockAt(ScreenPoint point) => sta.Run(() =>
+        public ExcelFit? ApplyFitToBlockAt(ScreenPoint point) => sta.Run(() =>
         {
             dynamic w = window;
             dynamic app = w.Application;
 
             object? hit = w.RangeFromPoint(point.X, point.Y);
             if (hit is null)
-                return (ExcelBlock?)null;
+                return (ExcelFit?)null;
 
             object? found = SurroundingCells(app, hit);
             if (found is null)
-                return (ExcelBlock?)null;
+                return (ExcelFit?)null;
 
             dynamic cells = found;
             if (IsBlank(cells))
-                return (ExcelBlock?)null;
+                return (ExcelFit?)null;
 
             PInvoke.GetWindowRect(grid, out var rect);
             var row = (int)cells.Row;
@@ -132,7 +135,7 @@ public sealed partial class ExcelAutomation(ILogger<ExcelAutomation> logger) : I
                 Reselect(selection);
             }
 
-            return new ExcelBlock(fit, rect.right - rect.left, row, column, rows, columns, cursorRow);
+            return new ExcelFit(fit, rect.right - rect.left, row, column, rows, columns, cursorRow);
         });
 
         public void SetZoom(int percent) => sta.Run(() =>

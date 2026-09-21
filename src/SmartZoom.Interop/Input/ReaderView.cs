@@ -1,10 +1,13 @@
 using System.Drawing;
 using System.Drawing.Imaging;
+
 using Microsoft.Extensions.Logging;
+
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
 using SmartZoom.Core.Zoom;
 using SmartZoom.Core.Zoom.Content;
+
 using Windows.Win32;
 using Windows.Win32.Foundation;
 
@@ -19,15 +22,6 @@ namespace SmartZoom.Interop.Input;
 /// </remarks>
 public sealed partial class ReaderView(ILogger<ReaderView> logger) : IReaderView
 {
-    /// <summary>Pixels one wheel notch moves. Measured in Acrobat at every zoom level; also Windows' own default.</summary>
-    private const int NotchPixels = 48;
-
-    /// <summary>Width of the strip sampled from the middle of the pane.</summary>
-    private const int StripWidth = 96;
-
-    /// <summary>Rows near the pane's edges are skipped: toolbars and page shadows creep in there.</summary>
-    private const int StripInset = 24;
-
     /// <summary>Every fourth column is enough to tell one row of text from another, and is four times as fast.</summary>
     private const int ColumnStep = 4;
 
@@ -44,7 +38,7 @@ public sealed partial class ReaderView(ILogger<ReaderView> logger) : IReaderView
             return null;
 
         var bounds = new PixelRect(rect.left, rect.top, rect.right, rect.bottom);
-        return bounds.Width <= (2 * StripInset) || bounds.Height <= (4 * StripInset) ? null : bounds;
+        return ReaderViewGeometry.IsMeasurable(bounds) ? bounds : null;
     }
 
     /// <inheritdoc />
@@ -52,11 +46,11 @@ public sealed partial class ReaderView(ILogger<ReaderView> logger) : IReaderView
     {
         ArgumentNullException.ThrowIfNull(target);
 
-        var notches = (int)Math.Round(pixels / (double)NotchPixels);
+        var notches = ReaderViewGeometry.Notches(pixels);
         if (notches == 0 || Bounds(target) is not { } bounds)
             return 0;
 
-        var strip = Strip(bounds);
+        var strip = ReaderViewGeometry.Strip(bounds);
         var before = Capture(strip);
 
         if (!Wheel(Centre(bounds), notches))
@@ -68,7 +62,7 @@ public sealed partial class ReaderView(ILogger<ReaderView> logger) : IReaderView
         Thread.Sleep(SettleTime);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var requested = notches * NotchPixels;
+        var requested = ReaderViewGeometry.Pixels(notches);
         var after = before is null ? null : Capture(strip);
         if (before is null || after is null)
         {
@@ -91,28 +85,30 @@ public sealed partial class ReaderView(ILogger<ReaderView> logger) : IReaderView
     }
 
     /// <inheritdoc />
-    public object? Snapshot(TargetInfo target)
+    public ReaderViewMark? Snapshot(TargetInfo target)
     {
         ArgumentNullException.ThrowIfNull(target);
 
         if (Bounds(target) is not { } bounds)
             return null;
 
-        var strip = Strip(bounds);
+        var strip = ReaderViewGeometry.Strip(bounds);
         var profile = Capture(strip);
-        return profile is null ? null : new ViewMark(strip, profile);
+        return profile is null ? null : new ReaderViewMark(strip, profile);
     }
 
     /// <inheritdoc />
-    public bool ScrollBackTo(TargetInfo target, object snapshot, CancellationToken cancellationToken)
+    public bool ScrollBackTo(TargetInfo target, ReaderViewMark snapshot, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(target);
 
-        if (snapshot is not ViewMark mark || Bounds(target) is not { } bounds)
+        ArgumentNullException.ThrowIfNull(snapshot);
+
+        if (Bounds(target) is not { } bounds)
             return false;
 
-        var strip = Strip(bounds);
-        if (strip != mark.Strip)
+        var strip = ReaderViewGeometry.Strip(bounds);
+        if (strip != snapshot.Strip)
             return false;       // the window moved or was resized; the two views are not comparable
 
         var now = Capture(strip);
@@ -121,11 +117,12 @@ public sealed partial class ReaderView(ILogger<ReaderView> logger) : IReaderView
 
         // Only the drift a gesture can leave behind is plausible, and a search no wider keeps a page of evenly
         // spaced lines from matching at the wrong line.
-        var drift = ScrollProfile.FindShift(mark.Profile, now, -MaxDrift(bounds), MaxDrift(bounds));
+        var reach = ReaderViewGeometry.MaxDrift(bounds);
+        var drift = ScrollProfile.FindShift(snapshot.Profile.Span, now, -reach, reach);
         if (!drift.IsClear)
             return false;
 
-        if (Math.Abs(drift.Pixels) >= NotchPixels / 2)
+        if (ReaderViewGeometry.IsWorthCorrecting(drift.Pixels))
         {
             LogAligning(target.ProcessName, drift.Pixels);
             ScrollBy(target, -drift.Pixels, cancellationToken);
@@ -134,17 +131,8 @@ public sealed partial class ReaderView(ILogger<ReaderView> logger) : IReaderView
         return true;
     }
 
-    private static int MaxDrift(PixelRect bounds) => Math.Max(NotchPixels, bounds.Height / 3);
-
     private static ScreenPoint Centre(PixelRect bounds) =>
         new((int)Math.Round(bounds.CenterX), (int)Math.Round(bounds.CenterY));
-
-    private static PixelRect Strip(PixelRect pane)
-    {
-        var half = Math.Min(StripWidth, pane.Width - (2 * StripInset)) / 2;
-        var centre = (int)Math.Round(pane.CenterX);
-        return new PixelRect(centre - half, pane.Top + StripInset, centre + half, pane.Bottom - StripInset);
-    }
 
     /// <summary>Average brightness of each row of the strip, or null when the screen could not be read.</summary>
     private static int[]? Capture(PixelRect strip)
@@ -233,6 +221,4 @@ public sealed partial class ReaderView(ILogger<ReaderView> logger) : IReaderView
     [LoggerMessage(Level = LogLevel.Warning, Message = "Wheel input was rejected for {Process}; the view was not scrolled.")]
     private partial void LogWheelRejected(string? process);
 
-    /// <summary>How a reader's view looked at one moment: the strip that was sampled and its row brightness.</summary>
-    private sealed record ViewMark(PixelRect Strip, int[] Profile);
 }

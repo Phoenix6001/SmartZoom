@@ -1,5 +1,7 @@
 using System.Runtime.InteropServices;
+
 using SmartZoom.Core.Input;
+
 using Windows.Win32;
 using Windows.Win32.UI.Input.KeyboardAndMouse;
 

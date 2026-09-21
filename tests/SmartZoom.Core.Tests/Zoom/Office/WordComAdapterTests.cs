@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
 using SmartZoom.Core.Settings;
@@ -18,8 +19,8 @@ public sealed class WordComAdapterTests : IDisposable
 
     public void Dispose() => _word.Dispose();
 
-    private WordComAdapter Create(bool animate = false) =>
-        new(_word, pinch: null, new ZoomSettings { Animate = animate, Browser = new BrowserZoomSettings { AnimationMs = 100, MarginPx = 16 } }, TimeProvider.System, NullLogger<WordComAdapter>.Instance);
+    private IZoomAdapter Create(bool animate = false) =>
+        new WordComAdapter(_word, new ZoomSettings { Animate = animate, Smart = new SmartZoomTuning { AnimationMs = 100, MarginPx = 16 } }, TimeProvider.System, NullLogger<WordComAdapter>.Instance);
 
     [Fact]
     public async Task Zooms_the_paragraph_to_the_pane_width_and_remembers_the_view()
@@ -64,7 +65,7 @@ public sealed class WordComAdapterTests : IDisposable
     {
         _word.Block = null;
 
-        Assert.Equal(ZoomInStatus.SelfManaged, (await Create().ZoomInAsync(Word, Cursor, CancellationToken.None)).Status);
+        Assert.Equal(ZoomInStatus.Handled, (await Create().ZoomInAsync(Word, Cursor, CancellationToken.None)).Status);
         Assert.Null(_word.Zoom);
     }
 
@@ -73,7 +74,7 @@ public sealed class WordComAdapterTests : IDisposable
     {
         _word.Block = PixelRect.FromSize(210, 850, 1500, 120);
 
-        Assert.Equal(ZoomInStatus.SelfManaged, (await Create().ZoomInAsync(Word, Cursor, CancellationToken.None)).Status);
+        Assert.Equal(ZoomInStatus.Handled, (await Create().ZoomInAsync(Word, Cursor, CancellationToken.None)).Status);
         Assert.Null(_word.Zoom);
     }
 

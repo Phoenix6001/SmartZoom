@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
 using SmartZoom.Core.Zoom;
@@ -11,6 +12,7 @@ internal sealed partial class TriggerDispatcher(
     ITriggerSource triggerSource,
     IWindowInspector windowInspector,
     ZoomCoordinator coordinator,
+    ZoomActivity activity,
     ILogger<TriggerDispatcher> logger) : BackgroundService
 {
     // A trigger older than this was queued behind a slow zoom; acting on it now would surprise the user.
@@ -54,8 +56,9 @@ internal sealed partial class TriggerDispatcher(
 
         try
         {
-            var action = await coordinator.HandleTriggerAsync(target, trigger.Position, cancellationToken).ConfigureAwait(false);
-            LogOutcome(action);
+            var outcome = await coordinator.HandleTriggerAsync(target, trigger.Position, cancellationToken).ConfigureAwait(false);
+            LogOutcome(outcome.Action);
+            activity.Report(outcome);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

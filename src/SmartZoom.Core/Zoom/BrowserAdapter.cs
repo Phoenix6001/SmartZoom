@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
 using SmartZoom.Core.Settings;
@@ -11,7 +12,7 @@ namespace SmartZoom.Core.Zoom;
 /// block under the cursor, then pinch so it fills the viewport. Zoom-out pinches back past 1.0, which
 /// the browser clamps to the exact original view.
 /// </summary>
-public sealed partial class BrowserAdapter : IZoomAdapter
+public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreState>
 {
     // Pinch slightly past 1.0 so rounding in the gesture can't leave the page at 1.02x.
     private const double RestoreOvershoot = 0.9;
@@ -54,6 +55,7 @@ public sealed partial class BrowserAdapter : IZoomAdapter
     /// <param name="zoom">Zoom limits and animation preference.</param>
     /// <param name="logger">Logger.</param>
     public BrowserAdapter(IContentHitTester hitTester, IPinchInjector pinch, ZoomSettings zoom, ILogger<BrowserAdapter> logger)
+        : base(Descriptor)
     {
         ArgumentNullException.ThrowIfNull(zoom);
 
@@ -61,18 +63,22 @@ public sealed partial class BrowserAdapter : IZoomAdapter
         _pinch = pinch ?? throw new ArgumentNullException(nameof(pinch));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _blocks = new BlockSelector();
-        _planner = new SmartZoomPlanner(zoom.MinScale, zoom.MaxScale, zoom.Browser.MarginPx);
+        _planner = new SmartZoomPlanner(zoom.MinScale, zoom.MaxScale, zoom.Smart.MarginPx);
 
         var inset = Math.Max(EdgeInset, zoom.Browser.AnchorInsetPx);
         _insets = new AnchorInsets(inset, inset);
-        _animation = zoom.Animate ? TimeSpan.FromMilliseconds(zoom.Browser.AnimationMs) : TimeSpan.Zero;
+        _animation = zoom.Animate ? TimeSpan.FromMilliseconds(zoom.Smart.AnimationMs) : TimeSpan.Zero;
     }
 
-    /// <inheritdoc />
-    public AdapterKind Kind => AdapterKind.Browser;
+    /// <summary>How this adapter is named in settings, and what it handles out of the box.</summary>
+    public static AdapterDescriptor Descriptor { get; } = new(
+        "Browser",
+        ["chrome", "msedge", "brave", "opera", "vivaldi", "firefox"],
+        "Browsers",
+        "Reads the page's accessibility tree to find the block under the cursor, then zooms it with a touch pinch. Chromium-based browsers and Firefox.");
 
     /// <inheritdoc />
-    public async Task<ZoomInResult> ZoomInAsync(TargetInfo target, ScreenPoint point, CancellationToken cancellationToken)
+    protected override async Task<ZoomInResult> ZoomInAsync(TargetInfo target, ScreenPoint point, CancellationToken cancellationToken)
     {
         // Every "can't" below is reported as handled-with-nothing-to-undo rather than Unhandled: the
         // coordinator's Ctrl+wheel fallback is browser page zoom, which is per site across all windows and
@@ -81,7 +87,7 @@ public sealed partial class BrowserAdapter : IZoomAdapter
         if (hit is null)
         {
             LogNoContent(target.ProcessName);
-            return ZoomInResult.SelfManaged;
+            return ZoomInResult.Handled;
         }
 
         var block = _blocks.Select(hit);
@@ -107,7 +113,7 @@ public sealed partial class BrowserAdapter : IZoomAdapter
                     LogPath(path, hit.Viewport.Width, hit.Viewport.Height);
                 }
 
-                return ZoomInResult.SelfManaged;
+                return ZoomInResult.Handled;
             }
         }
 
@@ -116,7 +122,7 @@ public sealed partial class BrowserAdapter : IZoomAdapter
         {
             // Already fills the width: nothing to zoom to. Handled, but nothing to undo either.
             LogAlreadyFits(target.ProcessName, block.Role, block.Bounds.Width, hit.Viewport.Width);
-            return ZoomInResult.SelfManaged;
+            return ZoomInResult.Handled;
         }
 
         LogPlan(block.Role, block.Bounds.Width, block.Bounds.Height, hit.Viewport.Width, p.Scale, p.Anchor.X, p.Anchor.Y);
@@ -130,7 +136,7 @@ public sealed partial class BrowserAdapter : IZoomAdapter
         if (!await _pinch.PinchAsync(p.Anchor, p.Scale, _animation, bounds, cancellationToken).ConfigureAwait(false))
         {
             LogPinchRejected(target.ProcessName);
-            return ZoomInResult.SelfManaged;
+            return ZoomInResult.Handled;
         }
 
         return ZoomInResult.Applied(new RestoreState(p, bounds));
@@ -161,19 +167,16 @@ public sealed partial class BrowserAdapter : IZoomAdapter
     }
 
     /// <inheritdoc />
-    public async Task ZoomOutAsync(TargetInfo target, object restoreState, CancellationToken cancellationToken)
+    protected override async Task ZoomOutAsync(TargetInfo target, RestoreState restoreState, CancellationToken cancellationToken)
     {
-        if (restoreState is not RestoreState state)
-            throw new ArgumentException($"Expected {nameof(RestoreState)} from a previous zoom-in.", nameof(restoreState));
-
-        var plan = state.Plan;
-        await _pinch.PinchAsync(plan.Anchor, RestoreOvershoot / plan.Scale, _animation, state.Bounds, cancellationToken).ConfigureAwait(false);
+        var plan = restoreState.Plan;
+        await _pinch.PinchAsync(plan.Anchor, RestoreOvershoot / plan.Scale, _animation, restoreState.Bounds, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>What was applied, so the same gesture can be reversed.</summary>
     /// <param name="Plan">Scale and anchor of the zoom-in.</param>
     /// <param name="Bounds">Contact area used for the zoom-in; reused so the zoom-out takes the same orientation.</param>
-    internal sealed record RestoreState(ZoomPlan Plan, PixelRect Bounds);
+    public sealed record RestoreState(ZoomPlan Plan, PixelRect Bounds);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Smart zoom unavailable: no accessible content under the cursor in {Process}. Nothing was zoomed.")]
     private partial void LogNoContent(string? process);

@@ -1,0 +1,26 @@
+version: 2
+
+updates:
+  # NuGet versions are central (Directory.Packages.props), so one pull request updates them everywhere.
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      dotnet:
+        patterns:
+          - 'Microsoft.Extensions.*'
+          - 'Microsoft.NET.Test.Sdk'
+      serilog:
+        patterns:
+          - 'Serilog*'
+      xunit:
+        patterns:
+          - 'xunit*'
+          - 'coverlet*'
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

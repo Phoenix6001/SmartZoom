@@ -7,13 +7,19 @@ namespace SmartZoom.Core.Zoom;
 /// <remarks>
 /// Adapters are stateless with respect to windows: whatever they need to undo a zoom is returned in
 /// <see cref="ZoomInResult.RestoreState"/> and handed back by <see cref="ZoomCoordinator"/> on the
-/// next trigger for the same window. Adapters that keep their own toggle state (the browser
-/// extension) return <see cref="ZoomInResult.SelfManaged"/> and are simply invoked again to undo.
+/// next trigger for the same window. Adapters that keep their own toggle state return
+/// <see cref="ZoomInResult.Handled"/> and are simply invoked again to undo.
+///
+/// Implement <see cref="ZoomAdapter{TRestore}"/> rather than this interface directly: it names the type of
+/// the undo data, which this interface cannot.
 /// </remarks>
 public interface IZoomAdapter
 {
-    /// <summary>Which routing category this adapter serves.</summary>
-    AdapterKind Kind { get; }
+    /// <summary>
+    /// Who this adapter is: the id the settings file routes to, the applications it claims by default,
+    /// and how to describe it to a user. Registering the adapter is what makes the id exist.
+    /// </summary>
+    AdapterDescriptor Descriptor { get; }
 
     /// <summary>Zooms the target in, centered on the cursor.</summary>
     /// <param name="target">Window under the cursor.</param>
@@ -26,47 +32,4 @@ public interface IZoomAdapter
     /// <param name="restoreState">The state this adapter returned from <see cref="ZoomInAsync"/>.</param>
     /// <param name="cancellationToken">Cancels the restore.</param>
     Task ZoomOutAsync(TargetInfo target, object restoreState, CancellationToken cancellationToken);
-}
-
-/// <summary>Outcome of <see cref="IZoomAdapter.ZoomInAsync"/>.</summary>
-public sealed class ZoomInResult
-{
-    private ZoomInResult(ZoomInStatus status, object? restoreState)
-    {
-        Status = status;
-        RestoreState = restoreState;
-    }
-
-    /// <summary>The adapter could not act on this target (e.g. its browser extension isn't connected). The coordinator may fall back.</summary>
-    public static ZoomInResult Unhandled { get; } = new(ZoomInStatus.Unhandled, null);
-
-    /// <summary>The zoom was applied and the adapter tracks its own toggle state.</summary>
-    public static ZoomInResult SelfManaged { get; } = new(ZoomInStatus.SelfManaged, null);
-
-    /// <summary>What happened.</summary>
-    public ZoomInStatus Status { get; }
-
-    /// <summary>Opaque data needed to undo the zoom; non-null only when <see cref="Status"/> is <see cref="ZoomInStatus.Applied"/>.</summary>
-    public object? RestoreState { get; }
-
-    /// <summary>The zoom was applied; <paramref name="restoreState"/> will be passed to <see cref="IZoomAdapter.ZoomOutAsync"/> to undo it.</summary>
-    /// <param name="restoreState">Adapter-specific undo data.</param>
-    public static ZoomInResult Applied(object restoreState)
-    {
-        ArgumentNullException.ThrowIfNull(restoreState);
-        return new ZoomInResult(ZoomInStatus.Applied, restoreState);
-    }
-}
-
-/// <summary>Status of a zoom-in attempt.</summary>
-public enum ZoomInStatus
-{
-    /// <summary>Nothing happened; the adapter cannot handle this target right now.</summary>
-    Unhandled,
-
-    /// <summary>Zoomed; the coordinator stores the restore state for the next trigger.</summary>
-    Applied,
-
-    /// <summary>Zoomed; the adapter itself toggles back when invoked again.</summary>
-    SelfManaged,
 }

@@ -8,6 +8,11 @@ on:
 permissions:
   contents: read
 
+# A new push to the same branch makes the previous run pointless.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: windows-latest
@@ -25,8 +30,33 @@ jobs:
       - name: Restore
         run: dotnet restore
 
+      # The repository has a full .editorconfig; this is what makes it mean something.
+      # Run `dotnet format` locally to fix anything this reports.
+      - name: Check formatting
+        run: dotnet format --verify-no-changes --no-restore
+
       - name: Build
         run: dotnet build --no-restore --configuration Release
 
       - name: Test
-        run: dotnet test --no-build --configuration Release --logger "console;verbosity=normal"
+        run: dotnet test --no-build --configuration Release --logger "console;verbosity=normal" --collect:"XPlat Code Coverage"
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: '**/TestResults/**/coverage.cobertura.xml'
+          if-no-files-found: warn
+
+      # Single-file publish is where COM interop and late binding tend to break, and it is
+      # what a user downloads. Building it on every run keeps it honest.
+      - name: Publish
+        run: dotnet publish src/SmartZoom.App --configuration Release --runtime win-x64 --no-self-contained --output publish
+
+      - name: Upload SmartZoom.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: SmartZoom-win-x64
+          path: publish/SmartZoom.exe
+          if-no-files-found: error

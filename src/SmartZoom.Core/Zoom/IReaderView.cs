@@ -27,12 +27,12 @@ public interface IReaderView
     /// reports whether it could.
     /// </summary>
     /// <param name="target">The window the trigger landed on.</param>
-    /// <param name="snapshot">A snapshot from <see cref="Snapshot"/>.</param>
+    /// <param name="snapshot">A mark from <see cref="Snapshot"/>.</param>
     /// <param name="cancellationToken">Cancellation.</param>
-    bool ScrollBackTo(TargetInfo target, object snapshot, CancellationToken cancellationToken);
+    bool ScrollBackTo(TargetInfo target, ReaderViewMark snapshot, CancellationToken cancellationToken);
 
     /// <summary>Remembers what the view looks like now, so it can be returned to later.</summary>
     /// <param name="target">The window the trigger landed on.</param>
-    /// <returns>An opaque token for <see cref="ScrollBackTo"/>, or null when the screen could not be read.</returns>
-    object? Snapshot(TargetInfo target);
+    /// <returns>A mark for <see cref="ScrollBackTo"/>, or null when the screen could not be read.</returns>
+    ReaderViewMark? Snapshot(TargetInfo target);
 }

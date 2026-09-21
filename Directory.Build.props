@@ -21,10 +21,14 @@
     <RepositoryType>git</RepositoryType>
   </PropertyGroup>
 
-  <!-- Missing XML docs on non-public/test code is noise, not a quality signal. -->
+  <!--
+    Missing XML docs on non-public/test code is noise, not a quality signal. CA1859 (prefer the concrete
+    type) is wrong for tests: adapters are driven through IZoomAdapter on purpose, because that is the only
+    way the coordinator ever calls them.
+  -->
   <PropertyGroup Condition="$(MSBuildProjectName.EndsWith('.Tests'))">
     <IsPackable>false</IsPackable>
-    <NoWarn>$(NoWarn);CS1591;CA1707</NoWarn>
+    <NoWarn>$(NoWarn);CS1591;CA1707;CA1859</NoWarn>
   </PropertyGroup>
 
 </Project>

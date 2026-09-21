@@ -1,0 +1,60 @@
+name: Bug report
+description: Something zoomed wrongly, or did not zoom at all
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The log answers most of these questions on its own. It is at
+        `%LOCALAPPDATA%\SmartZoom\logs\smartzoom-<date>.log`, or right-click the tray icon and choose
+        **Open log folder**. The lines from the press that went wrong are the useful part.
+
+  - type: input
+    id: application
+    attributes:
+      label: Which application
+      placeholder: Brave 1.7, Acrobat Reader 26, Excel 365 …
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What you pointed at, and what happened
+      description: What did you expect instead?
+      placeholder: |
+        Pointed at a paragraph halfway down a Wikipedia article and pressed the side button.
+        The page zoomed but jumped to the top, so the paragraph was off screen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: Log lines
+      description: >
+        The `Trigger at …` line for that press and anything after it. Note that a log names the
+        applications you had open.
+      render: text
+
+  - type: input
+    id: version
+    attributes:
+      label: SmartZoom version or commit
+    validations:
+      required: true
+
+  - type: input
+    id: display
+    attributes:
+      label: Display scaling and resolution
+      description: Settings → System → Display. Several zoom constants were measured at 200%, so this matters.
+      placeholder: 3840x2160 at 200%
+    validations:
+      required: true
+
+  - type: textarea
+    id: anything-else
+    attributes:
+      label: Anything else
+      description: Vendor mouse software, multiple monitors at different scaling, an elevated window …

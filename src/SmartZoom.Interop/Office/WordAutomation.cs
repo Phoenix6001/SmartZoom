@@ -1,10 +1,13 @@
 using System.Runtime.InteropServices;
+
 using Microsoft.Extensions.Logging;
+
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
 using SmartZoom.Core.Zoom.Content;
 using SmartZoom.Core.Zoom.Office;
 using SmartZoom.Interop.Windows;
+
 using Windows.Win32;
 using Windows.Win32.Foundation;
 

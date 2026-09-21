@@ -1,9 +1,13 @@
 using System.Globalization;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+
 using Serilog;
+using Serilog.Core;
 using Serilog.Events;
+
 using SmartZoom.App.Hosting;
 using SmartZoom.App.Settings;
 using SmartZoom.App.Tray;
@@ -13,6 +17,7 @@ using SmartZoom.Core.Settings;
 using SmartZoom.Core.Zoom;
 using SmartZoom.Core.Zoom.Content;
 using SmartZoom.Core.Zoom.Office;
+using SmartZoom.Core.Zoom.Reader;
 using SmartZoom.Interop;
 using SmartZoom.Interop.Accessibility;
 using SmartZoom.Interop.Input;
@@ -44,7 +49,11 @@ internal static class Program
         ApplicationConfiguration.Initialize();
 
         var paths = AppPaths.CreateDefault();
-        Log.Logger = CreateLogger(paths);
+
+        // The logger has to exist before the settings can be read (reading them is itself logged), so it
+        // starts at Debug and the file's own level is applied to this switch a moment later.
+        var level = new LoggingLevelSwitch(LogEventLevel.Debug);
+        Log.Logger = CreateLogger(paths, level);
 
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
         Application.ThreadException += (_, e) => Log.Error(e.Exception, "Unhandled exception on the UI thread.");
@@ -53,6 +62,7 @@ internal static class Program
         try
         {
             using var host = BuildHost(paths);
+            level.MinimumLevel = Serilog(host.Services.GetRequiredService<SmartZoomSettings>().Logging.Level);
             host.Start();
             Log.ForContext(typeof(Program)).Information("SmartZoom {Version} started.", typeof(Program).Assembly.GetName().Version);
 
@@ -73,8 +83,20 @@ internal static class Program
         }
     }
 
-    private static Serilog.Core.Logger CreateLogger(AppPaths paths) => new LoggerConfiguration()
-        .MinimumLevel.Debug()
+    /// <summary>Maps the setting's level onto Serilog's, which is the same ladder under another name.</summary>
+    private static LogEventLevel Serilog(LogLevel level) => level switch
+    {
+        LogLevel.Trace => LogEventLevel.Verbose,
+        LogLevel.Debug => LogEventLevel.Debug,
+        LogLevel.Information => LogEventLevel.Information,
+        LogLevel.Warning => LogEventLevel.Warning,
+        LogLevel.Error => LogEventLevel.Error,
+        LogLevel.Critical => LogEventLevel.Fatal,
+        _ => LogEventLevel.Fatal,
+    };
+
+    private static Serilog.Core.Logger CreateLogger(AppPaths paths, LoggingLevelSwitch level) => new LoggerConfiguration()
+        .MinimumLevel.ControlledBy(level)
         .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
         .MinimumLevel.Override("Microsoft.Hosting.Lifetime", LogEventLevel.Information)
         .Enrich.FromLogContext()
@@ -102,7 +124,6 @@ internal static class Program
         builder.Services.AddSingleton(paths);
         builder.Services.AddSingleton<SettingsStore>();
         builder.Services.AddSingleton(sp => sp.GetRequiredService<SettingsStore>().Load());
-        builder.Services.AddSingleton(sp => new ZoomRouter(sp.GetRequiredService<SmartZoomSettings>().Routing));
         builder.Services.AddSingleton<IWindowInspector, WindowInspector>();
         builder.Services.AddSingleton<ITriggerSource>(CreateTriggerSource);
 
@@ -112,7 +133,9 @@ internal static class Program
             sp.GetRequiredService<IInputInjector>(),
             sp.GetRequiredService<SmartZoomSettings>().Zoom.CtrlWheel,
             sp.GetRequiredService<TimeProvider>()));
+        builder.Services.AddSingleton<ChromiumAccessibilityWake>();
         builder.Services.AddSingleton<IContentHitTester, MsaaContentHitTester>();
+        builder.Services.AddSingleton<TouchDevices>();
         builder.Services.AddSingleton<IPinchInjector, TouchPinchInjector>();
         builder.Services.AddSingleton<IZoomAdapter>(sp => new BrowserAdapter(
             sp.GetRequiredService<IContentHitTester>(),
@@ -121,25 +144,35 @@ internal static class Program
             sp.GetRequiredService<ILogger<BrowserAdapter>>()));
         builder.Services.AddSingleton<IWindowActivator, WindowActivator>();
         builder.Services.AddSingleton<IReaderView, ReaderView>();
+        builder.Services.AddSingleton<ShortcutSender>();
+
+        // The two reader strategies share one id, so exactly one of them is registered; "Zoom.Reader.Mode"
+        // is the choice, and it is made here rather than inside an adapter that is secretly two adapters.
         builder.Services.AddSingleton<IZoomAdapter>(sp =>
         {
             var zoom = sp.GetRequiredService<SmartZoomSettings>().Zoom;
-            return new KeyZoomAdapter(
-                sp.GetRequiredService<IInputInjector>(),
-                sp.GetRequiredService<IWindowActivator>(),
-                sp.GetRequiredService<IReaderView>(),
+            var shortcuts = sp.GetRequiredService<ShortcutSender>();
+
+            if (zoom.Reader.Mode == ReaderZoomMode.Shortcuts)
+            {
+                return new ReaderShortcutAdapter(
+                    shortcuts,
+                    sp.GetRequiredService<IReaderView>(),
+                    zoom.Reader,
+                    sp.GetRequiredService<ILogger<ReaderShortcutAdapter>>());
+            }
+
+            return new ReaderPinchAdapter(
                 sp.GetRequiredService<IPinchInjector>(),
+                sp.GetRequiredService<IReaderView>(),
+                shortcuts,
                 zoom.Reader,
                 TimeSpan.FromMilliseconds(zoom.Animate ? zoom.Reader.AnimationMs : 0),
-                sp.GetRequiredService<TimeProvider>(),
-                sp.GetRequiredService<ILogger<KeyZoomAdapter>>());
+                sp.GetRequiredService<ILogger<ReaderPinchAdapter>>());
         });
         builder.Services.AddSingleton<IWordAutomation, WordAutomation>();
-        // Word: object-model steps only. Driving the motion with a touch pinch is smoother, but Word commits
-        // the pinch result asynchronously and the exact restore became unreliable; see WordComAdapter.
         builder.Services.AddSingleton<IZoomAdapter>(sp => new WordComAdapter(
             sp.GetRequiredService<IWordAutomation>(),
-            pinch: null,
             sp.GetRequiredService<SmartZoomSettings>().Zoom,
             sp.GetRequiredService<TimeProvider>(),
             sp.GetRequiredService<ILogger<WordComAdapter>>()));
@@ -149,6 +182,14 @@ internal static class Program
             sp.GetRequiredService<SmartZoomSettings>().Zoom,
             sp.GetRequiredService<ILogger<ExcelComAdapter>>()));
         builder.Services.AddSingleton<WindowZoomStateStore>();
+
+        // Routing is built from the adapters that are actually registered above, so an application can
+        // never be routed to a strategy this build does not contain, and new defaults reach users who
+        // already have a settings file.
+        builder.Services.AddSingleton(sp => new ZoomRouter(
+            sp.GetServices<IZoomAdapter>().Select(a => a.Descriptor),
+            sp.GetRequiredService<SmartZoomSettings>().Routing,
+            sp.GetRequiredService<ILogger<ZoomRouter>>()));
         builder.Services.AddSingleton(sp => new ZoomCoordinator(
             sp.GetRequiredService<ZoomRouter>(),
             sp.GetServices<IZoomAdapter>(),
@@ -158,6 +199,7 @@ internal static class Program
             sp.GetRequiredService<ILogger<ZoomCoordinator>>()));
 
         // Hosted services start in registration order: capture must be running before the dispatcher reads from it.
+        builder.Services.AddSingleton<ZoomActivity>();
         builder.Services.AddHostedService<TriggerCaptureService>();
         builder.Services.AddHostedService<TriggerDispatcher>();
         builder.Services.AddSingleton<TrayApplicationContext>();

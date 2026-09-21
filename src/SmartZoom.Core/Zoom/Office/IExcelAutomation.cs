@@ -9,7 +9,7 @@ namespace SmartZoom.Core.Zoom.Office;
 /// <param name="ScrollColumn">Column shown at the left of the pane (1-based).</param>
 public readonly record struct ExcelViewState(int ZoomPercent, int ScrollRow, int ScrollColumn);
 
-/// <summary>What <see cref="IExcelWindow.TryFitBlockAt"/> found and did.</summary>
+/// <summary>What <see cref="IExcelWindow.ApplyFitToBlockAt"/> found, and the zoom it applied.</summary>
 /// <param name="FitZoomPercent">Zoom at which the block's width fills the pane, as Excel computed it.</param>
 /// <param name="PaneWidthPx">Width of the worksheet pane in physical pixels, for the margin rule.</param>
 /// <param name="Row">Top row of the block (1-based).</param>
@@ -17,7 +17,7 @@ public readonly record struct ExcelViewState(int ZoomPercent, int ScrollRow, int
 /// <param name="Rows">How many rows the block spans.</param>
 /// <param name="Columns">How many columns the block spans.</param>
 /// <param name="CursorRow">Row of the cell under the cursor, which is what the reader wanted to look at.</param>
-public readonly record struct ExcelBlock(int FitZoomPercent, int PaneWidthPx, int Row, int Column, int Rows, int Columns, int CursorRow);
+public readonly record struct ExcelFit(int FitZoomPercent, int PaneWidthPx, int Row, int Column, int Rows, int Columns, int CursorRow);
 
 /// <summary>An Excel worksheet window that SmartZoom is attached to.</summary>
 /// <remarks>
@@ -32,16 +32,17 @@ public interface IExcelWindow : IDisposable
 
     /// <summary>
     /// Finds the block under a screen point — the surrounding region of contiguous data, or the cells a chart
-    /// or picture covers — and zooms so its width fills the pane, reporting what it did. Null when the point is
-    /// not over content (column headers, an empty cell, outside the grid).
+    /// or picture covers — and <em>applies</em> the zoom at which its width fills the pane, reporting what it
+    /// did. Null when the point is not over content (column headers, an empty cell, outside the grid).
     /// </summary>
     /// <remarks>
-    /// The zoom really is applied: Excel only computes a fitting zoom by performing it, and applying it once is
-    /// better than showing the user an intermediate value. The caller clamps afterwards with
-    /// <see cref="SetZoom"/>, or puts the view back with <see cref="Restore"/> when it decides not to zoom.
+    /// The mutation is in the name because it cannot be avoided: Excel will only tell you a fitting zoom by
+    /// performing it. Applying it once is better than showing the user an intermediate value. The caller
+    /// clamps afterwards with <see cref="SetZoom"/>, or puts the view back with <see cref="Restore"/> when it
+    /// decides not to zoom at all.
     /// </remarks>
     /// <param name="point">Screen point, physical pixels.</param>
-    ExcelBlock? TryFitBlockAt(ScreenPoint point);
+    ExcelFit? ApplyFitToBlockAt(ScreenPoint point);
 
     /// <summary>Sets the view zoom.</summary>
     /// <param name="percent">Zoom percentage, 10..400.</param>

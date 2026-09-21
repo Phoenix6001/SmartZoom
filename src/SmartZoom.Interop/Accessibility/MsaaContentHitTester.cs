@@ -1,13 +1,15 @@
-using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
+
 using Microsoft.Extensions.Logging;
+
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
 using SmartZoom.Core.Zoom.Content;
-using Interop.UIAutomationClient;
 using SmartZoom.Interop.Windows;
+
 using Windows.Win32;
 using Windows.Win32.Foundation;
+
 using IAccessible = Accessibility.IAccessible;
 
 namespace SmartZoom.Interop.Accessibility;
@@ -22,10 +24,8 @@ namespace SmartZoom.Interop.Accessibility;
 /// client connects, and reports paragraphs and sections with IAccessible2 roles (see <see cref="AccessibleRoles"/>).
 /// </para>
 /// <para>
-/// Chromium builds its accessibility tree lazily. The first <c>WM_GETOBJECT</c> only produces a native root
-/// with an empty web-content placeholder; the full DOM tree appears once a client behaves like a screen
-/// reader: walks to the root's first child and asks for <c>IAccessible2</c>. <see cref="Wake"/> performs
-/// that handshake once per render window.
+/// Chromium builds its accessibility tree lazily, and only hands over a real one to a client that behaves
+/// like a screen reader. <see cref="ChromiumAccessibilityWake"/> is that handshake and the root cache.
 /// </para>
 /// <para>
 /// Hit-testing is asynchronous inside Chromium as well: <c>accHitTest</c> may answer from a stale cache
@@ -33,22 +33,11 @@ namespace SmartZoom.Interop.Accessibility;
 /// </para>
 /// <para>Bounds reported by the tree do not change with visual-viewport (pinch) zoom.</para>
 /// </remarks>
-public sealed partial class MsaaContentHitTester(ILogger<MsaaContentHitTester> logger) : IContentHitTester
+public sealed partial class MsaaContentHitTester(ChromiumAccessibilityWake wake, ILogger<MsaaContentHitTester> logger) : IContentHitTester
 {
-    private const uint ObjIdClient = 0xFFFFFFFC;
-    private const int NavDirFirstChild = 0x7;
     private const int MaxHitTestAttempts = 12;
     private const int HitTestRetryDelayMs = 50;
     private const int MaxChainDepth = 64;
-
-    private static readonly Guid IidIAccessible = new("618736E0-3C3D-11CF-810C-00AA00389B71");
-    private static readonly Guid IidIAccessible2 = new("E89F726E-C4F4-4C19-BB19-B647D7FA8478");
-
-    // One accessible root per render window; the tree stays awake for the window's lifetime.
-    private readonly ConcurrentDictionary<HWND, IAccessible> _roots = new();
-
-    // Created lazily on first use; UIA objects are free-threaded, so a single instance is fine.
-    private IUIAutomation? _uia;
 
     /// <inheritdoc />
     public Task<ContentHit?> HitTestAsync(TargetInfo target, ScreenPoint point, CancellationToken cancellationToken)
@@ -69,7 +58,7 @@ public sealed partial class MsaaContentHitTester(ILogger<MsaaContentHitTester> l
         try
         {
             // Gecko's tree is complete from the first call; the screen-reader handshake is Chromium's need.
-            var root = GetRoot(render, point, wake: !gecko);
+            var root = wake.GetRoot(render, point, wake: !gecko);
             if (root is null)
                 return null;
 
@@ -127,7 +116,7 @@ public sealed partial class MsaaContentHitTester(ILogger<MsaaContentHitTester> l
                     if (attempt == MaxHitTestAttempts)
                     {
                         // Nothing usable after ~600 ms: forget this root so the next trigger re-acquires and re-wakes it.
-                        _roots.TryRemove(render, out _);
+                        wake.Forget(render);
                         if (document is null)
                         {
                             LogNoDocument(target.ProcessName);
@@ -139,7 +128,7 @@ public sealed partial class MsaaContentHitTester(ILogger<MsaaContentHitTester> l
 
                     // A single handshake right after the window appeared can be too early; nudging again is cheap.
                     if (!gecko)
-                        Wake(root, point);
+                        wake.Nudge(root, point);
 
                     Thread.Sleep(HitTestRetryDelayMs);
                 }
@@ -149,10 +138,10 @@ public sealed partial class MsaaContentHitTester(ILogger<MsaaContentHitTester> l
                     // an empty tree, and the user's very first press paid for it. Forget the root, take another
                     // handshake and keep trying; only the last attempt gives up.
                     LogComRetry(ex, target.ProcessName);
-                    _roots.TryRemove(render, out _);
+                    wake.Forget(render);
                     Thread.Sleep(HitTestRetryDelayMs);
 
-                    var reacquired = GetRoot(render, point, wake: !gecko);
+                    var reacquired = wake.GetRoot(render, point, wake: !gecko);
                     if (reacquired is null)
                         return null;
 
@@ -164,7 +153,7 @@ public sealed partial class MsaaContentHitTester(ILogger<MsaaContentHitTester> l
         catch (COMException ex)
         {
             // The window went away or the browser is busy; treat as "no content" and let the coordinator fall back.
-            _roots.TryRemove(render, out _);
+            wake.Forget(render);
             LogComFailure(ex, target.ProcessName);
             return null;
         }
@@ -211,75 +200,6 @@ public sealed partial class MsaaContentHitTester(ILogger<MsaaContentHitTester> l
         }, default);
 
         return found;
-    }
-
-    private IAccessible? GetRoot(HWND render, ScreenPoint point, bool wake)
-    {
-        if (_roots.TryGetValue(render, out var cached))
-            return cached;
-
-        var hr = AccessibleObjectFromWindow(render, ObjIdClient, in IidIAccessible, out var root);
-        if (hr != 0 || root is null)
-        {
-            LogNoAccessibleRoot(hr);
-            return null;
-        }
-
-        if (wake)
-            Wake(root, point);
-
-        _roots[render] = root;
-        return root;
-    }
-
-    // The screen-reader handshake that makes Chromium serialize the full web-content tree: enumerate the
-    // root, ask for IAccessible2, then do the same on the first child (the web-content placeholder). Chromium
-    // also watches for UI Automation clients, and in practice a fresh browser process only switches its
-    // renderer into full accessibility mode after it has seen one, so a UIA hit-test is part of the handshake.
-    private void Wake(IAccessible root, ScreenPoint point)
-    {
-        TouchWithUia(point);
-
-        _ = root.accChildCount;
-        QueryAccessible2(root);
-
-        try
-        {
-            if (root.accNavigate(NavDirFirstChild, 0) is IAccessible first)
-            {
-                _ = first.accChildCount;
-                QueryAccessible2(first);
-            }
-        }
-        catch (COMException)
-        {
-            // Some pages have no children yet; the hit-test retry loop copes with that.
-        }
-    }
-
-    // The result is irrelevant; the call itself is what Chromium reacts to.
-    private void TouchWithUia(ScreenPoint point)
-    {
-        try
-        {
-            _uia ??= new CUIAutomation();
-            _ = _uia.ElementFromPoint(new tagPOINT { x = point.X, y = point.Y });
-        }
-        catch (COMException)
-        {
-            // UIA is best-effort here; the MSAA handshake below still runs.
-        }
-    }
-
-    private static void QueryAccessible2(IAccessible node)
-    {
-        if (node is not IServiceProvider services)
-            return;
-
-        var iidService = IidIAccessible;
-        var iidIA2 = IidIAccessible2;
-        if (services.QueryService(ref iidService, ref iidIA2, out var ia2) == 0 && ia2 != 0)
-            Marshal.Release(ia2);
     }
 
     // Descends from a node into whichever child's rectangle contains the point, as far as that goes.
@@ -428,12 +348,6 @@ public sealed partial class MsaaContentHitTester(ILogger<MsaaContentHitTester> l
         return PixelRect.FromSize(left, top, width, height);
     }
 
-    [DllImport("oleacc.dll", ExactSpelling = true)]
-    private static extern int AccessibleObjectFromWindow(HWND hwnd, uint dwId, in Guid riid, [MarshalAs(UnmanagedType.Interface)] out IAccessible? ppvObject);
-
-    [LoggerMessage(Level = LogLevel.Debug, Message = "AccessibleObjectFromWindow failed with 0x{HResult:X8}.")]
-    private partial void LogNoAccessibleRoot(int hresult);
-
     [LoggerMessage(Level = LogLevel.Debug, Message = "No document node on the accessibility path in {Process}.")]
     private partial void LogNoDocument(string? process);
 
@@ -449,12 +363,4 @@ public sealed partial class MsaaContentHitTester(ILogger<MsaaContentHitTester> l
     [LoggerMessage(Level = LogLevel.Debug, Message = "Accessibility call failed in {Process}; dropping the cached root.")]
     private partial void LogComFailure(Exception exception, string? process);
 
-    [ComImport]
-    [Guid("6d5140c1-7436-11ce-8034-00aa006009fa")]
-    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    private interface IServiceProvider
-    {
-        [PreserveSig]
-        int QueryService(ref Guid guidService, ref Guid riid, out nint ppvObject);
-    }
 }

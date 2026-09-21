@@ -4,6 +4,9 @@
     <Project Path="src/SmartZoom.Core/SmartZoom.Core.csproj" />
     <Project Path="src/SmartZoom.Interop/SmartZoom.Interop.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/SmartZoom.Probe/SmartZoom.Probe.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/SmartZoom.Core.Tests/SmartZoom.Core.Tests.csproj" />
   </Folder>

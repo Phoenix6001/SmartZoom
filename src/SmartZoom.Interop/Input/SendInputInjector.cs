@@ -1,5 +1,6 @@
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Zoom;
+
 using Windows.Win32;
 using Windows.Win32.UI.Input.KeyboardAndMouse;
 
