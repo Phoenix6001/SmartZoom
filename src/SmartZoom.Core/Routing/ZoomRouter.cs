@@ -17,6 +17,9 @@ public enum AdapterKind
     /// <summary>Microsoft Word object model.</summary>
     WordCom,
 
+    /// <summary>Microsoft Excel object model.</summary>
+    ExcelCom,
+
     /// <summary>Microsoft PowerPoint object model.</summary>
     PowerPointCom,
 
@@ -39,6 +42,7 @@ public sealed class ZoomRouter
         Add(settings.CtrlWheelProcesses, AdapterKind.CtrlWheel);
         Add(settings.KeyProcesses, AdapterKind.Keys);
         Add(settings.WordProcesses, AdapterKind.WordCom);
+        Add(settings.ExcelProcesses, AdapterKind.ExcelCom);
         Add(settings.PowerPointProcesses, AdapterKind.PowerPointCom);
 
         foreach (var (process, kind) in settings.Overrides)

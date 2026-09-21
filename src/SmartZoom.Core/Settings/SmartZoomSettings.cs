@@ -110,13 +110,16 @@ public sealed class RoutingSettings
     public IList<string> BrowserProcesses { get; set; } = ["chrome", "msedge", "brave", "opera", "vivaldi", "firefox"];
 
     /// <summary>Processes handled by synthesized Ctrl+wheel zoom.</summary>
-    public IList<string> CtrlWheelProcesses { get; set; } = ["i_view64", "i_view32", "EXCEL"];
+    public IList<string> CtrlWheelProcesses { get; set; } = ["i_view64", "i_view32"];
 
     /// <summary>Processes zoomed with their own keyboard shortcuts (<see cref="ZoomSettings.Keys"/>): readers with fit-width / fit-page commands.</summary>
     public IList<string> KeyProcesses { get; set; } = ["Acrobat", "AcroRd32", "SumatraPDF"];
 
     /// <summary>Processes handled through the Word object model.</summary>
     public IList<string> WordProcesses { get; set; } = ["WINWORD"];
+
+    /// <summary>Processes zoomed through Microsoft Excel's object model.</summary>
+    public IList<string> ExcelProcesses { get; set; } = ["EXCEL"];
 
     /// <summary>Processes handled through the PowerPoint object model.</summary>
     public IList<string> PowerPointProcesses { get; set; } = ["POWERPNT"];

@@ -14,7 +14,7 @@ public sealed class ZoomRouterTests
     [InlineData("POWERPNT", AdapterKind.PowerPointCom)]
     [InlineData("SumatraPDF", AdapterKind.Keys)]
     [InlineData("Acrobat", AdapterKind.Keys)]
-    [InlineData("EXCEL", AdapterKind.CtrlWheel)]
+    [InlineData("EXCEL", AdapterKind.ExcelCom)]
     [InlineData("notepad", AdapterKind.None)]
     public void Default_settings_route_known_apps(string process, AdapterKind expected) =>
         Assert.Equal(expected, new ZoomRouter(new RoutingSettings()).Resolve(process));

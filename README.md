@@ -12,14 +12,15 @@ and routes it to a per-application zoom strategy:
 | Chrome, Edge, Brave, Opera, Vivaldi (any Chromium browser) | Native smart zoom: finds the paragraph/image under the cursor through the browser's accessibility tree and pinch-zooms it to fill the window — no extension needed | Element-aware, visual zoom (no reflow), exact restore |
 | Firefox | Native smart zoom, the same way: the block under the cursor comes from Firefox's accessibility tree and is pinch-zoomed through a synthetic touch device that Firefox accepts as a touch screen | Element-aware, visual zoom (no reflow), exact restore |
 | Word | Smart zoom through Word's object model: the paragraph, table or picture under the cursor is zoomed to fill the document pane; the previous zoom and scroll position are restored exactly | Element-aware, exact restore |
+| Excel | Smart zoom through Excel's object model: the block of data under the cursor — the surrounding island of filled cells, or the cells a chart or picture covers — is zoomed to fill the worksheet pane and scrolled to the top left | Element-aware, exact restore |
 | PowerPoint | Office object model (COM), planned | — |
 | Acrobat, Acrobat Reader, SumatraPDF | The reader's own shortcuts: the first press fits the page to the window width (Ctrl+2), the second shows the whole page again (Ctrl+0) | Exact, never drifts |
-| Excel, image viewers | Synthesized Ctrl+wheel centered on the cursor | Approximate |
+| Image viewers | Synthesized Ctrl+wheel centered on the cursor | Approximate |
 | Everything else | Ignored | — |
 
-> **Status:** early development. Smart zoom works in Chromium browsers, Firefox and Word; Acrobat and Sumatra
-> toggle between fit width and fit page; Ctrl+wheel zoom with toggle-back works for the configured image and
-> spreadsheet apps; Excel and PowerPoint are next.
+> **Status:** early development. Smart zoom works in Chromium browsers, Firefox, Word and Excel; Acrobat and
+> Sumatra toggle between fit width and fit page; Ctrl+wheel zoom with toggle-back works for the configured image
+> apps; PowerPoint is next.
 > See [Roadmap](#roadmap).
 
 ## Requirements
@@ -65,9 +66,10 @@ SmartZoom after editing.
   ],
   "Routing": {
     "BrowserProcesses": ["chrome", "msedge", "brave", "opera", "vivaldi", "firefox"],
-    "CtrlWheelProcesses": ["i_view64", "i_view32", "EXCEL"],
+    "CtrlWheelProcesses": ["i_view64", "i_view32"],
     "KeyProcesses": ["Acrobat", "AcroRd32", "SumatraPDF"],
     "WordProcesses": ["WINWORD"],
+    "ExcelProcesses": ["EXCEL"],
     "PowerPointProcesses": ["POWERPNT"],
     "Overrides": { "EXCEL": "None" } // per-process override; wins over the lists
   },
@@ -190,6 +192,9 @@ depending on which window is focused.
 - Word smart zoom changes the document zoom level in steps, so the motion is not as fluid as the
   browsers' pinch: Word re-lays out the page at every level. Word's own status-bar zoom slider shows
   the change and the value returns to the original on the second trigger.
+- Excel smart zoom jumps straight to the fitting zoom rather than animating, because Excel reports a
+  fitting zoom only by performing one. An empty cell with no data around it is not a block, so a
+  trigger there does nothing.
 
 ## Roadmap
 
@@ -198,7 +203,7 @@ depending on which window is focused.
 2½. ✅ **M2.5** Keyboard hotkeys and multiple simultaneous triggers
 3. ✅ **M3** Native smart zoom in Chromium browsers (accessibility hit-test + touch pinch)
 4. 🔧 **M4** Firefox ✅, per-user installer
-5. 🔧 **M5** Office and PDF readers: Word ✅, Acrobat ✅, Excel, PowerPoint
+5. 🔧 **M5** Office and PDF readers: Word ✅, Acrobat ✅, Excel ✅, PowerPoint
 6. **M6** Settings UI, live reload, multi-monitor and mixed-DPI polish
 
 ## License

@@ -135,6 +135,11 @@ internal static class Program
             sp.GetRequiredService<SmartZoomSettings>().Zoom,
             sp.GetRequiredService<TimeProvider>(),
             sp.GetRequiredService<ILogger<WordComAdapter>>()));
+        builder.Services.AddSingleton<IExcelAutomation, ExcelAutomation>();
+        builder.Services.AddSingleton<IZoomAdapter>(sp => new ExcelComAdapter(
+            sp.GetRequiredService<IExcelAutomation>(),
+            sp.GetRequiredService<SmartZoomSettings>().Zoom,
+            sp.GetRequiredService<ILogger<ExcelComAdapter>>()));
         builder.Services.AddSingleton<WindowZoomStateStore>();
         builder.Services.AddSingleton(sp => new ZoomCoordinator(
             sp.GetRequiredService<ZoomRouter>(),
