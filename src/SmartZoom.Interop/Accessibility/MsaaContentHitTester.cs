@@ -73,6 +73,7 @@ public sealed partial class MsaaContentHitTester(ILogger<MsaaContentHitTester> l
             if (root is null)
                 return null;
 
+
             // Where to ask the tree about; differs from the cursor only while the tree reports a stale page zoom.
             var query = point;
 
@@ -80,6 +81,8 @@ public sealed partial class MsaaContentHitTester(ILogger<MsaaContentHitTester> l
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
+                try
+                {
                 // accHitTest sometimes stops at the document even when the tree is awake (points between
                 // elements, some layouts); walking the children by rectangle finds the enclosing block then.
                 var chain = BuildChain(DeepenByBounds(Descend(root, query), query));
@@ -140,6 +143,23 @@ public sealed partial class MsaaContentHitTester(ILogger<MsaaContentHitTester> l
                     Wake(root, point);
 
                 Thread.Sleep(HitTestRetryDelayMs);
+                }
+                catch (COMException ex) when (attempt < MaxHitTestAttempts)
+                {
+                    // A browser whose accessibility tree is still being built answers with an error rather than
+                    // an empty tree, and the user's very first press paid for it. Forget the root, take another
+                    // handshake and keep trying; only the last attempt gives up.
+                    LogComRetry(ex, target.ProcessName);
+                    _roots.TryRemove(render, out _);
+                    Thread.Sleep(HitTestRetryDelayMs);
+
+                    var reacquired = GetRoot(render, point, wake: !gecko);
+                    if (reacquired is null)
+                        return null;
+
+                    root = reacquired;
+                    query = point;
+                }
             }
         }
         catch (COMException ex)
@@ -423,6 +443,9 @@ public sealed partial class MsaaContentHitTester(ILogger<MsaaContentHitTester> l
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "The accessibility tree of {Process} still reports the page pinch-zoomed x{Scale:F3}; translating its coordinates.")]
     private partial void LogStaleZoom(string? process, double scale);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Accessibility call failed in {Process}; re-acquiring the tree and trying again.")]
+    private partial void LogComRetry(Exception error, string? process);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Accessibility call failed in {Process}; dropping the cached root.")]
     private partial void LogComFailure(Exception exception, string? process);
