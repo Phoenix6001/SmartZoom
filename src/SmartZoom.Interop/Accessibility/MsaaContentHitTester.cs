@@ -73,7 +73,6 @@ public sealed partial class MsaaContentHitTester(ILogger<MsaaContentHitTester> l
             if (root is null)
                 return null;
 
-
             // Where to ask the tree about; differs from the cursor only while the tree reports a stale page zoom.
             var query = point;
 
@@ -83,66 +82,66 @@ public sealed partial class MsaaContentHitTester(ILogger<MsaaContentHitTester> l
 
                 try
                 {
-                // accHitTest sometimes stops at the document even when the tree is awake (points between
-                // elements, some layouts); walking the children by rectangle finds the enclosing block then.
-                var chain = BuildChain(DeepenByBounds(Descend(root, query), query));
-                var document = chain.FirstOrDefault(n => n.Role == ContentRole.Document);
+                    // accHitTest sometimes stops at the document even when the tree is awake (points between
+                    // elements, some layouts); walking the children by rectangle finds the enclosing block then.
+                    var chain = BuildChain(DeepenByBounds(Descend(root, query), query));
+                    var document = chain.FirstOrDefault(n => n.Role == ContentRole.Document);
 
-                // A Chromium tree left at the scale of an earlier pinch answers in its own, zoomed coordinates
-                // (see StalePageZoom): ask again where it believes the cursor is, then translate its answer back.
-                var stale = document is null || gecko ? null : StalePageZoom.Detect(document.Bounds, WindowRect(render, document.Bounds));
-                var expectedQuery = stale?.ToReported(point) ?? point;
-                if (expectedQuery != query && attempt < MaxHitTestAttempts)
-                {
-                    query = expectedQuery;
-                    continue;
-                }
+                    // A Chromium tree left at the scale of an earlier pinch answers in its own, zoomed coordinates
+                    // (see StalePageZoom): ask again where it believes the cursor is, then translate its answer back.
+                    var stale = document is null || gecko ? null : StalePageZoom.Detect(document.Bounds, WindowRect(render, document.Bounds));
+                    var expectedQuery = stale?.ToReported(point) ?? point;
+                    if (expectedQuery != query && attempt < MaxHitTestAttempts)
+                    {
+                        query = expectedQuery;
+                        continue;
+                    }
 
-                if (stale is { } zoom)
-                {
-                    LogStaleZoom(target.ProcessName, zoom.Scale);
-                    chain = [.. chain.Select(n => n with { Bounds = zoom.ToActual(n.Bounds) })];
-                    document = chain.First(n => n.Role == ContentRole.Document);
-                }
+                    if (stale is { } zoom)
+                    {
+                        LogStaleZoom(target.ProcessName, zoom.Scale);
+                        chain = [.. chain.Select(n => n with { Bounds = zoom.ToActual(n.Bounds) })];
+                        document = chain.First(n => n.Role == ContentRole.Document);
+                    }
 
-                // Anything narrower than the document means we're inside real content. Right after the
-                // wake-up the path may instead end above the document or stop at a page-wide placeholder,
-                // because the renderer serializes the tree asynchronously; give it a few frames.
-                if (document is not null && chain.Any(n => n.Bounds.Width < document.Bounds.Width))
-                {
-                    // The hit-test itself is fresh, but reported rectangles lag behind scrolling. A leaf whose
-                    // rectangle doesn't contain the point is stale: keep asking until the tree has caught up.
-                    if (chain[0].Bounds.Contains(point))
-                        return new ContentHit(chain, Viewport(document.Bounds, render));
+                    // Anything narrower than the document means we're inside real content. Right after the
+                    // wake-up the path may instead end above the document or stop at a page-wide placeholder,
+                    // because the renderer serializes the tree asynchronously; give it a few frames.
+                    if (document is not null && chain.Any(n => n.Bounds.Width < document.Bounds.Width))
+                    {
+                        // The hit-test itself is fresh, but reported rectangles lag behind scrolling. A leaf whose
+                        // rectangle doesn't contain the point is stale: keep asking until the tree has caught up.
+                        if (chain[0].Bounds.Contains(point))
+                            return new ContentHit(chain, Viewport(document.Bounds, render));
+
+                        if (attempt == MaxHitTestAttempts)
+                        {
+                            LogStaleBounds(target.ProcessName, chain[0].Bounds.Left, chain[0].Bounds.Top, point.X, point.Y);
+                            return null;
+                        }
+
+                        Thread.Sleep(HitTestRetryDelayMs);
+                        continue;
+                    }
 
                     if (attempt == MaxHitTestAttempts)
                     {
-                        LogStaleBounds(target.ProcessName, chain[0].Bounds.Left, chain[0].Bounds.Top, point.X, point.Y);
-                        return null;
+                        // Nothing usable after ~600 ms: forget this root so the next trigger re-acquires and re-wakes it.
+                        _roots.TryRemove(render, out _);
+                        if (document is null)
+                        {
+                            LogNoDocument(target.ProcessName);
+                            return null;
+                        }
+
+                        return new ContentHit(chain, Viewport(document.Bounds, render));
                     }
+
+                    // A single handshake right after the window appeared can be too early; nudging again is cheap.
+                    if (!gecko)
+                        Wake(root, point);
 
                     Thread.Sleep(HitTestRetryDelayMs);
-                    continue;
-                }
-
-                if (attempt == MaxHitTestAttempts)
-                {
-                    // Nothing usable after ~600 ms: forget this root so the next trigger re-acquires and re-wakes it.
-                    _roots.TryRemove(render, out _);
-                    if (document is null)
-                    {
-                        LogNoDocument(target.ProcessName);
-                        return null;
-                    }
-
-                    return new ContentHit(chain, Viewport(document.Bounds, render));
-                }
-
-                // A single handshake right after the window appeared can be too early; nudging again is cheap.
-                if (!gecko)
-                    Wake(root, point);
-
-                Thread.Sleep(HitTestRetryDelayMs);
                 }
                 catch (COMException ex) when (attempt < MaxHitTestAttempts)
                 {

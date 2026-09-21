@@ -12,15 +12,14 @@ and routes it to a per-application zoom strategy:
 | Chrome, Edge, Brave, Opera, Vivaldi (any Chromium browser) | Native smart zoom: finds the paragraph/image under the cursor through the browser's accessibility tree and pinch-zooms it to fill the window — no extension needed | Element-aware, visual zoom (no reflow), exact restore |
 | Firefox | Native smart zoom, the same way: the block under the cursor comes from Firefox's accessibility tree and is pinch-zoomed through a synthetic touch device that Firefox accepts as a touch screen | Element-aware, visual zoom (no reflow), exact restore |
 | Word | Smart zoom through Word's object model: the paragraph, table or picture under the cursor is zoomed to fill the document pane; the previous zoom and scroll position are restored exactly | Element-aware, exact restore |
-| Excel | Smart zoom through Excel's object model: the block of data under the cursor — the surrounding island of filled cells, or the cells a chart or picture covers — is zoomed to fill the worksheet pane and scrolled to the top left | Element-aware, exact restore |
+| Excel | Smart zoom through Excel's object model: the block of data under the cursor — the surrounding island of filled cells, or the cells a chart or picture covers — is zoomed to fill the worksheet pane, and the view is scrolled to the row you pointed at | Element-aware, exact restore |
 | PowerPoint | Office object model (COM), planned | — |
-| Acrobat, Acrobat Reader, SumatraPDF | The reader's own shortcuts: the first press fits the page to the window width (Ctrl+2), the second shows the whole page again (Ctrl+0) | Exact, never drifts |
+| Acrobat, Acrobat Reader, SumatraPDF | An animated pinch around the cursor, the same gesture the browsers get: what you pointed at stays where it is and grows. The second press animates the magnification away and lands on the reader's own "fit page" | Animated, follows the cursor, never drifts |
 | Image viewers | Synthesized Ctrl+wheel centered on the cursor | Approximate |
 | Everything else | Ignored | — |
 
-> **Status:** early development. Smart zoom works in Chromium browsers, Firefox, Word and Excel; Acrobat and
-> Sumatra toggle between fit width and fit page; Ctrl+wheel zoom with toggle-back works for the configured image
-> apps; PowerPoint is next.
+> **Status:** early development. Smart zoom works in Chromium browsers, Firefox, Word, Excel and PDF readers;
+> Ctrl+wheel zoom with toggle-back works for the configured image apps; PowerPoint is next.
 > See [Roadmap](#roadmap).
 
 ## Requirements
@@ -79,7 +78,15 @@ SmartZoom after editing.
     "Animate": true,
     "FallbackToCtrlWheel": true,   // use Ctrl+wheel when a richer adapter can't act
     "CtrlWheel": { "Ticks": 6, "IntervalMs": 20 },
-    "Keys": { "ZoomInKeys": "Ctrl+2", "ZoomOutKeys": "Ctrl+0" },   // shortcuts for the KeyProcesses
+    "Reader": {                            // the KeyProcesses: PDF readers
+      "Gesture": true,                     // animated pinch around the cursor
+      "Scale": 2.0,                        // how much it magnifies
+      "AnimationMs": 300,
+      "ZoomInKeys": "Ctrl+2",              // with "Gesture": false, fit width instead
+      "ZoomOutKeys": "Ctrl+0",             // the zoom the second press lands on
+      "FollowCursor": true,                // ... scrolling what you pointed at to the top first
+      "MarginPx": 16
+    },
     "Browser": {
       "MarginPx": 16,              // space between the zoomed block and the window edge
       "AnimationMs": 280,          // zoom gesture length when Animate is on
@@ -195,6 +202,22 @@ depending on which window is focused.
 - Excel smart zoom jumps straight to the fitting zoom rather than animating, because Excel reports a
   fitting zoom only by performing one. An empty cell with no data around it is not a block, so a
   trigger there does nothing.
+- The pinch in a PDF reader magnifies by a fixed amount rather than fitting the page to the window:
+  readers do not say how big the page is, and the gesture is aimed, not computed. Raise or lower
+  `Zoom.Reader.Scale` to taste.
+- The second press in a PDF reader ends on the reader's own "fit page", not on whatever zoom you had
+  before. Windows' gesture recognizer keeps back a share of a closing pinch, and how much depends on
+  the zoom it starts from, so an inverse gesture alone left the reader about 2 % smaller every time
+  and compounded (measured in Acrobat at the default x2: in x1.92, out x0.512). Naming a state
+  instead of reversing a change is what makes the second press exact however many times it is
+  pressed. The view comes back within about a line of text, and the first gesture also switches
+  Acrobat into its touch mode, which widens its toolbars once and shifts the page slightly.
+- A reader that ignores touch should have `Zoom.Reader.Gesture` set to false. SmartZoom then uses the
+  reader's own fit-width and fit-page shortcuts, which are exact but jump rather than animate, and
+  scrolls the block under the cursor to the top first. That scroll is measured from the screen,
+  because readers expose no scroll position; on a page it cannot read — a blank area, or one whose
+  lines are too even to tell apart — it assumes the scroll went as asked, and the return may then be
+  out by the difference.
 
 ## Roadmap
 

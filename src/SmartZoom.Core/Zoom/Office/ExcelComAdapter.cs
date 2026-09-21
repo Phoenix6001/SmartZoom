@@ -22,6 +22,9 @@ public sealed partial class ExcelComAdapter : IZoomAdapter
     private const int MinExcelZoom = 10;
     private const int MaxExcelZoom = 400;
 
+    /// <summary>Rows kept above the cell under the cursor, so it does not sit against the top of the pane.</summary>
+    private const int ContextRows = 2;
+
     private readonly IExcelAutomation _excel;
     private readonly double _minScale;
     private readonly double _maxScale;
@@ -84,7 +87,11 @@ public sealed partial class ExcelComAdapter : IZoomAdapter
             if (targetZoom != block.FitZoomPercent)
                 window.SetZoom(targetZoom);
 
-            window.ScrollTo(block.Row, block.Column);
+            // Scroll to the cursor's own row, not the top of the block: a table taller than the pane would
+            // otherwise magnify the cell that was asked about and then leave it below the bottom of the window.
+            // The column is the block's, because fitting the width already brings the whole of it into view.
+            var row = Math.Max(block.Row, block.CursorRow - ContextRows);
+            window.ScrollTo(row, block.Column);
             LogPlan(block.Rows, block.Columns, before.ZoomPercent, targetZoom);
             return ZoomInResult.Applied(before);
         }

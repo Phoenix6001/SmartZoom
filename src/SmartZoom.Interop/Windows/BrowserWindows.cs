@@ -18,13 +18,25 @@ internal static class BrowserWindows
     public static bool IsGecko(string className) => string.Equals(className, GeckoWindowClass, StringComparison.Ordinal);
 
     /// <summary>Whether the top-level window under a screen point belongs to Gecko (Firefox).</summary>
-    public static bool IsGeckoWindowAt(ScreenPoint point)
+    public static bool IsGeckoWindowAt(ScreenPoint point) => IsGecko(RootClassAt(point));
+
+    /// <summary>Whether the window under a screen point renders web content with Chromium.</summary>
+    public static bool IsChromiumWindowAt(ScreenPoint point)
     {
-        var window = PInvoke.WindowFromPoint(new System.Drawing.Point(point.X, point.Y));
+        var window = WindowInspector.WindowAt(point);
+        return !window.IsNull && string.Equals(WindowInspector.GetClassName(window), ChromiumRenderWindowClass, StringComparison.Ordinal);
+    }
+
+    // The same lookup the trigger used, decorations and all: asking the raw hit-test again would let a 5 px
+    // window parked over a browser decide that the browser is not one, and the gesture would be tuned for the
+    // wrong recognizer.
+    private static string RootClassAt(ScreenPoint point)
+    {
+        var window = WindowInspector.WindowAt(point);
         if (window.IsNull)
-            return false;
+            return string.Empty;
 
         var root = PInvoke.GetAncestor(window, GET_ANCESTOR_FLAGS.GA_ROOT);
-        return IsGecko(WindowInspector.GetClassName(root.IsNull ? window : root));
+        return WindowInspector.GetClassName(root.IsNull ? window : root);
     }
 }

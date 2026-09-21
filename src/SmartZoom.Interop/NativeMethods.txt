@@ -46,3 +46,8 @@ GetWindowRect
 SetForegroundWindow
 GetForegroundWindow
 AttachThreadInput
+GetWindowLong
+GetWindow
+IsWindowVisible
+ChildWindowFromPointEx
+ScreenToClient

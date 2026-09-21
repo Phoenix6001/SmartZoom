@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Logging;
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
@@ -10,6 +11,11 @@ namespace SmartZoom.Core.Zoom;
 /// back. Made for document readers with "fit width" and "fit page" commands (Acrobat, Sumatra), where the
 /// first press makes the page fill the window and the second shows the whole page again, the way a reader
 /// is usually left. Both states are exact and never drift, unlike wheel ticks.
+///
+/// The shortcut alone ignores the cursor, so the reader decides what you end up looking at. Given a scroller,
+/// the adapter first brings the content under the cursor to the top of the window: readers keep the top of the
+/// view when the zoom changes, so what you pointed at is what fills the window. The second press undoes the
+/// zoom and then the scroll, by the distance the view was measured to have moved.
 /// </summary>
 /// <remarks>
 /// Shortcuts go to the window with keyboard focus, so the target is brought to the foreground first; the
@@ -44,6 +50,13 @@ public sealed partial class KeyZoomAdapter : IZoomAdapter
 
     private readonly IInputInjector _injector;
     private readonly IWindowActivator _activator;
+    private readonly IReaderView? _view;
+    private readonly IPinchInjector? _pinch;
+    private readonly bool _gesture;
+    private readonly double _scale;
+    private readonly TimeSpan _animation;
+    private readonly bool _followCursor;
+    private readonly int _margin;
     private readonly KeyCombo _zoomIn;
     private readonly KeyCombo _zoomOut;
     private readonly TimeProvider _time;
@@ -53,18 +66,28 @@ public sealed partial class KeyZoomAdapter : IZoomAdapter
     /// <summary>Creates the adapter.</summary>
     /// <param name="injector">Sends the key combinations.</param>
     /// <param name="activator">Gives the target window keyboard focus.</param>
-    /// <param name="settings">Which shortcuts to send.</param>
+    /// <param name="view">The reader's content area and scrolling. Null leaves the framing to the reader.</param>
+    /// <param name="pinch">Performs the gesture. Null falls back to the shortcuts.</param>
+    /// <param name="settings">How to zoom the reader.</param>
+    /// <param name="animation">How long the gesture takes.</param>
     /// <param name="time">Clock for the modifier-release wait.</param>
     /// <param name="logger">Logger.</param>
-    public KeyZoomAdapter(IInputInjector injector, IWindowActivator activator, KeyZoomSettings settings, TimeProvider time, ILogger<KeyZoomAdapter> logger)
-        : this(injector, activator, settings, time, logger, ModifierReleaseTimeout)
+    public KeyZoomAdapter(IInputInjector injector, IWindowActivator activator, IReaderView? view, IPinchInjector? pinch, ReaderZoomSettings settings, TimeSpan animation, TimeProvider time, ILogger<KeyZoomAdapter> logger)
+        : this(injector, activator, view, pinch, settings, animation, time, logger, ModifierReleaseTimeout)
     {
     }
 
-    internal KeyZoomAdapter(IInputInjector injector, IWindowActivator activator, KeyZoomSettings settings, TimeProvider time, ILogger<KeyZoomAdapter> logger, TimeSpan modifierReleaseTimeout)
+    internal KeyZoomAdapter(IInputInjector injector, IWindowActivator activator, IReaderView? view, IPinchInjector? pinch, ReaderZoomSettings settings, TimeSpan animation, TimeProvider time, ILogger<KeyZoomAdapter> logger, TimeSpan modifierReleaseTimeout)
     {
         ArgumentNullException.ThrowIfNull(settings);
         _modifierReleaseTimeout = modifierReleaseTimeout;
+        _view = view;
+        _pinch = pinch;
+        _gesture = settings.Gesture;
+        _scale = settings.Scale;
+        _animation = animation;
+        _followCursor = settings.FollowCursor;
+        _margin = settings.MarginPx;
 
         _injector = injector ?? throw new ArgumentNullException(nameof(injector));
         _activator = activator ?? throw new ArgumentNullException(nameof(activator));
@@ -81,21 +104,149 @@ public sealed partial class KeyZoomAdapter : IZoomAdapter
     public async Task<ZoomInResult> ZoomInAsync(TargetInfo target, ScreenPoint point, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(target);
-        var sent = await SendAsync(target, _zoomIn, cancellationToken).ConfigureAwait(false);
-        return sent ? ZoomInResult.Applied(RestoreState.Instance) : ZoomInResult.Unhandled;
+
+        if (Gesturing(out var pinch, out var view))
+            return await PinchInAsync(target, point, pinch, view, cancellationToken).ConfigureAwait(false);
+
+        // Scrolling before the shortcut, while the page is still small, keeps the arithmetic out of this: the
+        // reader holds the top of the view across a zoom change, so whatever is at the top stays there and
+        // simply grows. It waits for the window and the keyboard along with the shortcut, because a wheel turn
+        // with the trigger's Control key still down is not a scroll to a reader, it is a zoom.
+        var scrolled = 0;
+        var sent = await SendAsync(
+            target,
+            _zoomIn,
+            prepare: () => scrolled = BringToTop(target, point, cancellationToken),
+            finish: null,
+            cancellationToken).ConfigureAwait(false);
+
+        if (sent)
+            return ZoomInResult.Applied(RestoreState.Scrolled(scrolled));
+
+        if (scrolled != 0)
+            Scroll(target, -scrolled, cancellationToken);
+
+        return ZoomInResult.Unhandled;
     }
 
     /// <inheritdoc />
     public async Task ZoomOutAsync(TargetInfo target, object restoreState, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(target);
-        if (restoreState is not RestoreState)
+        if (restoreState is not RestoreState state)
             throw new ArgumentException($"Expected {nameof(RestoreState)} from a previous zoom-in.", nameof(restoreState));
 
-        await SendAsync(target, _zoomOut, cancellationToken).ConfigureAwait(false);
+        if (state.Anchor is { } anchor && Gesturing(out var pinch, out var view))
+        {
+            await PinchOutAsync(target, anchor, state, pinch, view, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        // The zoom first, then the scroll: the reader anchors the top of the view, so undoing them in the other
+        // order would scroll at the wrong scale. Both happen while the reader still has the foreground, or the
+        // wheel would land on whatever window comes back to the front.
+        await SendAsync(
+            target,
+            _zoomOut,
+            prepare: null,
+            finish: () =>
+            {
+                if (state.ScrolledPixels != 0)
+                    Scroll(target, -state.ScrolledPixels, cancellationToken);
+            },
+            cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<bool> SendAsync(TargetInfo target, KeyCombo combo, CancellationToken cancellationToken)
+    /// <summary>Whether this press should be a gesture: configured, possible, and worth doing.</summary>
+    private bool Gesturing([NotNullWhen(true)] out IPinchInjector? pinch, [NotNullWhen(true)] out IReaderView? view)
+    {
+        pinch = _pinch;
+        view = _view;
+        return _gesture && pinch is not null && view is not null && _scale > 1;
+    }
+
+    /// <summary>Magnifies around the cursor with a gesture, the way a browser is zoomed.</summary>
+    private async Task<ZoomInResult> PinchInAsync(TargetInfo target, ScreenPoint point, IPinchInjector pinch, IReaderView view, CancellationToken cancellationToken)
+    {
+        if (view.Bounds(target) is not { } bounds || !bounds.Contains(point))
+        {
+            LogNoContentArea(target.ProcessName);
+            return ZoomInResult.Unhandled;
+        }
+
+        // Where the view sits now, so the gesture's own imprecision can be taken out on the way back.
+        var mark = view.Snapshot(target);
+
+        LogPinching(target.ProcessName, _scale, point.X, point.Y);
+        if (!await pinch.PinchAsync(point, _scale, _animation, bounds, cancellationToken).ConfigureAwait(false))
+        {
+            LogGestureRejected(target.ProcessName);
+            return ZoomInResult.Unhandled;
+        }
+
+        return ZoomInResult.Applied(RestoreState.Pinched(point, mark));
+    }
+
+    /// <summary>Animates the magnification away, then lands on the zoom the reader itself defines.</summary>
+    /// <remarks>
+    /// The gesture is for the eye, not for the arithmetic: Windows' recognizer keeps back a share of a closing
+    /// pinch, so an inverse gesture alone leaves the reader a couple of percent smaller every time, and it
+    /// compounds. The shortcut afterwards is what makes the second press exact, and because it names a state
+    /// rather than a change, the reader can never drift however many times it is pressed.
+    /// </remarks>
+    private async Task PinchOutAsync(TargetInfo target, ScreenPoint anchor, RestoreState state, IPinchInjector pinch, IReaderView view, CancellationToken cancellationToken)
+    {
+        if (view.Bounds(target) is { } bounds)
+        {
+            var back = Math.Clamp(anchor.X, bounds.Left, bounds.Right - 1);
+            var down = Math.Clamp(anchor.Y, bounds.Top, bounds.Bottom - 1);
+            if (!await pinch.PinchAsync(new ScreenPoint(back, down), 1 / _scale, _animation, bounds, cancellationToken).ConfigureAwait(false))
+                LogGestureRejected(target.ProcessName);
+        }
+
+        var landed = await SendAsync(
+            target,
+            _zoomOut,
+            prepare: null,
+            // The reader's zoom command also moves the view; where it came from is what the mark remembers.
+            finish: () =>
+            {
+                if (state.Mark is { } mark && !view.ScrollBackTo(target, mark, cancellationToken))
+                    LogNotAligned(target.ProcessName);
+            },
+            cancellationToken).ConfigureAwait(false);
+
+        // The gesture alone does not quite undo its opposite, so without the shortcut the reader is left a
+        // little smaller than it was. Nothing can be done about it here, but it should not pass in silence.
+        if (!landed)
+            LogNotLanded(target.ProcessName);
+    }
+
+    /// <summary>Scrolls the content under the cursor to the top of the reader; returns how far the view moved.</summary>
+    private int BringToTop(TargetInfo target, ScreenPoint point, CancellationToken cancellationToken)
+    {
+        if (!_followCursor || _view is null || _view.Bounds(target) is not { } bounds || !bounds.Contains(point))
+            return 0;
+
+        var below = point.Y - bounds.Top;
+        if (below <= _margin)
+            return 0;
+
+        var moved = Scroll(target, below - _margin, cancellationToken);
+        LogFollowed(target.ProcessName, below - _margin, moved);
+        return moved;
+    }
+
+    private int Scroll(TargetInfo target, int pixels, CancellationToken cancellationToken) =>
+        _view is null ? 0 : _view.ScrollBy(target, pixels, cancellationToken);
+
+    /// <summary>Brings the reader to the front, sends a shortcut once the keyboard is free, and hands the front back.</summary>
+    /// <param name="target">The reader window.</param>
+    /// <param name="combo">The shortcut to send.</param>
+    /// <param name="prepare">Runs after the trigger's modifiers are released and before the shortcut goes out.</param>
+    /// <param name="finish">Runs after the shortcut, while the reader is still the foreground window.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    private async Task<bool> SendAsync(TargetInfo target, KeyCombo combo, Action? prepare, Action? finish, CancellationToken cancellationToken)
     {
         var previous = _activator.ForegroundWindow;
         if (!_activator.TryActivate(target.RootWindow))
@@ -106,7 +257,7 @@ public sealed partial class KeyZoomAdapter : IZoomAdapter
 
         try
         {
-            return await SendToForegroundAsync(target, combo, cancellationToken).ConfigureAwait(false);
+            return await SendToForegroundAsync(target, combo, prepare, finish, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -115,13 +266,25 @@ public sealed partial class KeyZoomAdapter : IZoomAdapter
         }
     }
 
-    private async Task<bool> SendToForegroundAsync(TargetInfo target, KeyCombo combo, CancellationToken cancellationToken)
+    private async Task<bool> SendToForegroundAsync(TargetInfo target, KeyCombo combo, Action? prepare, Action? finish, CancellationToken cancellationToken)
     {
         var held = await WaitForForeignModifiersAsync(combo.Modifiers, cancellationToken).ConfigureAwait(false);
         if ((held & ~combo.Modifiers) != 0)
         {
             var stuck = Describe(held & ~combo.Modifiers);
             LogStillHeld(stuck, _modifierReleaseTimeout, target.ProcessName);
+            return false;
+        }
+
+        prepare?.Invoke();
+
+        // The window was brought to the front before the wait for the user's modifiers, and a second and a
+        // half is long enough for something else to take it. These shortcuts are not harmless in the wrong
+        // application — Ctrl+0 hides the selected column in Excel — so the aim is checked again here, as late
+        // as possible, and the press is abandoned rather than sent somewhere it was never meant for.
+        if (_activator.ForegroundWindow != target.RootWindow)
+        {
+            LogFocusLost(target.ProcessName);
             return false;
         }
 
@@ -136,6 +299,7 @@ public sealed partial class KeyZoomAdapter : IZoomAdapter
 
         var keys = combo.ToString();
         LogSent(keys, target.ProcessName);
+        finish?.Invoke();
         return true;
     }
 
@@ -184,14 +348,15 @@ public sealed partial class KeyZoomAdapter : IZoomAdapter
         return held;
     }
 
-    /// <summary>Marker for the toggle memory; the adapter needs nothing to come back.</summary>
-    internal sealed class RestoreState
+    /// <summary>What the toggle memory holds, depending on how the zoom was done.</summary>
+    /// <param name="ScrolledPixels">Shortcut zoom: measured movement of the scroll that framed the cursor's content.</param>
+    /// <param name="Anchor">Gesture zoom: the point the gesture magnified around.</param>
+    /// <param name="Mark">Gesture zoom: how the view looked beforehand, for putting it back.</param>
+    internal sealed record RestoreState(int ScrolledPixels, ScreenPoint? Anchor, object? Mark)
     {
-        private RestoreState()
-        {
-        }
+        public static RestoreState Scrolled(int pixels) => new(pixels, null, null);
 
-        public static RestoreState Instance { get; } = new();
+        public static RestoreState Pinched(ScreenPoint anchor, object? mark) => new(0, anchor, mark);
     }
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Sent {Keys} to {Process}.")]
@@ -202,6 +367,27 @@ public sealed partial class KeyZoomAdapter : IZoomAdapter
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "The window that was in front before zooming {Process} could not be brought back; it stays behind.")]
     private partial void LogNotRestored(string? process);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Smart zoom ({Process}): pinching x{Scale} around ({X}, {Y}).")]
+    private partial void LogPinching(string? process, double scale, int x, int y);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The gesture was rejected in {Process}; nothing was zoomed.")]
+    private partial void LogGestureRejected(string? process);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Smart zoom unavailable: {Process} has no content area under the cursor. Nothing was zoomed.")]
+    private partial void LogNoContentArea(string? process);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{Process} did not take the zoom command after the gesture; it is left slightly smaller than it started.")]
+    private partial void LogNotLanded(string? process);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Could not read {Process} well enough to put the view back exactly after the gesture.")]
+    private partial void LogNotAligned(string? process);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Scrolled the cursor's content to the top of {Process}: asked for {Requested} px, the view moved {Moved} px.")]
+    private partial void LogFollowed(string? process, int requested, int moved);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{Process} is no longer the window in front; the shortcut was not sent, to keep it out of whatever is.")]
+    private partial void LogFocusLost(string? process);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Key injection was rejected for {Process}; is the window elevated?")]
     private partial void LogRejected(string? process);

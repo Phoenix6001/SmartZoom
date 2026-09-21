@@ -21,7 +21,7 @@ public sealed class ExcelComAdapterTests
     [Fact]
     public async Task Zoom_in_keeps_the_fitting_zoom_and_scrolls_the_block_to_the_top_left()
     {
-        _excel.Window.Block = new ExcelBlock(FitZoomPercent: 200, PaneWidthPx: 1000, Row: 3, Column: 1, Rows: 38, Columns: 10);
+        _excel.Window.Block = new ExcelBlock(FitZoomPercent: 200, PaneWidthPx: 1000, Row: 3, Column: 1, Rows: 38, Columns: 10, CursorRow: 3);
 
         var result = await Create().ZoomInAsync(Excel, Cursor, CancellationToken.None);
 
@@ -32,10 +32,31 @@ public sealed class ExcelComAdapterTests
     }
 
     [Fact]
+    public async Task The_view_is_scrolled_to_the_row_under_the_cursor_not_the_top_of_the_block()
+    {
+        // A table taller than the pane: magnifying row 36 and then showing row 3 would hide what was asked about.
+        _excel.Window.Block = new ExcelBlock(200, 1000, Row: 3, Column: 1, Rows: 38, Columns: 10, CursorRow: 36);
+
+        await Create().ZoomInAsync(Excel, Cursor, CancellationToken.None);
+
+        Assert.Equal((34, 1), _excel.Window.Scroll);       // two rows of context above the cursor's row
+    }
+
+    [Fact]
+    public async Task Framing_never_scrolls_above_the_block_itself()
+    {
+        _excel.Window.Block = new ExcelBlock(200, 1000, Row: 3, Column: 1, Rows: 38, Columns: 10, CursorRow: 4);
+
+        await Create().ZoomInAsync(Excel, Cursor, CancellationToken.None);
+
+        Assert.Equal((3, 1), _excel.Window.Scroll);
+    }
+
+    [Fact]
     public async Task Fitting_zoom_beyond_the_maximum_scale_is_clamped()
     {
         _excel.Window.State = new ExcelViewState(100, 1, 1);
-        _excel.Window.Block = new ExcelBlock(1200, 1000, 5, 2, 1, 1);
+        _excel.Window.Block = new ExcelBlock(1200, 1000, 5, 2, 1, 1, 5);
 
         await Create(maxScale: 3.0).ZoomInAsync(Excel, Cursor, CancellationToken.None);
 
@@ -46,7 +67,7 @@ public sealed class ExcelComAdapterTests
     public async Task Zoom_never_exceeds_what_Excel_accepts()
     {
         _excel.Window.State = new ExcelViewState(200, 1, 1);
-        _excel.Window.Block = new ExcelBlock(1200, 1000, 5, 2, 1, 1);
+        _excel.Window.Block = new ExcelBlock(1200, 1000, 5, 2, 1, 1, 5);
 
         await Create(maxScale: 8.0).ZoomInAsync(Excel, Cursor, CancellationToken.None);
 
@@ -56,7 +77,7 @@ public sealed class ExcelComAdapterTests
     [Fact]
     public async Task A_block_that_already_fills_the_pane_is_left_alone_and_the_view_put_back()
     {
-        _excel.Window.Block = new ExcelBlock(FitZoomPercent: 105, PaneWidthPx: 1000, Row: 3, Column: 1, Rows: 60, Columns: 20);
+        _excel.Window.Block = new ExcelBlock(FitZoomPercent: 105, PaneWidthPx: 1000, Row: 3, Column: 1, Rows: 60, Columns: 20, CursorRow: 3);
 
         var result = await Create(minScale: 1.1).ZoomInAsync(Excel, Cursor, CancellationToken.None);
 
@@ -88,7 +109,7 @@ public sealed class ExcelComAdapterTests
     public async Task Zoom_out_restores_the_captured_view()
     {
         var adapter = Create();
-        _excel.Window.Block = new ExcelBlock(200, 1000, 3, 1, 38, 10);
+        _excel.Window.Block = new ExcelBlock(200, 1000, 3, 1, 38, 10, 3);
         var result = await adapter.ZoomInAsync(Excel, Cursor, CancellationToken.None);
 
         await adapter.ZoomOutAsync(Excel, result.RestoreState!, CancellationToken.None);
@@ -104,7 +125,7 @@ public sealed class ExcelComAdapterTests
     [Fact]
     public async Task An_object_model_failure_puts_the_view_back()
     {
-        _excel.Window.Block = new ExcelBlock(200, 1000, 3, 1, 38, 10);
+        _excel.Window.Block = new ExcelBlock(200, 1000, 3, 1, 38, 10, 3);
         _excel.Window.FailScroll = true;
 
         var result = await Create().ZoomInAsync(Excel, Cursor, CancellationToken.None);

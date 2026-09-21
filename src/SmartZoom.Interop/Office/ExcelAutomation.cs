@@ -62,25 +62,15 @@ public sealed partial class ExcelAutomation(ILogger<ExcelAutomation> logger) : I
         if (target.HitClassName == GridClass)
             return new HWND(target.HitWindow);
 
-        return FindDescendant(new HWND(target.RootWindow), depth: 2);
-    }
-
-    // EXCEL7 sits under XLDESK, so one level of children is not enough.
-    private static HWND FindDescendant(HWND parent, int depth)
-    {
+        // EnumChildWindows walks the whole tree, which it needs to: EXCEL7 sits under XLDESK, not under the frame.
         var found = HWND.Null;
-        PInvoke.EnumChildWindows(parent, (child, _) =>
+        PInvoke.EnumChildWindows(new HWND(target.RootWindow), (child, _) =>
         {
-            if (WindowInspector.GetClassName(child) == GridClass)
-            {
-                found = child;
-                return false;
-            }
+            if (WindowInspector.GetClassName(child) != GridClass)
+                return true;
 
-            if (depth > 0)
-                found = FindDescendant(child, depth - 1);
-
-            return found.IsNull;
+            found = child;
+            return false;
         }, default);
 
         return found;
@@ -123,19 +113,26 @@ public sealed partial class ExcelAutomation(ILogger<ExcelAutomation> logger) : I
             var column = (int)cells.Column;
             var rows = (int)cells.Rows.Count;
             var columns = (int)cells.Columns.Count;
+            var cursorRow = CursorRow(hit, row);
 
             // Excel reports a fitting zoom only by performing one: "zoom to selection" on the block's first row
-            // fits its width, since a single row can never be the binding dimension. The selection is put back.
-            var selection = SelectionAddress(app);
-            dynamic firstRow = cells.Rows[1];
-            firstRow.Select();
-            w.Zoom = true;
-            var fit = (int)w.Zoom;
+            // fits its width, since a single row can never be the binding dimension. The user's selection is put
+            // back even if that fails half way, because losing it would be the most visible thing we ever did.
+            var selection = Selected(app);
+            int fit;
+            try
+            {
+                dynamic firstRow = cells.Rows[1];
+                firstRow.Select();
+                w.Zoom = true;
+                fit = (int)w.Zoom;
+            }
+            finally
+            {
+                Reselect(selection);
+            }
 
-            if (selection is not null)
-                app.Range(selection).Select();
-
-            return new ExcelBlock(fit, rect.right - rect.left, row, column, rows, columns);
+            return new ExcelBlock(fit, rect.right - rect.left, row, column, rows, columns, cursorRow);
         });
 
         public void SetZoom(int percent) => sta.Run(() =>
@@ -161,8 +158,10 @@ public sealed partial class ExcelAutomation(ILogger<ExcelAutomation> logger) : I
 
         public void Dispose() => sta.Run(() =>
         {
+            // One release for the one reference this object took; the runtime may be sharing the wrapper with
+            // another caller, and FinalReleaseComObject would pull it out from under them.
             if (Marshal.IsComObject(window))
-                Marshal.FinalReleaseComObject(window);
+                Marshal.ReleaseComObject(window);
         });
 
         // The reading unit under the cursor. Excel answers a point over a chart or picture with that object
@@ -210,12 +209,50 @@ public sealed partial class ExcelAutomation(ILogger<ExcelAutomation> logger) : I
             }
         }
 
-        // Null when the selection is not a range (a chart or shape is selected); it is then left alone.
-        private static string? SelectionAddress(dynamic app)
+        /// <summary>The row of the cell the cursor was over, or the block's first row for a chart or picture.</summary>
+        private static int CursorRow(object hit, int fallback)
+        {
+            dynamic cell = hit;
+            try
+            {
+                _ = cell.Address;
+                return (int)cell.Row;
+            }
+            catch (RuntimeBinderException)
+            {
+                return fallback;
+            }
+            catch (COMException)
+            {
+                return fallback;
+            }
+        }
+
+        /// <summary>Puts a remembered selection back; a selection that has become invalid is left alone.</summary>
+        private static void Reselect(object? selection)
+        {
+            if (selection is null)
+                return;
+
+            try
+            {
+                ((dynamic)selection).Select();
+            }
+            catch (RuntimeBinderException)
+            {
+            }
+            catch (COMException)
+            {
+            }
+        }
+
+        // Null when nothing usable is selected. The object is kept rather than its address: an address is only
+        // meaningful on the sheet it came from, and the selection may be a chart or a shape.
+        private static object? Selected(dynamic app)
         {
             try
             {
-                return (string)app.Selection.Address;
+                return (object)app.Selection;
             }
             catch (RuntimeBinderException)
             {

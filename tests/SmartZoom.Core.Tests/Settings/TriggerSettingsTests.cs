@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Serialization;
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Settings;
@@ -80,6 +80,50 @@ public sealed class TriggerSettingsTests
         Assert.True(settings.Migrate());
         var trigger = Assert.Single(settings.Triggers);
         Assert.Equal("F9", trigger.Keys);
+    }
+
+    [Fact]
+    public void The_old_Keys_section_becomes_the_Reader_section()
+    {
+        const string legacy = """
+            { "Zoom": { "Keys": { "Scale": 2.5, "ZoomOutKeys": "Ctrl+1" } } }
+            """;
+
+        var settings = JsonSerializer.Deserialize<SmartZoomSettings>(legacy, Json)!;
+
+        Assert.True(settings.Migrate());
+        Assert.Null(settings.Zoom.Keys);
+        Assert.Equal(2.5, settings.Zoom.Reader.Scale);
+        Assert.Equal("Ctrl+1", settings.Zoom.Reader.ZoomOutKeys);
+        Assert.DoesNotContain("\"Keys\": {", JsonSerializer.Serialize(settings, Json), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_file_with_both_sections_keeps_the_newer_one()
+    {
+        const string both = """
+            { "Zoom": { "Keys": { "Scale": 2.5 }, "Reader": { "Scale": 1.4, "Gesture": false } } }
+            """;
+
+        var settings = JsonSerializer.Deserialize<SmartZoomSettings>(both, Json)!;
+
+        Assert.True(settings.Migrate());
+        Assert.Null(settings.Zoom.Keys);
+        Assert.Equal(1.4, settings.Zoom.Reader.Scale);
+        Assert.False(settings.Zoom.Reader.Gesture);
+    }
+
+    [Fact]
+    public void A_file_that_already_uses_the_Reader_section_is_left_alone()
+    {
+        const string current = """
+            { "Zoom": { "Reader": { "Scale": 1.5 } } }
+            """;
+
+        var settings = JsonSerializer.Deserialize<SmartZoomSettings>(current, Json)!;
+
+        Assert.False(settings.Migrate());
+        Assert.Equal(1.5, settings.Zoom.Reader.Scale);
     }
 
     [Fact]

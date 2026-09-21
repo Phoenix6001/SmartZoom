@@ -21,17 +21,7 @@ public sealed class SendInputInjector : IInputInjector
     }
 
     /// <inheritdoc />
-    public unsafe bool TrySendWheel(int ticks)
-    {
-        var input = new INPUT { type = INPUT_TYPE.INPUT_MOUSE };
-        input.mi.dwFlags = MOUSE_EVENT_FLAGS.MOUSEEVENTF_WHEEL;
-
-        // mouseData is documented as a signed delta stored in a DWORD; a negative value scrolls down.
-        input.mi.mouseData = unchecked((uint)(ticks * (int)PInvoke.WHEEL_DELTA));
-        input.mi.dwExtraInfo = InputInjection.Tag;
-
-        return PInvoke.SendInput(new ReadOnlySpan<INPUT>(in input), sizeof(INPUT)) == 1;
-    }
+    public bool TrySendWheel(int ticks) => InputInjection.TrySendWheel(ticks, out _);
 
     /// <summary>How long the key is held. Some apps (Acrobat) ignore a press and release that arrive in the same batch.</summary>
     private static readonly TimeSpan KeyHold = TimeSpan.FromMilliseconds(30);

@@ -16,7 +16,8 @@ public readonly record struct ExcelViewState(int ZoomPercent, int ScrollRow, int
 /// <param name="Column">Left column of the block (1-based).</param>
 /// <param name="Rows">How many rows the block spans.</param>
 /// <param name="Columns">How many columns the block spans.</param>
-public readonly record struct ExcelBlock(int FitZoomPercent, int PaneWidthPx, int Row, int Column, int Rows, int Columns);
+/// <param name="CursorRow">Row of the cell under the cursor, which is what the reader wanted to look at.</param>
+public readonly record struct ExcelBlock(int FitZoomPercent, int PaneWidthPx, int Row, int Column, int Rows, int Columns, int CursorRow);
 
 /// <summary>An Excel worksheet window that SmartZoom is attached to.</summary>
 /// <remarks>

@@ -60,6 +60,16 @@ public sealed partial class TouchPinchInjector(ILogger<TouchPinchInjector> logge
     /// <summary>Gecko's touch-start tolerance (<c>apz.touch_start_tolerance</c>): 0.1 inch, i.e. 9.6 DIP.</summary>
     private const double GeckoTouchSlopDips = 9.6;
 
+    /// <summary>
+    /// Windows' own gesture recognizer, which every application that does not handle raw touch itself is left
+    /// with (PDF readers among them). It asks for far less movement before it calls a gesture a pinch than a
+    /// browser's own recognizer does: 6 DIP of span, measured in Acrobat.
+    /// </summary>
+    private const double RecognizerSpanSlopDips = 6;
+
+    /// <summary>The same recognizer's threshold for a one-finger drag.</summary>
+    private const double RecognizerTouchSlopDips = 0;
+
     // Target frame interval. 8 ms feeds 120 Hz displays and halves the step size on 60 Hz ones.
     private const int FrameMs = 8;
     private const int PanDurationMs = 140;
@@ -75,11 +85,17 @@ public sealed partial class TouchPinchInjector(ILogger<TouchPinchInjector> logge
     private static DestroySyntheticPointerDeviceSafeHandle? s_syntheticDevice;
     private static bool s_syntheticDeviceFailed;
 
-    /// <summary>The browser engine behind the window being pinched; decides the injection device and the recognizer slop.</summary>
+    /// <summary>Which recognizer turns the injected contacts into a zoom; they differ in how much movement they want.</summary>
     private enum Engine
     {
+        /// <summary>Chromium's own touch handling.</summary>
         Chromium,
+
+        /// <summary>Gecko's, which needs a different injection device as well.</summary>
         Gecko,
+
+        /// <summary>Windows' gesture recognizer, used by everything else, PDF readers included.</summary>
+        Windows,
     }
 
     /// <inheritdoc />
@@ -93,7 +109,7 @@ public sealed partial class TouchPinchInjector(ILogger<TouchPinchInjector> logge
 
     private bool Pinch(ScreenPoint anchor, double factor, TimeSpan duration, PixelRect bounds, CancellationToken cancellationToken)
     {
-        var engine = BrowserWindows.IsGeckoWindowAt(anchor) ? Engine.Gecko : Engine.Chromium;
+        var engine = Recognize(anchor);
         if (!EnsureDevice(engine))
             return false;
 
@@ -158,18 +174,42 @@ public sealed partial class TouchPinchInjector(ILogger<TouchPinchInjector> logge
         }
     }
 
+    // Which recognizer will read the gesture, from the window it lands on. Only the thresholds differ, except
+    // for Gecko, which also refuses touch from the ordinary injection device.
+    private static Engine Recognize(ScreenPoint anchor)
+    {
+        if (BrowserWindows.IsGeckoWindowAt(anchor))
+            return Engine.Gecko;
+
+        return BrowserWindows.IsChromiumWindowAt(anchor) ? Engine.Chromium : Engine.Windows;
+    }
+
     // The span change (in physical pixels) the engine's recognizer swallows before it starts measuring a pinch.
-    private static double SpanSlop(Engine engine, double dpiScale) =>
-        engine == Engine.Gecko ? GeckoSpanSlopPx : SpanSlopDips * dpiScale;
+    private static double SpanSlop(Engine engine, double dpiScale) => engine switch
+    {
+        Engine.Gecko => GeckoSpanSlopPx,
+        Engine.Windows => RecognizerSpanSlopDips * dpiScale,
+        _ => SpanSlopDips * dpiScale,
+    };
 
     // The movement (in physical pixels) a single contact must make before the engine scrolls.
-    private static double TouchSlop(Engine engine, double dpiScale) =>
-        (engine == Engine.Gecko ? GeckoTouchSlopDips : TouchSlopDips) * dpiScale;
+    private static double TouchSlop(Engine engine, double dpiScale) => engine switch
+    {
+        Engine.Gecko => GeckoTouchSlopDips * dpiScale,
+        Engine.Windows => RecognizerTouchSlopDips * dpiScale,
+        _ => TouchSlopDips * dpiScale,
+    };
 
     // The recognizer only starts measuring once the span has changed by the slop, and then measures scale
     // against the span at that moment. So: put the fingers down, move them by the slop in one invisible
     // "pre-roll" step (outward when spreading, inward when closing), and animate from there to
     // factor * pre-rolled span, so the whole visible motion counts.
+    /// <remarks>
+    /// The spans are what the recognizer is asked for, not what it delivers. Windows' own recognizer keeps back
+    /// a share of a closing gesture, and how much depends on the zoom it starts from, so a gesture and its
+    /// inverse do not cancel: measured in Acrobat, a x2 and a x0.5 leave the reader 2 % smaller each round trip.
+    /// Callers that need an exact return must land on a state the application defines, not on this arithmetic.
+    /// </remarks>
     private static (double Down, double PreRolled, double End) ContactHalfSpread(double factor, double halfSlop, double halfGap)
     {
         var crossing = halfSlop + 1; // one extra pixel so the threshold is definitely crossed

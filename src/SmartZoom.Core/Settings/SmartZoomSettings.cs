@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
 
@@ -29,8 +29,22 @@ public sealed class SmartZoomSettings
     /// <returns>True if anything changed and the file should be rewritten.</returns>
     public bool Migrate()
     {
+        var changed = false;
+
+        if (Zoom.Keys is { } reader)
+        {
+            // "Keys" described shortcuts; the section now describes how readers are zoomed, gesture included.
+            // A file that already carries a "Reader" section has been through this once and the newer section
+            // is the one the user has been editing, so the leftover is only dropped.
+            if (Zoom.Reader.IsDefault())
+                Zoom.Reader = reader;
+
+            Zoom.Keys = null;
+            changed = true;
+        }
+
         if (Trigger is null)
-            return false;
+            return changed;
 
         if (Triggers.Count == 0 || (Triggers.Count == 1 && Triggers[0].IsDefault()))
             Triggers = [Trigger];
@@ -149,18 +163,61 @@ public sealed class ZoomSettings
     /// <summary>Tuning for the browser smart-zoom adapter.</summary>
     public BrowserZoomSettings Browser { get; set; } = new();
 
-    /// <summary>Shortcuts for the keyboard-shortcut adapter.</summary>
-    public KeyZoomSettings Keys { get; set; } = new();
+    /// <summary>How PDF readers and other document viewers are zoomed.</summary>
+    public ReaderZoomSettings Reader { get; set; } = new();
+
+    /// <summary>Former name of <see cref="Reader"/>; read from older settings files and then dropped.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ReaderZoomSettings? Keys { get; set; }
 }
 
-/// <summary>Shortcuts sent by the keyboard-shortcut adapter. Defaults are Acrobat's and Sumatra's fit width / fit page.</summary>
-public sealed class KeyZoomSettings
+/// <summary>
+/// How a document reader is zoomed: by default an animated pinch around the cursor, with the reader's own
+/// commands to land on. Defaults are Acrobat's and Sumatra's fit width and fit page.
+/// </summary>
+public sealed class ReaderZoomSettings
 {
     /// <summary>Combination sent on the first press; by default "fit width", which fills the window with the page.</summary>
     public string ZoomInKeys { get; set; } = "Ctrl+2";
 
     /// <summary>Combination sent on the second press; by default "fit page", which shows the whole page again.</summary>
     public string ZoomOutKeys { get; set; } = "Ctrl+0";
+
+    /// <summary>
+    /// Zoom with an animated pinch around the cursor, the way browsers are zoomed, instead of jumping straight
+    /// to the shortcut's zoom level. What you pointed at stays where it is and simply grows. Readers that
+    /// ignore touch should have this off, so the shortcuts are used instead.
+    /// </summary>
+    public bool Gesture { get; set; } = true;
+
+    /// <summary>How much the pinch magnifies; ignored when <see cref="Gesture"/> is off.</summary>
+    public double Scale { get; set; } = 2.0;
+
+    /// <summary>
+    /// With <see cref="Gesture"/> off: scroll the block under the cursor to the top of the reader before
+    /// zooming, so the first press magnifies what you pointed at rather than wherever the reader happened to
+    /// be. The second press scrolls back.
+    /// </summary>
+    public bool FollowCursor { get; set; } = true;
+
+    /// <summary>Gap left above the cursor's content when <see cref="FollowCursor"/> scrolls it to the top.</summary>
+    public int MarginPx { get; set; } = 16;
+
+    /// <summary>How long the gesture takes, in milliseconds.</summary>
+    public int AnimationMs { get; set; } = 300;
+
+    /// <summary>Whether nothing in this section has been changed from its default.</summary>
+    internal bool IsDefault()
+    {
+        var fresh = new ReaderZoomSettings();
+        return ZoomInKeys == fresh.ZoomInKeys
+            && ZoomOutKeys == fresh.ZoomOutKeys
+            && Gesture == fresh.Gesture
+            && Scale == fresh.Scale
+            && FollowCursor == fresh.FollowCursor
+            && MarginPx == fresh.MarginPx
+            && AnimationMs == fresh.AnimationMs;
+    }
 }
 
 /// <summary>Tuning for the browser smart-zoom adapter.</summary>

@@ -68,6 +68,21 @@ internal static class InputInjection
         return input;
     }
 
+    /// <summary>Injects wheel notches at the current cursor position.</summary>
+    /// <param name="ticks">Notches; positive scrolls up (away from the user), as Windows defines it.</param>
+    /// <param name="error">Win32 error code when injection fails; otherwise 0.</param>
+    public static bool TrySendWheel(int ticks, out int error)
+    {
+        var input = new INPUT { type = INPUT_TYPE.INPUT_MOUSE };
+        input.mi.dwFlags = MOUSE_EVENT_FLAGS.MOUSEEVENTF_WHEEL;
+
+        // mouseData is documented as a signed delta stored in a DWORD; a negative value scrolls down.
+        input.mi.mouseData = unchecked((uint)(ticks * (int)PInvoke.WHEEL_DELTA));
+        input.mi.dwExtraInfo = Tag;
+
+        return Send(new ReadOnlySpan<INPUT>(in input), out error);
+    }
+
     private static INPUT MouseButtonInput(MouseButton button, bool isDown)
     {
         var (flags, data) = button switch
