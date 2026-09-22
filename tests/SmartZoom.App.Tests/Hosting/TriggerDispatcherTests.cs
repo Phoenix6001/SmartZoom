@@ -91,6 +91,41 @@ public sealed class TriggerDispatcherTests
     }
 
     [Fact]
+    public async Task A_trigger_whose_adapter_threw_leaves_the_dispatcher_running_even_if_recording_that_also_throws()
+    {
+        // The worst-case ordering: the recording this exercises is the one inside DispatchAsync's own catch
+        // block, with nothing further wrapping it — an adapter has already failed, and now recording that
+        // failure fails too. A ThrowingTimeProvider makes DiagnosticRecorder.Note genuinely throw, same as
+        // the NoWindow guard test above, but reached from the AdapterThrew path instead.
+        var target = new TargetInfo(0x1, 0x1, 1, "boom", "R", "H");
+        var windows = new FakeWindowInspector { Target = target };
+        using var temp = new TempDirectory();
+        var recorder = new DiagnosticRecorder(
+            new DiagnosticStore(
+                new AppPaths(SettingsDirectory: temp.Path, LogDirectory: Path.Combine(temp.Path, "logs")),
+                NullLogger<DiagnosticStore>.Instance),
+            new ThrowingTimeProvider(),
+            version: "0.1.0-test");
+
+        var dispatcher = new TriggerDispatcher(
+            _source, windows, ThrowingEngine(new InvalidOperationException("adapter boom")), _activity, recorder,
+            TimeProvider.System, NullLogger<TriggerDispatcher>.Instance);
+
+        await dispatcher.StartAsync(CancellationToken.None);
+        _source.Writer.TryWrite(new TriggerEvent(Point, unchecked((uint)Environment.TickCount)));
+        _source.Writer.TryWrite(new TriggerEvent(Point, unchecked((uint)Environment.TickCount)));
+        _source.Writer.Complete();
+
+        // If RecordSafely did not wrap this site, recorder.Note's throw inside the catch block would escape
+        // DispatchAsync and ExecuteAsync's await foreach, faulting this task instead of completing it.
+        await dispatcher.ExecuteTask!;
+
+        // The loop kept running after the first (adapter-failed, then recording-failed) trigger: the second
+        // still reached GetTargetAt.
+        Assert.Equal(2, windows.Calls);
+    }
+
+    [Fact]
     public async Task A_press_that_zoomed_nothing_because_no_adapter_claims_the_process_is_counted()
     {
         var target = new TargetInfo(0x2, 0x2, 2, "notepad", "R", "H");

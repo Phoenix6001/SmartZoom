@@ -53,19 +53,7 @@ internal sealed partial class TriggerDispatcher(
         if (target is null)
         {
             LogNoWindow(x, y);
-
-            // Guarded like the two record calls below: this one runs before DispatchAsync's own try/catch,
-            // so without its own guard a diagnostics failure here would escape ExecuteAsync's await foreach
-            // entirely and silently end the dispatcher — every future trigger, gone, with nothing in the log.
-            try
-            {
-                recorder.Note(new DiagnosticKey(DiagnosticKind.NoWindow, null, null, null));
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                LogDiagnosticsFailed(ex);
-            }
-
+            RecordSafely(() => recorder.Note(new DiagnosticKey(DiagnosticKind.NoWindow, null, null, null)));
             return;
         }
 
@@ -80,24 +68,52 @@ internal sealed partial class TriggerDispatcher(
 
             if (outcome.Action is ZoomAction.Handled or ZoomAction.Unhandled or ZoomAction.Ignored)
             {
-                var (key, sample) = DiagnosticSampleFactory.ForZoomedNothing(outcome, time.GetUtcNow());
-                recorder.Note(key);
-                if (sample is not null)
-                    recorder.Sample(sample);
+                RecordSafely(() =>
+                {
+                    var (key, sample) = DiagnosticSampleFactory.ForZoomedNothing(outcome, time.GetUtcNow());
+                    recorder.Note(key);
+                    if (sample is not null)
+                        recorder.Sample(sample);
+                });
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // One failed zoom must not take the dispatcher (and with it, every future trigger) down.
+            // One failed zoom must not take the dispatcher (and with it, every future trigger) down. Logged
+            // before anything is recorded: the zoom failure itself must reach the log even if recording it
+            // then fails too.
             LogZoomFailed(ex, target.ProcessName);
 
-            var key = new DiagnosticKey(DiagnosticKind.AdapterThrew, target.ProcessName, null, ex.GetType().Name);
-            recorder.Note(key);
-            recorder.Sample(new DiagnosticSample(
-                key,
-                time.GetUtcNow(),
-                Detail: null,
-                Exception: Redaction.Truncate($"{ex.GetType().FullName}: {ex.Message}{Environment.NewLine}{ex.StackTrace}", 4000)));
+            RecordSafely(() =>
+            {
+                var key = new DiagnosticKey(DiagnosticKind.AdapterThrew, target.ProcessName, null, ex.GetType().Name);
+                recorder.Note(key);
+                recorder.Sample(new DiagnosticSample(
+                    key,
+                    time.GetUtcNow(),
+                    Detail: null,
+                    Exception: Redaction.Truncate($"{ex.GetType().FullName}: {ex.Message}{Environment.NewLine}{ex.StackTrace}", 4000)));
+            });
+        }
+    }
+
+    /// <summary>
+    /// Runs a diagnostics recording action, swallowing anything it throws. Diagnostics never participates in
+    /// control flow: every call site above that records something routes through here rather than its own
+    /// try/catch, because one of those sites already sits inside DispatchAsync's exception handler — a throw
+    /// there has nothing further wrapping it and would escape ExecuteAsync's await foreach outright, ending
+    /// the dispatcher (and every future trigger) along with it.
+    /// </summary>
+    /// <param name="record">The recording to attempt.</param>
+    private void RecordSafely(Action record)
+    {
+        try
+        {
+            record();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            LogDiagnosticsFailed(ex);
         }
     }
 
