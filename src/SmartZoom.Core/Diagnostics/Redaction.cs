@@ -18,6 +18,11 @@ public static class Redaction
     /// <param name="localAppData">The local application data folder.</param>
     /// <param name="appData">The roaming application data folder.</param>
     /// <returns>The text with those folders replaced.</returns>
+    /// <remarks>
+    /// Replaces all three separator forms of each folder path: backslash (<c>C:\Users\ada</c>),
+    /// forward slash (<c>C:/Users/ada</c>), and doubled backslash (<c>C:\\Users\\ada</c>, as in JSON).
+    /// The longest variant is replaced first to prevent shorter folders from shadowing longer ones.
+    /// </remarks>
     public static string Paths(string text, string home, string localAppData, string appData)
     {
         ArgumentNullException.ThrowIfNull(text);
@@ -44,7 +49,24 @@ public static class Redaction
             : string.Create(CultureInfo.InvariantCulture, $"{text[..max]}… [truncated, {text.Length} characters]");
     }
 
-    private static IEnumerable<(string Folder, string Name)> Longest(string home, string local, string roaming) =>
-        new[] { (local, "%LOCALAPPDATA%"), (roaming, "%APPDATA%"), (home, "%USERPROFILE%") }
-            .OrderByDescending(p => p.Item1?.Length ?? 0);
+    private static IEnumerable<(string Folder, string Name)> Longest(string home, string local, string roaming)
+    {
+        var variants = new List<(string path, string varName)>();
+
+        // Generate all three separator forms for each folder, then sort by length descending
+        foreach (var (folder, varName) in new[] { (local, "%LOCALAPPDATA%"), (roaming, "%APPDATA%"), (home, "%USERPROFILE%") })
+        {
+            if (!string.IsNullOrEmpty(folder))
+            {
+                // Backslash form (standard path)
+                variants.Add((folder, varName));
+                // Forward slash form (Unix-style path)
+                variants.Add((folder.Replace('\\', '/'), varName));
+                // Doubled backslash form (JSON-escaped path)
+                variants.Add((folder.Replace(@"\", @"\\"), varName));
+            }
+        }
+
+        return variants.OrderByDescending(p => p.path.Length);
+    }
 }
