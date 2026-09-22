@@ -195,9 +195,5 @@ internal sealed class DiagnosticsPage : UserControl
         }
     }
 
-    private static string Redact(string text) => Redaction.Paths(
-        text,
-        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData));
+    private static string Redact(string text) => DiagnosticText.Redact(text);
 }

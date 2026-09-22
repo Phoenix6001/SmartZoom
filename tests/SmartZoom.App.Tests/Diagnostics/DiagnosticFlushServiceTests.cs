@@ -40,21 +40,4 @@ public sealed class DiagnosticFlushServiceTests
                 NullLogger<DiagnosticStore>.Instance),
             TimeProvider.System,
             version: "0.1.0-test");
-
-    private sealed class TempDirectory : IDisposable
-    {
-        public string Path { get; } = Directory.CreateTempSubdirectory("smartzoom-flush-test-").FullName;
-
-        public void Dispose()
-        {
-            try
-            {
-                Directory.Delete(Path, recursive: true);
-            }
-            catch (IOException)
-            {
-                // Best effort; the OS temp folder gets cleaned up eventually regardless.
-            }
-        }
-    }
 }

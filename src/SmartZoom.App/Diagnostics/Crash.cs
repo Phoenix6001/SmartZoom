@@ -22,8 +22,7 @@ internal static class Crash
                 key,
                 DateTimeOffset.UtcNow,
                 Detail: null,
-                Exception: Redaction.Truncate(
-                    $"{ex.GetType().FullName}: {ex.Message}{Environment.NewLine}{ex.StackTrace}", 4000)));
+                Exception: DiagnosticText.ForException(ex)));
             recorder.Flush();
         }
         catch

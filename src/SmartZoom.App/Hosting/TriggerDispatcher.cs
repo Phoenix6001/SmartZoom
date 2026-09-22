@@ -92,7 +92,7 @@ internal sealed partial class TriggerDispatcher(
                     key,
                     time.GetUtcNow(),
                     Detail: null,
-                    Exception: Redaction.Truncate($"{ex.GetType().FullName}: {ex.Message}{Environment.NewLine}{ex.StackTrace}", 4000)));
+                    Exception: DiagnosticText.ForException(ex)));
             });
         }
     }
