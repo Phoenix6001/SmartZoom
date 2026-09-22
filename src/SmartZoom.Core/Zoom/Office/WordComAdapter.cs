@@ -92,7 +92,7 @@ public sealed partial class WordComAdapter : ZoomAdapter<WordViewState>
         catch (COMException ex)
         {
             LogComFailure(ex, target.ProcessName);
-            return ZoomInResult.Handled(ZoomReason.GestureRefused);
+            return ZoomInResult.Handled(ZoomReason.AutomationFailed);
         }
     }
 

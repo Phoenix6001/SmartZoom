@@ -15,6 +15,9 @@ public enum ZoomReason
     /// <summary>The gesture was refused by the injector.</summary>
     GestureRefused,
 
+    /// <summary>The application's own automation interface refused the zoom or was unreachable.</summary>
+    AutomationFailed,
+
     /// <summary>No adapter is configured for this application.</summary>
     NoAdapter,
 }

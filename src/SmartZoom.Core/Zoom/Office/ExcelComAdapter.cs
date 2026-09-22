@@ -106,7 +106,7 @@ public sealed partial class ExcelComAdapter : ZoomAdapter<ExcelViewState>
         {
             LogComFailure(ex, target.ProcessName);
             TryRestore(window, before);
-            return ZoomInResult.Handled(ZoomReason.GestureRefused);
+            return ZoomInResult.Handled(ZoomReason.AutomationFailed);
         }
     }
 
