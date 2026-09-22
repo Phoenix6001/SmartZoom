@@ -720,6 +720,12 @@ public class DiagnosticReportTests
 }
 ```
 
+> **Note (added after implementation):** this plan is kept as a historical record and is not rewritten to
+> match what shipped. `Whatever_it_is_given.A_report_never_contains_a_window_title` above was removed during
+> implementation — `DiagnosticKey`/`DiagnosticSample` have no title field, so it could not fail against any
+> implementation — and replaced by tests that can. See the "Testing" section of
+> [diagnostics-design.md](diagnostics-design.md) for what actually exists and why.
+
 - [ ] **Step 3: Run them and watch them fail**
 
 ```powershell

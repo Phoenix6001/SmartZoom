@@ -60,7 +60,7 @@ SmartZoom runs in the notification area. Double-click the icon — or right-clic
 **Settings…** — for the settings window: triggers you record by pressing them, which application is handled
 how, and the zoom settings worth turning. Saving applies at once; nothing needs a restart. The rest of the
 right-click menu is **Enabled**, **Open settings file**, **Reload settings file**,
-**Open log folder**, and **Exit**.
+**Open log folder**, **Diagnostic report…** (opens Settings on the Diagnostics tab — see below), and **Exit**.
 
 Publish a single-file executable:
 
@@ -159,6 +159,12 @@ Settings → Bluetooth & devices → Touchpad → *Taps* → **Three-finger tap:
 four-finger tap can instead be a *Custom shortcut*, which you point at one of your `Keys` triggers.
 
 Logs are written to `%LOCALAPPDATA%\SmartZoom\logs` (rolling daily, 14 days kept).
+
+Settings → Diagnostics keeps a small local record of what SmartZoom failed to do — presses that zoomed
+nothing, adapters that threw, and crashes — at `%LOCALAPPDATA%\SmartZoom\diagnostics.json`, and renders it on
+demand as a report you can copy into a bug report. It's on by default; the same page has a switch to turn it
+off and a button to clear what's recorded. Nothing in it is sent anywhere — see [SECURITY.md](SECURITY.md)
+for exactly what it holds and what it never does.
 
 ## Architecture
 

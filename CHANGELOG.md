@@ -79,6 +79,20 @@ Nothing has been released yet, so everything so far lives under Unreleased.
   deployment. Both go through the same code that reads the file, so everything else in it is kept.
 - `SmartZoom.exe --quit` asks a running copy to close cleanly. The installer uses it before replacing the
   executable, so an upgrade takes the tray icon down rather than leaving a ghost behind.
+- **A local diagnostics record and a Diagnostics report**, for the class of bug that produces nothing a user
+  can hand over: a press that zooms nothing looks exactly like a press that never arrived or an application
+  SmartZoom does not support. Settings → Diagnostics now keeps a bounded local tally — presses that zoomed
+  nothing, adapters that threw, crashes, and how well injected touch gestures were delivered — at
+  `%LOCALAPPDATA%\SmartZoom\diagnostics.json` (200 counter keys, 20 detail samples, a 256 KB ceiling, reset
+  whenever the SmartZoom version changes), and renders it on demand as a markdown report with **Copy**,
+  **Save…**, **Clear recorded data**, a record on/off switch (on by default), and an opt-in "Include recent
+  log lines" checkbox. The tray gained **Diagnostic report…**, which opens that page rather than copying
+  anything silently — reading the report is the consent mechanism. It records process names, adapter names,
+  coarse reasons, the *shape* of the accessibility path under the cursor (roles and sizes, e.g. `Group
+  949x79`, never coordinates or text), display characteristics and exception stacks; it never records window
+  titles, page text, URLs, screen coordinates, keystrokes, usernames or any identifier. **No network
+  connection is made** — nothing here changes `SECURITY.md`'s "SmartZoom makes no network connections and
+  sends nothing anywhere"; the report leaves the machine only when a person reads it and pastes it themselves.
 
 ### Changed, breaking
 
@@ -115,6 +129,11 @@ Nothing has been released yet, so everything so far lives under Unreleased.
 
 ### Changed
 
+- **The log file is now opened shared** (`shared: true`), so the Diagnostics report's optional "include
+  recent log lines" section can read today's log file while SmartZoom is still writing to it — the default,
+  exclusive-open sink would fail every such read with a sharing violation, exactly when the feature is most
+  likely to be used. This changes how every log line is written, and was a reviewed decision rather than an
+  incidental one.
 - Adding support for an application is now one class and one registration instead of five coordinated edits,
   none of which the compiler checked. `ZoomRouter` is built from the adapters that are registered, so an
   application can no longer be routed to a strategy the build does not contain.
@@ -141,3 +160,7 @@ Nothing has been released yet, so everything so far lives under Unreleased.
 
 - `SmartZoom.Interop` has no automated tests; the measured constants in `docs/measurements.md` were verified by
   hand on one machine at 200% display scaling.
+- A crash while the host is being built — before the diagnostics recorder exists to receive it — is written
+  to the log and shown in a message box, but is not recorded to `diagnostics.json`. Every crash after that
+  point is recorded synchronously in the crash handler; this window is only the startup code that runs before
+  the DI container is available.

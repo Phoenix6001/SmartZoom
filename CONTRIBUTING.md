@@ -79,10 +79,24 @@ have to be found again.
 real touch injection, none of which works on a CI runner. If you find yourself wanting to test something there,
 that is a good sign the logic belongs in Core.
 
+`SmartZoom.App` does have one, `tests/SmartZoom.App.Tests`, in the solution and run by CI alongside
+`tests/SmartZoom.Core.Tests`. It exists for the things that are genuinely App's own — wiring real components
+together end to end, the way `DiagnosticSampleFactoryTests` proves the diagnostics record carries no
+coordinates by running a real adapter and a real coordinator rather than asserting against a type that has no
+field to leak one in the first place. Prefer Core for anything that can be tested with fakes; reach for App's
+test project only when the thing under test is the composition itself.
+
 ## Reporting a bug
 
-Please say which application, what you pointed at, what you expected, and what the log said. "It does not zoom
-in X" is hard to act on; the `Trigger at …` line plus the warning that follows it usually explains itself.
+Please say which application, what you pointed at, and what you expected, and attach the diagnostic report:
+Settings → Diagnostics → **Copy**, then paste it into the issue. It carries the counts and the recent examples
+that "it does not zoom in X" needs to be acted on — process names, which adapter ran, and why it did nothing —
+without you having to go find a log file. Nothing in it is sent anywhere until you paste it; that page is
+what reading it and choosing to hand it over looks like.
+
+If you're already debugging something with the log open, tick **Include recent log lines** before copying —
+it's opt-in because the log is the least controlled content in the system, so it goes in only when you choose
+it.
 
 ## Code of conduct
 

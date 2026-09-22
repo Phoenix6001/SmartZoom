@@ -37,4 +37,14 @@ SmartZoom makes no network connections and sends nothing anywhere. The log at
 positions and which adapter ran. The keyboard hook observes only modifier keys and the keys named in the
 configured triggers; other keystrokes are neither recorded nor logged.
 
+SmartZoom also keeps a local record of what it failed to do — presses that zoomed nothing, adapters that
+threw, and crashes — at `%LOCALAPPDATA%\SmartZoom\diagnostics.json`. It holds process names, adapter names,
+the *shape* of the accessibility path under the cursor (roles and sizes, never text), display characteristics
+and exception stacks. It never holds window titles, page text, URLs, screen coordinates, keystrokes, your
+username or any identifier. It is bounded, reset whenever SmartZoom is updated, and can be turned off and
+cleared in Settings → Diagnostics.
+
+Nothing in it is sent anywhere. The Diagnostics page renders it as a report you read on screen and copy
+yourself; that is the only way any of it leaves the machine.
+
 If you attach a log to a bug report, be aware that it names the applications you were using.

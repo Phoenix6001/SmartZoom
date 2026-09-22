@@ -190,16 +190,37 @@ Everything that matters is pure and deterministic, tested with a fake `IMachineF
 - Redaction: profile paths in settings **and in exception messages** are rewritten.
 - Markdown rendering, including that a failing section degrades to `unavailable` without failing the report.
 
-**The privacy contract gets its own tests.** A renderer fed a tally deliberately seeded with a window title, a
-URL, page text and an absolute user path must produce a report containing none of them:
+**The privacy contract gets its own tests, at the two places it can actually break.**
 
-```csharp
-[Fact]
-public void A_report_never_contains_a_window_title()
-```
+An earlier version of this section showed a renderer test asserting a report never contained a literal window
+title — `A_report_never_contains_a_window_title`, fed a tally seeded with one. It was removed during
+implementation: `DiagnosticKey` and `DiagnosticSample` have no title field, no URL field and no coordinate
+field by construction, so that assertion could not fail against any implementation that compiled. A comment
+promising "we never record titles" is worth little to somebody reviewing this from outside, but neither is a
+test that passes for the same reason the comment would be believed.
 
-A comment saying "we never record titles" is worth little to somebody reviewing this from outside. A failing
-test when a field is added in a year is worth a great deal.
+What replaced it, in `tests/SmartZoom.Core.Tests/Diagnostics/DiagnosticReportTests.cs`:
+
+- `Every_free_text_field_is_redacted_before_it_is_rendered` seeds a distinct sentinel into the settings JSON,
+  a sample's `Detail`, its `Exception`, and the log tail, and asserts none of the four survives rendering.
+  This is the renderer's actual job — applying the caller-supplied `Redactor` at every call site — and it
+  fails the moment any one of those four is bypassed.
+- `A_report_contains_no_absolute_user_path` asserts against a username the input genuinely contains, so it
+  fails if redaction is ever skipped or the pattern narrowed.
+- `A_section_that_throws.Renders_unavailable_without_losing_the_rest_of_the_report` exercises the type's own
+  documented promise — one failing section degrades to `unavailable` rather than costing the reader the rest
+  of the report — via a `FakeMachineFacts` that can be told to throw.
+
+The guarantee that no *producer* ever hands the renderer a title, a URL, or a coordinate in the first place
+cannot be tested against `DiagnosticKey`/`DiagnosticSample` directly, for the same reason the original test
+could not fail: there is nowhere on those types to put one. It is tested instead in
+`tests/SmartZoom.App.Tests/Diagnostics/DiagnosticSampleFactoryTests.cs`, where a real `BrowserAdapter` reads a
+real accessibility path carrying absolute screen coordinates, through a real `ZoomCoordinator`, into
+`DiagnosticSampleFactory` — the code that actually builds what gets recorded — and asserts the resulting
+sample's path-shape string is `"Group 40x30 < Document 1920x1080"`, not a string containing the coordinates
+the input genuinely had. That test lives in `SmartZoom.App.Tests` rather than `SmartZoom.Core.Tests` because
+the guarantee it proves belongs to the App-level wiring between a real adapter and the diagnostics recorder,
+not to a Core type in isolation.
 
 Display enumeration itself stays untested, consistent with `SmartZoom.Interop` having no test project: it
 needs real monitors.
