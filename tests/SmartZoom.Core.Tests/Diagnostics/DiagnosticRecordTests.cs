@@ -26,6 +26,24 @@ public class DiagnosticRecordTests
         }
     }
 
+    public sealed class The_Samples_list
+    {
+        [Fact]
+        public void Is_a_copy_so_a_caller_cannot_reach_the_record_through_it()
+        {
+            var record = new DiagnosticRecord("0.1.0");
+            record.Sample(new DiagnosticSample(Key(), Noon, "Group 949x79", null));
+
+            var taken = record.Samples;
+            record.Sample(new DiagnosticSample(Key(), Noon.AddMinutes(1), "Group 100x20", null));
+
+            // Counters has always handed out a copy; Samples handed out the live backing list, so a caller
+            // holding one saw later samples appear in it - and could have added to it.
+            Assert.Single(taken);
+            Assert.Equal(2, record.Samples.Count);
+        }
+    }
+
     public sealed class Counters_with_the_same_count
     {
         [Fact]
