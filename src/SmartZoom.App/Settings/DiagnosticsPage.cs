@@ -1,5 +1,8 @@
+using System.Globalization;
+
 using SmartZoom.App.Diagnostics;
 using SmartZoom.Core.Diagnostics;
+using SmartZoom.Core.Settings;
 
 namespace SmartZoom.App.Settings;
 
@@ -12,8 +15,14 @@ namespace SmartZoom.App.Settings;
 internal sealed class DiagnosticsPage : UserControl
 {
     private readonly DiagnosticRecorder _recorder;
+    private readonly DiagnosticsSettings _model;
     private readonly IMachineFacts _facts;
     private readonly AppPaths _paths;
+
+    // Owned here, and disposed here. A Font assigned to a control is not disposed by the control - WinForms
+    // only disposes what it created itself - so a new one per window leaked a GDI handle every time the
+    // settings window was opened.
+    private readonly Font _monospace = new("Consolas", 9f);
 
     private readonly TextBox _report = new()
     {
@@ -22,12 +31,12 @@ internal sealed class DiagnosticsPage : UserControl
         Dock = DockStyle.Fill,
         ScrollBars = ScrollBars.Both,
         WordWrap = false,
-        Font = new Font("Consolas", 9f),
         Name = "Report",
     };
 
     private readonly CheckBox _enabled = new() { Text = "&Record what doesn't work", AutoSize = true, Name = "RecordEnabled" };
     private readonly CheckBox _includeLog = new() { Text = "Include recent &log lines", AutoSize = true, Name = "IncludeLog" };
+    private readonly Button _refresh = new() { Text = "&Refresh", AutoSize = true, Name = "Refresh" };
     private readonly Button _copy = new() { Text = "&Copy", AutoSize = true, Name = "Copy" };
     private readonly Button _save = new() { Text = "&Save…", AutoSize = true, Name = "SaveReport" };
     private readonly Button _clear = new() { Text = "Clear recorded &data", AutoSize = true, Name = "ClearData" };
@@ -48,25 +57,32 @@ internal sealed class DiagnosticsPage : UserControl
     /// <summary>Creates the page over the live recorder.</summary>
     /// <param name="recorder">Only ever read through <see cref="DiagnosticRecorder.Snapshot"/>: it may be
     /// written from the dispatcher thread at any moment, and enumerating it live would throw.</param>
+    /// <param name="model">The working copy of the settings; the record switch is edited here and applied on Save.</param>
     /// <param name="facts">What this machine is.</param>
     /// <param name="paths">Where the settings file and the logs live.</param>
-    public DiagnosticsPage(DiagnosticRecorder recorder, IMachineFacts facts, AppPaths paths)
+    public DiagnosticsPage(DiagnosticRecorder recorder, DiagnosticsSettings model, IMachineFacts facts, AppPaths paths)
     {
         ArgumentNullException.ThrowIfNull(recorder);
+        ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(facts);
         ArgumentNullException.ThrowIfNull(paths);
 
         _recorder = recorder;
+        _model = model;
         _facts = facts;
         _paths = paths;
+        _report.Font = _monospace;
 
         AutoScaleMode = AutoScaleMode.Dpi;
         Dock = DockStyle.Fill;
         Padding = new Padding(12);
 
-        _enabled.Checked = recorder.Enabled;
-        _enabled.CheckedChanged += (_, _) => recorder.Enabled = _enabled.Checked;
+        // Through the working settings copy, like every other page: the switch then takes effect on Save and
+        // is undone by Close, instead of being a live mutation of the recorder that no button can cancel.
+        _enabled.Checked = _model.Enabled;
+        _enabled.CheckedChanged += (_, _) => _model.Enabled = _enabled.Checked;
         _includeLog.CheckedChanged += (_, _) => Render();
+        _refresh.Click += (_, _) => RenderReport();
         _copy.Click += (_, _) => Copy();
         _save.Click += (_, _) => Save();
         _clear.Click += (_, _) => { recorder.Clear(); Render(); };
@@ -78,7 +94,7 @@ internal sealed class DiagnosticsPage : UserControl
     private TableLayoutPanel BuildLayout()
     {
         var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, WrapContents = true };
-        buttons.Controls.AddRange([_copy, _save, _clear, _enabled, _includeLog]);
+        buttons.Controls.AddRange([_refresh, _copy, _save, _clear, _enabled, _includeLog]);
         foreach (Control control in buttons.Controls)
             control.Margin = new Padding(0, 6, 8, 0);
 
@@ -143,6 +159,30 @@ internal sealed class DiagnosticsPage : UserControl
     {
         _status.Text = text;
         _status.ForeColor = failed ? Color.FromArgb(0xB0, 0x30, 0x20) : SystemColors.GrayText;
+    }
+
+    /// <summary>
+    /// Rebuilds the report from the record as it stands now.
+    /// </summary>
+    /// <remarks>
+    /// Named <c>RenderReport</c> rather than <c>Refresh</c> because <see cref="Control.Refresh"/> already
+    /// means "repaint". Called by the Refresh button and by the settings window when the tray's
+    /// "Diagnostic report…" item selects this tab on a window that was already open - the report is a
+    /// snapshot taken when it was built, and a press made since would otherwise be missing from it.
+    /// </remarks>
+    public void RenderReport()
+    {
+        Render();
+        ShowStatus($"Report built at {DateTime.Now.ToString("HH:mm:ss", CultureInfo.CurrentCulture)}.", failed: false);
+    }
+
+    /// <inheritdoc />
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+            _monospace.Dispose();
+
+        base.Dispose(disposing);
     }
 
     private void Render()

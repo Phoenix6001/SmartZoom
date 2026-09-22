@@ -41,8 +41,10 @@ SmartZoom also keeps a local record of what it failed to do — presses that zoo
 threw, and crashes — at `%LOCALAPPDATA%\SmartZoom\diagnostics.json`. It holds process names, adapter names,
 the *shape* of the accessibility path under the cursor (roles and sizes, never text), display characteristics
 and exception stacks. It never holds window titles, page text, URLs, screen coordinates, keystrokes, your
-username or any identifier. It is bounded, reset whenever SmartZoom is updated, and can be turned off and
-cleared in Settings → Diagnostics.
+username or any identifier — an exception message is stripped of your profile path before it is written, not
+merely before it is shown. It is bounded, reset whenever SmartZoom is updated, and can be turned off and
+cleared in Settings → Diagnostics; turning it off is saved (`Diagnostics.Enabled` in `settings.json`) and
+survives a restart.
 
 Nothing in it is sent anywhere. The Diagnostics page renders it as a report you read on screen and copy
 yourself; that is the only way any of it leaves the machine.

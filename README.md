@@ -120,6 +120,9 @@ restart, exactly as Save does.
   },
   "Logging": {
     "Level": "Debug"               // Debug, Information, Warning, Error: how much reaches the log file
+  },
+  "Diagnostics": {
+    "Enabled": true                // keep the local record of what didn't work; nothing is ever sent
   }
 }
 ```
@@ -163,8 +166,9 @@ Logs are written to `%LOCALAPPDATA%\SmartZoom\logs` (rolling daily, 14 days kept
 Settings → Diagnostics keeps a small local record of what SmartZoom failed to do — presses that zoomed
 nothing, adapters that threw, and crashes — at `%LOCALAPPDATA%\SmartZoom\diagnostics.json`, and renders it on
 demand as a report you can copy into a bug report. It's on by default; the same page has a switch to turn it
-off and a button to clear what's recorded. Nothing in it is sent anywhere — see [SECURITY.md](SECURITY.md)
-for exactly what it holds and what it never does.
+off — saved with the rest of your settings when you press Save, so it stays off — and a button to clear what's
+recorded. Nothing in it is sent anywhere — see [SECURITY.md](SECURITY.md) for exactly what it holds and what
+it never does.
 
 ## Architecture
 

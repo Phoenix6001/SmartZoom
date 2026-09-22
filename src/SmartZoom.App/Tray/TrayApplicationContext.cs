@@ -130,22 +130,32 @@ internal sealed partial class TrayApplicationContext : ApplicationContext
     public void RequestSettings() => _uiContext.Post(_ => OpenSettings(), null);
 
     /// <summary>
-    /// Opens the settings window on the given tab, or brings it to the front if it is already open. An
-    /// already-open window does not jump to a different tab — it was opened for a reason, and switching it
-    /// out from under whatever the user is doing there would be more surprising than helpful.
+    /// Opens the settings window on the given tab, or brings it to the front if it is already open.
     /// </summary>
-    private void OpenSettings(SettingsTab tab = SettingsTab.Triggers)
+    /// <param name="tab">
+    /// The tab to show, or null for "wherever it is". A menu item that names a page (the diagnostic report)
+    /// passes one and gets that page even on an already-open window: it used to return early, so pressing
+    /// the trigger, seeing nothing zoom and choosing "Diagnostic report…" left the window sitting on
+    /// Triggers and the item appeared to do nothing. A plain "Settings…" or a double-click on the icon
+    /// passes null, because that window was opened for a reason and must not be switched out from under
+    /// whatever the user is doing on it.
+    /// </param>
+    private void OpenSettings(SettingsTab? tab = null)
     {
         if (_settingsWindow is { IsDisposed: false } open)
         {
             if (open.WindowState == FormWindowState.Minimized)
                 open.WindowState = FormWindowState.Normal;
 
+            if (tab is { } requested)
+                open.ShowTab(requested);
+
             open.Activate();
             return;
         }
 
-        _settingsWindow = new SettingsForm(_applier, _holder, _engine, _triggerSource, _paths, _recorder, _facts, tab);
+        _settingsWindow = new SettingsForm(
+            _applier, _holder, _engine, _triggerSource, _paths, _recorder, _facts, tab ?? SettingsTab.Triggers);
         _settingsWindow.FormClosed += (_, _) => _settingsWindow = null;
         _settingsWindow.Show();
         _settingsWindow.Activate();

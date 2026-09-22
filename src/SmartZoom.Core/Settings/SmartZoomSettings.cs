@@ -22,4 +22,7 @@ public sealed class SmartZoomSettings
 
     /// <summary>How much is written to the log file.</summary>
     public LoggingSettings Logging { get; set; } = new();
+
+    /// <summary>The local record of what SmartZoom failed to do.</summary>
+    public DiagnosticsSettings Diagnostics { get; set; } = new();
 }

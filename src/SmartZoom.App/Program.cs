@@ -170,7 +170,11 @@ internal static class Program
         builder.Services.AddSingleton(sp => new DiagnosticRecorder(
             sp.GetRequiredService<DiagnosticStore>(),
             sp.GetRequiredService<TimeProvider>(),
-            sp.GetRequiredService<IMachineFacts>().AppVersion));
+            sp.GetRequiredService<IMachineFacts>().AppVersion)
+        {
+            // The settings file owns this switch; SettingsApplier carries later changes to it live.
+            Enabled = sp.GetRequiredService<SettingsHolder>().Current.Diagnostics.Enabled,
+        });
         builder.Services.AddSingleton<IGesturePacingSink>(sp => sp.GetRequiredService<DiagnosticRecorder>());
         builder.Services.AddHostedService<DiagnosticFlushService>();
 

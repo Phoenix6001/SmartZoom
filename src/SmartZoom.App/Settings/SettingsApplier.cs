@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Serilog.Core;
 using Serilog.Events;
 
+using SmartZoom.App.Diagnostics;
 using SmartZoom.App.Hosting;
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Settings;
@@ -33,6 +34,7 @@ internal sealed partial class SettingsApplier(
     ZoomPipelineFactory factory,
     ZoomEngine engine,
     ITriggerSource triggers,
+    DiagnosticRecorder recorder,
     LoggingLevelSwitch logLevel,
     ILogger<SettingsApplier> logger)
 {
@@ -72,6 +74,10 @@ internal sealed partial class SettingsApplier(
         triggers.Enabled = settings.Enabled;
         await engine.ReplaceAsync(pipeline).ConfigureAwait(false);
         logLevel.MinimumLevel = Serilog(settings.Logging.Level);
+
+        // The diagnostics switch is carried live, like triggers.Enabled: nothing has to be rebuilt for it,
+        // and it is the only control the user has over a privacy feature - it may not wait for a restart.
+        recorder.Enabled = settings.Diagnostics.Enabled;
         holder.Replace(settings);
 
         LogApplied();

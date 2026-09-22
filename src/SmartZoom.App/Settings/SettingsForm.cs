@@ -21,6 +21,8 @@ internal sealed class SettingsForm : Form
     private readonly SmartZoomSettings _working;
 
     private readonly ZoomPage _zoom;
+    private readonly DiagnosticsPage _diagnostics;
+    private readonly TabControl _tabs = new() { Dock = DockStyle.Fill, Name = "Tabs" };
     private readonly Label _problems = new()
     {
         Dock = DockStyle.Fill,
@@ -69,13 +71,13 @@ internal sealed class SettingsForm : Form
         CancelButton = _close;
 
         _zoom = new ZoomPage(_working, OpenSettingsFile);
+        _diagnostics = new DiagnosticsPage(recorder, _working.Diagnostics, facts, paths);
 
-        var tabs = new TabControl { Dock = DockStyle.Fill, Name = "Tabs" };
-        tabs.TabPages.Add(Page("Triggers", new TriggersPage(_working.Triggers, triggers, SystemInput.DoubleClickTimeMs)));
-        tabs.TabPages.Add(Page("Applications", new ApplicationsPage(_working.Routing.Apps, engine.Current.Router.Adapters)));
-        tabs.TabPages.Add(Page("Zoom", _zoom));
-        tabs.TabPages.Add(Page("Diagnostics", new DiagnosticsPage(recorder, facts, paths)));
-        tabs.SelectedIndex = (int)initialTab;
+        _tabs.TabPages.Add(Page("Triggers", new TriggersPage(_working.Triggers, triggers, SystemInput.DoubleClickTimeMs)));
+        _tabs.TabPages.Add(Page("Applications", new ApplicationsPage(_working.Routing.Apps, engine.Current.Router.Adapters)));
+        _tabs.TabPages.Add(Page("Zoom", _zoom));
+        _tabs.TabPages.Add(Page("Diagnostics", _diagnostics));
+        _tabs.SelectedIndex = (int)initialTab;
 
         _save.Click += async (_, _) => await SaveAsync().ConfigureAwait(true);
 
@@ -83,7 +85,23 @@ internal sealed class SettingsForm : Form
         // a form that was opened with ShowDialog. CancelButton routes Escape through the same handler.
         _close.Click += (_, _) => Close();
 
-        Controls.Add(BuildLayout(tabs));
+        Controls.Add(BuildLayout(_tabs));
+    }
+
+    /// <summary>Brings one tab to the front of an already-open window.</summary>
+    /// <param name="tab">The tab to show.</param>
+    /// <remarks>
+    /// The Diagnostics tab is re-rendered on the way in. Its report is a snapshot built when the page was
+    /// created, so the press the user is asking about - the one they made a moment ago, which did nothing -
+    /// would not be in it otherwise. That is the exact sequence the tray's "Diagnostic report…" item is used
+    /// in, and before this the item did nothing at all when the window was already open.
+    /// </remarks>
+    public void ShowTab(SettingsTab tab)
+    {
+        _tabs.SelectedIndex = (int)tab;
+
+        if (tab == SettingsTab.Diagnostics)
+            _diagnostics.RenderReport();
     }
 
     private static TabPage Page(string title, Control content)
