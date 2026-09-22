@@ -162,7 +162,13 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
             }
 
             LogPacing(frames, interval, worstLate, lateFrames, clock.Elapsed.TotalMilliseconds - animationStart);
-            pacing?.Paced(frames, interval, lateFrames, worstLate);
+
+            // Only animated gestures are reported: a zero-duration pinch (the stale-zoom state reset a caller
+            // can ask for) still runs the minimum 2 frames above, which are trivially on time and would dilute
+            // the late-frame ratio this section exists to surface. Nobody sees that pinch happen, so the report
+            // must not describe it as one.
+            if (duration > TimeSpan.Zero)
+                pacing?.Paced(frames, interval, lateFrames, worstLate);
 
             completed = true;
             return true;

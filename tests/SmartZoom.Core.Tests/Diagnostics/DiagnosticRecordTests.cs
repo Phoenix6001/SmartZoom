@@ -86,18 +86,24 @@ public class DiagnosticRecordTests
             var source = new DiagnosticRecord("0.1.0");
             source.Note(Key(), Noon);
             source.Sample(new DiagnosticSample(Key(), Noon, "before", null));
+            source.Gestures.Add(frames: 18, intervalMs: 17, lateFrames: 1, worstLateMs: 9.0);
 
             var copy = new DiagnosticRecord(source);
 
             source.Note(Key(), Noon.AddMinutes(5));
             source.Note(Key("other"), Noon);
             source.Sample(new DiagnosticSample(Key(), Noon.AddMinutes(5), "after", null));
+            source.Gestures.Add(frames: 18, intervalMs: 17, lateFrames: 5, worstLateMs: 40.0);
 
             var counter = Assert.Single(copy.Counters);
             Assert.Equal(1, counter.Count);
             Assert.Equal(Noon, counter.LastSeen);
             var sample = Assert.Single(copy.Samples);
             Assert.Equal("before", sample.Detail);
+            Assert.Equal(1, copy.Gestures.Gestures);
+            Assert.Equal(18, copy.Gestures.Frames);
+            Assert.Equal(1, copy.Gestures.LateFrames);
+            Assert.Equal(9.0, copy.Gestures.WorstLateMs);
         }
 
         [Fact]

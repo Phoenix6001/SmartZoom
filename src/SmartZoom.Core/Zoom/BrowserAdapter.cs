@@ -96,6 +96,9 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
             // Maybe the page is still visually zoomed from an earlier zoom this app has forgotten (restarted, or
             // the restore did not take): accessibility rects are then off-screen or wrong and nothing qualifies.
             // Zooming out below 1.0 is invisible on a page that is not zoomed and resets one that is; look again.
+            // TimeSpan.Zero is deliberate: this is a state reset nobody sees happen, not a gesture, so it must
+            // not appear in the gesture-health totals (the injector excludes zero-duration pinches for exactly
+            // that reason).
             await _pinch.PinchAsync(ClampInto(point, hit.Viewport), RestoreOvershoot / _planner.MaxScale, TimeSpan.Zero, ContactBounds(hit.Viewport), cancellationToken).ConfigureAwait(false);
             for (var attempt = 0; attempt < ResetAttempts && block is null; attempt++)
             {

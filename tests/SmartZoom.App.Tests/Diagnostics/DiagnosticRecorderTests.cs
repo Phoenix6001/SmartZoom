@@ -58,6 +58,26 @@ public class DiagnosticRecorderTests
             var sample = Assert.Single(snapshot.Samples);
             Assert.Equal("before the snapshot", sample.Detail);
         }
+
+        [Fact]
+        public void Reflects_gesture_totals_recorded_before_it_and_is_unaffected_by_pacing_after()
+        {
+            using var temp = new TempDirectory();
+            var recorder = CreateRecorder(temp.Path);
+
+            recorder.Paced(frames: 18, intervalMs: 17, lateFrames: 1, worstLateMs: 9.0);
+
+            var snapshot = recorder.Snapshot();
+
+            // Mutate the live recorder after the snapshot was taken, same as the counters/samples test above -
+            // none of this may be visible through the snapshot.
+            recorder.Paced(frames: 18, intervalMs: 17, lateFrames: 5, worstLateMs: 40.0);
+
+            Assert.Equal(1, snapshot.Gestures.Gestures);
+            Assert.Equal(18, snapshot.Gestures.Frames);
+            Assert.Equal(1, snapshot.Gestures.LateFrames);
+            Assert.Equal(9.0, snapshot.Gestures.WorstLateMs);
+        }
     }
 
     public sealed class Enabled
@@ -82,6 +102,19 @@ public class DiagnosticRecorderTests
             var snapshot = recorder.Snapshot();
             Assert.Empty(snapshot.Counters);
             Assert.Empty(snapshot.Samples);
+        }
+
+        [Fact]
+        public void When_false_Paced_does_nothing()
+        {
+            using var temp = new TempDirectory();
+            var recorder = CreateRecorder(temp.Path);
+            recorder.Enabled = false;
+
+            recorder.Paced(frames: 18, intervalMs: 17, lateFrames: 1, worstLateMs: 9.0);
+
+            var snapshot = recorder.Snapshot();
+            Assert.Equal(0, snapshot.Gestures.Gestures);
         }
     }
 
