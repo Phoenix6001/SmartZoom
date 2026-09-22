@@ -80,7 +80,7 @@ one of them win.
 | Result | Meaning | What the coordinator does |
 |---|---|---|
 | `Applied(state)` | Zoomed. `state` is your `TRestore` | Remembers `state`; the next press calls `ZoomOutAsync` with it |
-| `ZoomInResult.Handled` | Handled; nothing to undo | Nothing. No fallback |
+| `ZoomInResult.Handled(reason)` | Handled; nothing to undo. `reason` is a `ZoomReason` saying why nothing was zoomed, and it is what the diagnostics record counts under | Nothing. No fallback |
 | `ZoomInResult.Unhandled` | Could not act | Falls back to Ctrl+wheel, if that is enabled |
 
 Return `Unhandled` when the application is in a state you cannot work with and a crude zoom would still be

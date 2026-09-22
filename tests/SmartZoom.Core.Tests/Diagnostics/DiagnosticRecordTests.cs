@@ -26,6 +26,77 @@ public class DiagnosticRecordTests
         }
     }
 
+    public sealed class Counters_with_the_same_count
+    {
+        [Fact]
+        public void Come_back_in_the_same_order_every_time()
+        {
+            var first = new DiagnosticRecord("0.1.0");
+            var second = new DiagnosticRecord("0.1.0");
+
+            string[] processes = ["winword", "msedge", "excel", "acrobat", "brave", "chrome"];
+            foreach (var process in processes)
+                first.Note(Key(process), Noon);
+            foreach (var process in processes.Reverse())
+                second.Note(Key(process), Noon);
+
+            // Same data, inserted in the opposite order: without a tiebreak the rows can differ, and a user
+            // comparing two reports sees a difference that is not one.
+            Assert.Equal(
+                first.Counters.Select(c => c.Key.Process),
+                second.Counters.Select(c => c.Key.Process));
+        }
+
+        [Fact]
+        public void Still_come_after_a_counter_that_happened_more_often()
+        {
+            var record = new DiagnosticRecord("0.1.0");
+            record.Note(Key("aaa-rare"), Noon);
+            record.Note(Key("zzz-common"), Noon);
+            record.Note(Key("zzz-common"), Noon);
+
+            Assert.Equal("zzz-common", record.Counters[0].Key.Process);
+        }
+    }
+
+    public sealed class A_restored_counter
+    {
+        [Fact]
+        public void Carries_its_stored_count_and_both_timestamps()
+        {
+            var record = new DiagnosticRecord("0.1.0");
+
+            record.Restore(Key(), count: 43, firstSeen: Noon, lastSeen: Noon.AddHours(3));
+
+            var counter = Assert.Single(record.Counters);
+            Assert.Equal(43, counter.Count);
+            Assert.Equal(Noon, counter.FirstSeen);
+            Assert.Equal(Noon.AddHours(3), counter.LastSeen);
+        }
+
+        [Fact]
+        public void Is_clamped_so_a_hand_edited_file_cannot_cost_unbounded_work()
+        {
+            var record = new DiagnosticRecord("0.1.0");
+
+            record.Restore(Key(), count: int.MaxValue, firstSeen: Noon, lastSeen: Noon);
+
+            Assert.Equal(DiagnosticRecord.MaxRestoredCount, Assert.Single(record.Counters).Count);
+        }
+
+        [Fact]
+        public void Still_obeys_the_key_cap()
+        {
+            var record = new DiagnosticRecord("0.1.0");
+
+            for (var i = 0; i < DiagnosticRecord.MaxKeys + 4; i++)
+                record.Restore(Key($"app{i}"), count: 2, firstSeen: Noon, lastSeen: Noon);
+
+            Assert.Equal(DiagnosticRecord.MaxKeys, record.Counters.Count);
+            Assert.Equal(4, record.OmittedKeys);
+        }
+    }
+
     public sealed class More_keys_than_the_cap
     {
         [Fact]

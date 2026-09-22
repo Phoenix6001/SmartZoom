@@ -52,9 +52,16 @@ public sealed class DiagnosticRecord
     /// <summary>The SmartZoom version this record describes.</summary>
     public string Version { get; }
 
-    /// <summary>The counters, most frequent first.</summary>
+    /// <summary>The counters, most frequent first, then by key.</summary>
+    /// <remarks>
+    /// The second sort key is what makes the order stable. Without it two renders of the same data can put
+    /// equally frequent rows in different places - dictionary order is not defined - and a user comparing
+    /// two reports sees a difference that is not one.
+    /// </remarks>
     public IReadOnlyList<DiagnosticCounter> Counters =>
-        [.. _counters.Values.OrderByDescending(c => c.Count)];
+        [.. _counters.Values
+            .OrderByDescending(c => c.Count)
+            .ThenBy(c => c.Key.ToString(), StringComparer.Ordinal)];
 
     /// <summary>The worked examples, oldest first.</summary>
     /// <remarks>A copy, like <see cref="Counters"/>: a caller must not be able to reach the backing list.</remarks>

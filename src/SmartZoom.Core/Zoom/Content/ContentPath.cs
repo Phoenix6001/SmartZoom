@@ -18,10 +18,27 @@ public static class ContentPath
         string.Join(" < ", chain.Select(n =>
             $"{RoleName(n)} {n.Bounds.Width}x{n.Bounds.Height}@({n.Bounds.Left},{n.Bounds.Top})"));
 
+    /// <summary>The most nodes a shape keeps before it says how many it left out.</summary>
+    /// <remarks>
+    /// A shape is read by a person looking for the node that should have been zoomed, and that node is near
+    /// the leaf. A deeply nested page can produce a chain dozens of nodes long, which buries the useful end
+    /// and eats the sample ring's budget for nothing.
+    /// </remarks>
+    public const int MaxShapeNodes = 12;
+
     /// <summary>The chain, leaf first, with role and size only — safe to record in a diagnostic sample.</summary>
     /// <param name="chain">The ancestor chain from a <see cref="ContentHit"/>.</param>
-    public static string Shape(IReadOnlyList<ContentNode> chain) =>
-        string.Join(" < ", chain.Select(n => $"{RoleName(n)} {n.Bounds.Width}x{n.Bounds.Height}"));
+    /// <returns>The shape, truncated after <see cref="MaxShapeNodes"/> nodes.</returns>
+    public static string Shape(IReadOnlyList<ContentNode> chain)
+    {
+        ArgumentNullException.ThrowIfNull(chain);
+
+        var kept = string.Join(" < ", chain.Take(MaxShapeNodes).Select(n => $"{RoleName(n)} {n.Bounds.Width}x{n.Bounds.Height}"));
+
+        return chain.Count <= MaxShapeNodes
+            ? kept
+            : $"{kept} < … [{chain.Count - MaxShapeNodes} more]";
+    }
 
     private static string RoleName(ContentNode node) =>
         node.Role == ContentRole.Other ? $"Other({node.RawRole})" : node.Role.ToString();

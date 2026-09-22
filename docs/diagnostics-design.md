@@ -60,8 +60,10 @@ gap between what it *can* see and what it *keeps* being obvious and enforced.
   makes the `PANE` class of defect diagnosable without recording what was being read.
 - **Screen coordinates.** The existing debug log includes them; the record keeps sizes only. Absolute
   positions describe a monitor layout and add nothing to any of the three questions.
-- **Keystrokes.** Unchanged from the existing hook rule: modifiers and configured trigger keys only, and
-  none of that reaches diagnostics.
+- **Keystrokes.** Unchanged from the existing hook rule: the hook observes modifiers and the keys named in
+  the configured triggers, and nothing the user types reaches diagnostics. The trigger combinations
+  themselves do appear in the report, because it renders `settings.json` — which is where the user put them.
+  What is never recorded is a key *press*.
 - **Username, machine name, absolute paths.** Anything rendered into the report has the user profile path
   rewritten back to `%APPDATA%` / `%LOCALAPPDATA%`. This applies to exception messages too — an `IOException`
   carries the path that failed.

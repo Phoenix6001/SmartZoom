@@ -168,7 +168,7 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
             // the late-frame ratio this section exists to surface. Nobody sees that pinch happen, so the report
             // must not describe it as one.
             if (duration > TimeSpan.Zero)
-                pacing?.Paced(frames, interval, lateFrames, worstLate);
+                ReportPacing(frames, interval, lateFrames, worstLate);
 
             completed = true;
             return true;
@@ -296,8 +296,32 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
             PInvoke.SetCursorPos(position.X, position.Y);
     }
 
+    /// <summary>
+    /// Hands the gesture's pacing to diagnostics, swallowing anything the sink throws.
+    /// </summary>
+    /// <remarks>
+    /// This is the only recording site on the zoom path itself, in the middle of a gesture whose contacts are
+    /// still down - every other site in the app routes through a guard of its own, and this one had none.
+    /// Diagnostics never participates in control flow: a record that failed must cost a log line, not a
+    /// half-finished pinch with synthetic fingers left on the screen.
+    /// </remarks>
+    private void ReportPacing(int frames, int intervalMs, int lateFrames, double worstLateMs)
+    {
+        try
+        {
+            pacing?.Paced(frames, intervalMs, lateFrames, worstLateMs);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            LogPacingNotRecorded(ex);
+        }
+    }
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not lift the synthetic touch contacts after a completed gesture.")]
     private partial void LogLiftFailed();
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Failed to record this gesture's pacing; the gesture itself is unaffected.")]
+    private partial void LogPacingNotRecorded(Exception exception);
 
     [LoggerMessage(Level = LogLevel.Debug,
         Message = "Gesture pacing: {Frames} frames at {TargetMs} ms took {ActualMs:F0} ms; " +

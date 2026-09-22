@@ -1,4 +1,4 @@
-using System.Globalization;
+using System.Reflection;
 using System.Runtime.InteropServices;
 
 using SmartZoom.Core.Diagnostics;
@@ -17,8 +17,13 @@ namespace SmartZoom.Interop.Windows;
 public sealed class MachineFacts : IMachineFacts
 {
     /// <inheritdoc />
+    /// <remarks>
+    /// The application's version, not this assembly's. It version-scopes the whole diagnostics record - a
+    /// record from another version is discarded on load - and reading it from SmartZoom.Interop was only
+    /// correct because every project in the repository shares one version today.
+    /// </remarks>
     public string AppVersion { get; } =
-        typeof(MachineFacts).Assembly.GetName().Version?.ToString() ?? "unknown";
+        (Assembly.GetEntryAssembly() ?? typeof(MachineFacts).Assembly).GetName().Version?.ToString() ?? "unknown";
 
     /// <inheritdoc />
     public string OperatingSystem { get; } = RuntimeInformation.OSDescription;
