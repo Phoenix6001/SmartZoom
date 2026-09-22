@@ -83,6 +83,7 @@ public sealed class ExcelComAdapterTests
         var result = await Create(minScale: 1.1).ZoomInAsync(Excel, Cursor, CancellationToken.None);
 
         Assert.Equal(ZoomInStatus.Handled, result.Status);
+        Assert.Equal(ZoomReason.AlreadyFits, result.Reason);
         Assert.Equal(100, _excel.Window.Zoom);
         Assert.Equal((1, 1), _excel.Window.Scroll);
     }
@@ -95,6 +96,7 @@ public sealed class ExcelComAdapterTests
         var result = await Create().ZoomInAsync(Excel, Cursor, CancellationToken.None);
 
         Assert.Equal(ZoomInStatus.Handled, result.Status);
+        Assert.Equal(ZoomReason.NoBlock, result.Reason);
         Assert.Equal(100, _excel.Window.Zoom);
     }
 
@@ -132,6 +134,7 @@ public sealed class ExcelComAdapterTests
         var result = await Create().ZoomInAsync(Excel, Cursor, CancellationToken.None);
 
         Assert.Equal(ZoomInStatus.Handled, result.Status);
+        Assert.Equal(ZoomReason.AutomationFailed, result.Reason);
         Assert.Equal(100, _excel.Window.Zoom);
         Assert.True(_excel.Window.Disposed);
     }

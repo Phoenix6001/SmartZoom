@@ -67,7 +67,10 @@ public sealed class BrowserAdapterTests
     {
         _hits.Result = null;
 
-        Assert.Equal(ZoomInStatus.Handled, (await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None)).Status);
+        var result = await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None);
+
+        Assert.Equal(ZoomInStatus.Handled, result.Status);
+        Assert.Equal(ZoomReason.NoContent, result.Reason);
         Assert.Empty(_pinch.Calls);
     }
 
@@ -76,7 +79,10 @@ public sealed class BrowserAdapterTests
     {
         _hits.Result = new ContentHit([new ContentNode(ContentRole.Document, Viewport)], Viewport);
 
-        Assert.Equal(ZoomInStatus.Handled, (await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None)).Status);
+        var result = await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None);
+
+        Assert.Equal(ZoomInStatus.Handled, result.Status);
+        Assert.Equal(ZoomReason.NoBlock, result.Reason);
 
         // One instant pinch-out (invisible on an unzoomed page, a reset on a zoomed one) and one more look.
         var reset = Assert.Single(_pinch.Calls);
@@ -124,14 +130,18 @@ public sealed class BrowserAdapterTests
             Viewport);
 
         // 1800 of 1874 px is 96% of the viewport: too wide for the block selector, so nothing to zoom.
-        Assert.Equal(ZoomInStatus.Handled, (await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None)).Status);
+        var tooWide = await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None);
+        Assert.Equal(ZoomInStatus.Handled, tooWide.Status);
+        Assert.Equal(ZoomReason.NoBlock, tooWide.Reason);
 
         _hits.Result = new ContentHit(
             [new ContentNode(ContentRole.Group, PixelRect.FromSize(470, 800, 1680, 300)), new ContentNode(ContentRole.Document, Viewport)],
             Viewport);
 
         // 1680 px qualifies as a block but the resulting scale (1.09) is below MinScale.
-        Assert.Equal(ZoomInStatus.Handled, (await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None)).Status);
+        var belowMinScale = await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None);
+        Assert.Equal(ZoomInStatus.Handled, belowMinScale.Status);
+        Assert.Equal(ZoomReason.AlreadyFits, belowMinScale.Reason);
 
         // The first case made one instant reset pinch (see the stuck-zoom test); the second made no gesture at all.
         Assert.Single(_pinch.Calls);
@@ -143,7 +153,10 @@ public sealed class BrowserAdapterTests
         _hits.Result = ParagraphHit;
         _pinch.Succeeds = false;
 
-        Assert.Equal(ZoomInStatus.Handled, (await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None)).Status);
+        var result = await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None);
+
+        Assert.Equal(ZoomInStatus.Handled, result.Status);
+        Assert.Equal(ZoomReason.GestureRefused, result.Reason);
     }
 
     [Fact]

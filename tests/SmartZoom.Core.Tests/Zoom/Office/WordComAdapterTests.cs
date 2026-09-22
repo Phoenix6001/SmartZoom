@@ -65,7 +65,10 @@ public sealed class WordComAdapterTests : IDisposable
     {
         _word.Block = null;
 
-        Assert.Equal(ZoomInStatus.Handled, (await Create().ZoomInAsync(Word, Cursor, CancellationToken.None)).Status);
+        var result = await Create().ZoomInAsync(Word, Cursor, CancellationToken.None);
+
+        Assert.Equal(ZoomInStatus.Handled, result.Status);
+        Assert.Equal(ZoomReason.NoBlock, result.Reason);
         Assert.Null(_word.Zoom);
     }
 
@@ -74,7 +77,10 @@ public sealed class WordComAdapterTests : IDisposable
     {
         _word.Block = PixelRect.FromSize(210, 850, 1500, 120);
 
-        Assert.Equal(ZoomInStatus.Handled, (await Create().ZoomInAsync(Word, Cursor, CancellationToken.None)).Status);
+        var result = await Create().ZoomInAsync(Word, Cursor, CancellationToken.None);
+
+        Assert.Equal(ZoomInStatus.Handled, result.Status);
+        Assert.Equal(ZoomReason.AlreadyFits, result.Reason);
         Assert.Null(_word.Zoom);
     }
 
