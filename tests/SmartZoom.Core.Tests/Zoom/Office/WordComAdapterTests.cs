@@ -85,6 +85,19 @@ public sealed class WordComAdapterTests : IDisposable
     }
 
     [Fact]
+    public async Task An_object_model_failure_is_reported_as_automation_failed()
+    {
+        _word.Block = PixelRect.FromSize(600, 850, 768, 120);
+        _word.State = new WordViewState(100, 40, 0);
+        _word.FailZoom = true;
+
+        var result = await Create().ZoomInAsync(Word, Cursor, CancellationToken.None);
+
+        Assert.Equal(ZoomInStatus.Handled, result.Status);
+        Assert.Equal(ZoomReason.AutomationFailed, result.Reason);
+    }
+
+    [Fact]
     public async Task Not_a_word_window_is_unhandled()
     {
         _word.Attachable = false;
@@ -109,6 +122,8 @@ public sealed class WordComAdapterTests : IDisposable
     {
         public bool Attachable { get; set; } = true;
 
+        public bool FailZoom { get; set; }
+
         public PixelRect? Block { get; set; }
 
         public WordViewState State { get; set; } = new(100, 0, 0);
@@ -132,6 +147,14 @@ public sealed class WordComAdapterTests : IDisposable
 
         public void SetZoom(int percent)
         {
+            if (FailZoom)
+            {
+                // Exactly what Word's object model throws when it is busy; the adapter catches this type.
+#pragma warning disable CA2201
+                throw new System.Runtime.InteropServices.COMException("Word is busy.", unchecked((int)0x800AC472));
+#pragma warning restore CA2201
+            }
+
             Zoom = percent;
             ZoomHistory.Add(percent);
         }
