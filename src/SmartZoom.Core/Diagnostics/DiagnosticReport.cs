@@ -91,6 +91,18 @@ public static class DiagnosticReport
             }
         });
 
+        if (record.Gestures.Gestures > 0)
+        {
+            Section(text, "Gesture health", () =>
+            {
+                var g = record.Gestures;
+                text.AppendLine(CultureInfo.InvariantCulture,
+                    $"- {g.Gestures} gestures, {g.Frames} frames at {g.IntervalMs} ms");
+                text.AppendLine(CultureInfo.InvariantCulture,
+                    $"- {g.LateFrames} frames missed their slot, worst {g.WorstLateMs:F1} ms late");
+            });
+        }
+
         if (logTail is { Length: > 0 })
             Section(text, "Recent log", () => text.AppendLine("```").AppendLine(redact(logTail)).AppendLine("```"));
 

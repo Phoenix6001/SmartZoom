@@ -8,9 +8,11 @@ using Serilog;
 using Serilog.Core;
 using Serilog.Events;
 
+using SmartZoom.App.Diagnostics;
 using SmartZoom.App.Hosting;
 using SmartZoom.App.Settings;
 using SmartZoom.App.Tray;
+using SmartZoom.Core.Diagnostics;
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
 using SmartZoom.Core.Settings;
@@ -142,6 +144,17 @@ internal static class Program
         builder.Services.AddSingleton<ChromiumAccessibilityWake>();
         builder.Services.AddSingleton<IContentHitTester, MsaaContentHitTester>();
         builder.Services.AddSingleton<TouchDevices>();
+
+        // The diagnostics record: local-only counters the injector reports its gesture pacing into. One
+        // DiagnosticRecorder instance serves both DI-registered types so the totals accumulate in one place.
+        builder.Services.AddSingleton<IMachineFacts, MachineFacts>();
+        builder.Services.AddSingleton<DiagnosticStore>();
+        builder.Services.AddSingleton(sp => new DiagnosticRecorder(
+            sp.GetRequiredService<DiagnosticStore>(),
+            sp.GetRequiredService<TimeProvider>(),
+            sp.GetRequiredService<IMachineFacts>().AppVersion));
+        builder.Services.AddSingleton<IGesturePacingSink>(sp => sp.GetRequiredService<DiagnosticRecorder>());
+
         builder.Services.AddSingleton<IPinchInjector, TouchPinchInjector>();
         builder.Services.AddSingleton<IWindowActivator, WindowActivator>();
         builder.Services.AddSingleton<IReaderView, ReaderView>();

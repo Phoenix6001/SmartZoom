@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 
 using Microsoft.Extensions.Logging;
 
+using SmartZoom.Core.Diagnostics;
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Zoom;
 using SmartZoom.Core.Zoom.Content;
@@ -23,7 +24,7 @@ namespace SmartZoom.Interop.Input;
 /// <see cref="PinchGeometry"/>, in a project that can be tested. What is left here is the scheduling of the
 /// frames and the calls into Win32.
 /// </remarks>
-public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<TouchPinchInjector> logger) : IPinchInjector
+public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<TouchPinchInjector> logger, IGesturePacingSink? pacing = null) : IPinchInjector
 {
     // Fallback when the display refuses to say how fast it refreshes.
     private const int DefaultFrameMs = 8;
@@ -161,6 +162,7 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
             }
 
             LogPacing(frames, interval, worstLate, lateFrames, clock.Elapsed.TotalMilliseconds - animationStart);
+            pacing?.Paced(frames, interval, lateFrames, worstLate);
 
             completed = true;
             return true;

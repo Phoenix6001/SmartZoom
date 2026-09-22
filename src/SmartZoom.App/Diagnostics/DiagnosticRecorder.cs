@@ -11,7 +11,7 @@ namespace SmartZoom.App.Diagnostics;
 /// a mutating <see cref="DiagnosticRecord"/> would throw. <see cref="DiagnosticRecord"/> itself stays a pure,
 /// lock-free, unit-testable Core type; the concurrency boundary lives here, where the threading is known.
 /// </remarks>
-internal sealed class DiagnosticRecorder(DiagnosticStore store, TimeProvider time, string version)
+internal sealed class DiagnosticRecorder(DiagnosticStore store, TimeProvider time, string version) : IGesturePacingSink
 {
     private readonly Lock _gate = new();
     private DiagnosticRecord _record = store.Load(version);
@@ -57,6 +57,23 @@ internal sealed class DiagnosticRecorder(DiagnosticStore store, TimeProvider tim
         lock (_gate)
         {
             _record.Sample(sample);
+            _dirty = true;
+        }
+    }
+
+    /// <summary>Records one delivered gesture's pacing.</summary>
+    /// <param name="frames">Frames the gesture asked for.</param>
+    /// <param name="intervalMs">The interval between them.</param>
+    /// <param name="lateFrames">How many missed their slot.</param>
+    /// <param name="worstLateMs">The worst lateness in this gesture.</param>
+    public void Paced(int frames, int intervalMs, int lateFrames, double worstLateMs)
+    {
+        if (!Enabled)
+            return;
+
+        lock (_gate)
+        {
+            _record.Gestures.Add(frames, intervalMs, lateFrames, worstLateMs);
             _dirty = true;
         }
     }

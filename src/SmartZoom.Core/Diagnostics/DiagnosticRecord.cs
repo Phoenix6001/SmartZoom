@@ -36,6 +36,7 @@ public sealed class DiagnosticRecord
 
         Version = source.Version;
         OmittedKeys = source.OmittedKeys;
+        Gestures = new GestureHealth(source.Gestures);
         _counters = source._counters.ToDictionary(kv => kv.Key, kv => new DiagnosticCounter(kv.Value));
         _samples = [.. source._samples];
     }
@@ -52,6 +53,9 @@ public sealed class DiagnosticRecord
 
     /// <summary>How many distinct things were not counted because the cap was reached.</summary>
     public int OmittedKeys { get; private set; }
+
+    /// <summary>How well injected gestures have been delivered on this machine.</summary>
+    public GestureHealth Gestures { get; } = new();
 
     /// <summary>Counts one occurrence.</summary>
     /// <param name="key">What happened.</param>
