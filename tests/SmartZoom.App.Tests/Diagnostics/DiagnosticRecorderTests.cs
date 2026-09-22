@@ -80,6 +80,49 @@ public class DiagnosticRecorderTests
         }
     }
 
+    public sealed class The_Flush_method
+    {
+        [Fact]
+        public void Keeps_the_record_pending_when_the_write_failed()
+        {
+            using var temp = new TempDirectory();
+            var paths = new AppPaths(SettingsDirectory: temp.Path, LogDirectory: Path.Combine(temp.Path, "logs"));
+            var recorder = new DiagnosticRecorder(
+                new DiagnosticStore(paths, NullLogger<DiagnosticStore>.Instance), TimeProvider.System, "0.1.0-test");
+            recorder.Note(Key());
+
+            // A directory standing where the file belongs: the write fails and the store says so.
+            Directory.CreateDirectory(paths.DiagnosticsFile);
+            recorder.Flush();
+            Assert.False(File.Exists(paths.DiagnosticsFile));
+
+            // A transient failure must not cost the session its record: the shutdown flush still has work.
+            Directory.Delete(paths.DiagnosticsFile);
+            recorder.Flush();
+
+            var store = new DiagnosticStore(paths, NullLogger<DiagnosticStore>.Instance);
+            Assert.Equal(Key(), Assert.Single(store.Load("0.1.0-test").Counters).Key);
+        }
+
+        [Fact]
+        public void Does_not_write_again_when_nothing_changed()
+        {
+            using var temp = new TempDirectory();
+            var paths = new AppPaths(SettingsDirectory: temp.Path, LogDirectory: Path.Combine(temp.Path, "logs"));
+            var recorder = new DiagnosticRecorder(
+                new DiagnosticStore(paths, NullLogger<DiagnosticStore>.Instance), TimeProvider.System, "0.1.0-test");
+            recorder.Note(Key());
+            recorder.Flush();
+
+            var written = File.GetLastWriteTimeUtc(paths.DiagnosticsFile);
+            File.Delete(paths.DiagnosticsFile);
+            recorder.Flush();
+
+            Assert.False(File.Exists(paths.DiagnosticsFile), "A clean record must not be written again.");
+            Assert.NotEqual(default, written);
+        }
+    }
+
     public sealed class Enabled
     {
         [Fact]

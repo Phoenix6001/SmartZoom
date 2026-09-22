@@ -57,4 +57,28 @@ public sealed class GestureHealth
         IntervalMs = intervalMs;
         WorstLateMs = Math.Max(WorstLateMs, worstLateMs);
     }
+
+    /// <summary>Folds a stored tally back in, as a block rather than gesture by gesture.</summary>
+    /// <param name="gestures">How many gestures the block covers.</param>
+    /// <param name="frames">Frames they asked for in total.</param>
+    /// <param name="intervalMs">The interval they used; ignored when it is not positive.</param>
+    /// <param name="lateFrames">How many of those frames missed their slot.</param>
+    /// <param name="worstLateMs">The worst lateness in the block.</param>
+    /// <remarks>
+    /// Restoring the record on startup needs this: the totals are what the report shows, and without it they
+    /// reset at every restart. Negative values are ignored rather than trusted, because the file they come
+    /// from is plain JSON in the user's own profile and can have been edited by hand.
+    /// </remarks>
+    public void Merge(int gestures, int frames, int intervalMs, int lateFrames, double worstLateMs)
+    {
+        Gestures += Math.Max(0, gestures);
+        Frames += Math.Max(0, frames);
+        LateFrames += Math.Max(0, lateFrames);
+
+        if (intervalMs > 0)
+            IntervalMs = intervalMs;
+
+        if (worstLateMs > WorstLateMs)
+            WorstLateMs = worstLateMs;
+    }
 }

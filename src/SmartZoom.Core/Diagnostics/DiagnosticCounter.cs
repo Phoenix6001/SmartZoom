@@ -46,4 +46,21 @@ public sealed class DiagnosticCounter
         Count++;
         LastSeen = when;
     }
+
+    /// <summary>Records several occurrences at once.</summary>
+    /// <param name="occurrences">How many to add; zero and below add nothing.</param>
+    /// <param name="when">When the last of them happened.</param>
+    /// <remarks>
+    /// Restoring a stored counter needs this: replaying a saved count one <see cref="Add(DateTimeOffset)"/>
+    /// at a time costs time proportional to a number that came off disk, and a hand-edited file could make
+    /// that number two billion. The total is saturated rather than allowed to overflow.
+    /// </remarks>
+    public void Add(int occurrences, DateTimeOffset when)
+    {
+        if (occurrences <= 0)
+            return;
+
+        Count = (int)Math.Min(int.MaxValue, (long)Count + occurrences);
+        LastSeen = when;
+    }
 }

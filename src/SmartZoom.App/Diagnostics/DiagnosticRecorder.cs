@@ -15,7 +15,12 @@ internal sealed class DiagnosticRecorder(DiagnosticStore store, TimeProvider tim
 {
     private readonly Lock _gate = new();
     private DiagnosticRecord _record = store.Load(version);
-    private bool _dirty;
+
+    // A version rather than a bool. "Dirty" cannot express "saved what existed at the moment the write
+    // started, and something has been recorded since" - and a flush that cleared a bool would then lose
+    // whatever arrived while the file was being written.
+    private long _changes;
+    private long _written;
 
     /// <summary>Whether anything is recorded at all.</summary>
     public bool Enabled { get; set; } = true;
@@ -43,7 +48,7 @@ internal sealed class DiagnosticRecorder(DiagnosticStore store, TimeProvider tim
         lock (_gate)
         {
             _record.Note(key, time.GetUtcNow());
-            _dirty = true;
+            _changes++;
         }
     }
 
@@ -57,7 +62,7 @@ internal sealed class DiagnosticRecorder(DiagnosticStore store, TimeProvider tim
         lock (_gate)
         {
             _record.Sample(sample);
-            _dirty = true;
+            _changes++;
         }
     }
 
@@ -74,7 +79,7 @@ internal sealed class DiagnosticRecorder(DiagnosticStore store, TimeProvider tim
         lock (_gate)
         {
             _record.Gestures.Add(frames, intervalMs, lateFrames, worstLateMs);
-            _dirty = true;
+            _changes++;
         }
     }
 
@@ -84,23 +89,38 @@ internal sealed class DiagnosticRecorder(DiagnosticStore store, TimeProvider tim
         lock (_gate)
         {
             _record = new DiagnosticRecord(version);
-            _dirty = true;
+            _changes++;
         }
     }
 
     /// <summary>Writes the record if anything has changed.</summary>
+    /// <remarks>
+    /// The record is marked written only once the store says it wrote it. Clearing the flag first meant a
+    /// single transient failure - Save swallows IOException - left nothing on disk and nothing to flush,
+    /// so the whole session's record was silently discarded. The file I/O deliberately happens outside
+    /// <c>_gate</c>: that lock is taken on the zoom path, and diagnostics may never make a zoom wait for a disk.
+    /// </remarks>
     public void Flush()
     {
         DiagnosticRecord snapshot;
+        long changes;
         lock (_gate)
         {
-            if (!_dirty)
+            if (_changes == _written)
                 return;
 
             snapshot = new DiagnosticRecord(_record);
-            _dirty = false;
+            changes = _changes;
         }
 
-        store.Save(snapshot);
+        if (!store.Save(snapshot))
+            return;
+
+        lock (_gate)
+        {
+            // Only forward: a write that overtook a later one must not mark the later one's work as saved.
+            if (changes > _written)
+                _written = changes;
+        }
     }
 }

@@ -16,6 +16,14 @@ public sealed class DiagnosticRecord
     /// <summary>How many worked examples are kept.</summary>
     public const int MaxSamples = 20;
 
+    /// <summary>The most occurrences one restored counter may claim.</summary>
+    /// <remarks>
+    /// A ceiling on what a file is allowed to assert, not on what SmartZoom can count in a session. The file
+    /// is plain JSON in the user's own profile and the record is scoped to one build, so a seven-figure count
+    /// is a typo or a hand edit rather than a tally anybody produced by pressing a button.
+    /// </remarks>
+    public const int MaxRestoredCount = 1_000_000;
+
     private readonly Dictionary<DiagnosticKey, DiagnosticCounter> _counters = [];
     private readonly List<DiagnosticSample> _samples = [];
 
@@ -49,7 +57,8 @@ public sealed class DiagnosticRecord
         [.. _counters.Values.OrderByDescending(c => c.Count)];
 
     /// <summary>The worked examples, oldest first.</summary>
-    public IReadOnlyList<DiagnosticSample> Samples => _samples;
+    /// <remarks>A copy, like <see cref="Counters"/>: a caller must not be able to reach the backing list.</remarks>
+    public IReadOnlyList<DiagnosticSample> Samples => [.. _samples];
 
     /// <summary>How many distinct things were not counted because the cap was reached.</summary>
     public int OmittedKeys { get; private set; }
@@ -77,6 +86,55 @@ public sealed class DiagnosticRecord
         }
 
         _counters[key] = new DiagnosticCounter(key, when);
+    }
+
+    /// <summary>Puts a stored counter back, in one step rather than one call per occurrence.</summary>
+    /// <param name="key">What was counted.</param>
+    /// <param name="count">How many times, as the file claims; clamped to <see cref="MaxRestoredCount"/>.</param>
+    /// <param name="firstSeen">When it first happened.</param>
+    /// <param name="lastSeen">When it last happened.</param>
+    /// <remarks>
+    /// The key cap still applies, so a file listing more than <see cref="MaxKeys"/> keys fills
+    /// <see cref="OmittedKeys"/> exactly as a running session would. What does not apply is the cost of the
+    /// count: loading happens inside the recorder's field initialiser, which runs during DI construction, so
+    /// a file claiming two billion occurrences would stop SmartZoom starting if it were replayed one at a time.
+    /// </remarks>
+    public void Restore(DiagnosticKey key, int count, DateTimeOffset firstSeen, DateTimeOffset lastSeen)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+
+        if (count <= 0)
+            return;
+
+        var remaining = Math.Min(count, MaxRestoredCount);
+        if (!_counters.TryGetValue(key, out var counter))
+        {
+            if (_counters.Count >= MaxKeys)
+            {
+                OmittedKeys++;
+                return;
+            }
+
+            // The constructor counts the first occurrence itself.
+            counter = new DiagnosticCounter(key, firstSeen);
+            _counters[key] = counter;
+            remaining--;
+        }
+
+        counter.Add(remaining, lastSeen);
+    }
+
+    /// <summary>Puts back the count of keys a stored record had already refused.</summary>
+    /// <param name="keys">How many, as the file claims; clamped to <see cref="MaxRestoredCount"/>.</param>
+    /// <remarks>
+    /// Restored rather than recomputed. The file holds only the keys that fitted, so replaying it can never
+    /// rediscover the ones that did not - without this the report says "nothing was dropped" on the very
+    /// records where most was.
+    /// </remarks>
+    public void RestoreOmitted(int keys)
+    {
+        if (keys > 0)
+            OmittedKeys += Math.Min(keys, MaxRestoredCount);
     }
 
     /// <summary>Keeps one worked example, dropping the oldest when the ring is full.</summary>
