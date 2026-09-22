@@ -74,7 +74,7 @@ public sealed partial class ExcelComAdapter : ZoomAdapter<ExcelViewState>
             if (found is not { } block)
             {
                 LogNoBlock(target.ProcessName);
-                return ZoomInResult.Handled;
+                return ZoomInResult.Handled(ZoomReason.NoBlock);
             }
 
             // Leave the same gap at the sides as the browsers and Word do.
@@ -87,7 +87,7 @@ public sealed partial class ExcelComAdapter : ZoomAdapter<ExcelViewState>
             {
                 window.Restore(before);
                 LogAlreadyFits(target.ProcessName, block.Rows, block.Columns);
-                return ZoomInResult.Handled;
+                return ZoomInResult.Handled(ZoomReason.AlreadyFits);
             }
 
             var targetZoom = Math.Clamp((int)Math.Round(before.ZoomPercent * Math.Min(scale, _maxScale)), MinExcelZoom, MaxExcelZoom);
@@ -106,7 +106,7 @@ public sealed partial class ExcelComAdapter : ZoomAdapter<ExcelViewState>
         {
             LogComFailure(ex, target.ProcessName);
             TryRestore(window, before);
-            return ZoomInResult.Handled;
+            return ZoomInResult.Handled(ZoomReason.GestureRefused);
         }
     }
 

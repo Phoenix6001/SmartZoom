@@ -12,6 +12,9 @@ public enum ZoomAction
     /// <summary>A previous zoom on the target was undone.</summary>
     ZoomedOut,
 
+    /// <summary>An adapter dealt with the trigger and deliberately changed nothing.</summary>
+    Handled,
+
     /// <summary>An adapter was selected but could not act.</summary>
     Unhandled,
 }

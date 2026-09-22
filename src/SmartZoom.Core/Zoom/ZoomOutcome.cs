@@ -9,17 +9,15 @@ namespace SmartZoom.Core.Zoom;
 /// The strategy that acted, which is not always the one that was routed to: an adapter that cannot act hands
 /// over to Ctrl+wheel, and this says who finished the job. Null when nothing was tried.
 /// </param>
-public sealed record ZoomOutcome(ZoomAction Action, string? Process, AdapterId? Adapter)
+/// <param name="Reason">Why nothing was zoomed, when <see cref="Action"/> is <see cref="ZoomAction.Handled"/> or <see cref="ZoomAction.Ignored"/>.</param>
+public sealed record ZoomOutcome(ZoomAction Action, string? Process, AdapterId? Adapter, ZoomReason? Reason = null)
 {
-    /// <summary>Nothing was done, because nothing here is SmartZoom's business.</summary>
-    /// <param name="process">The application the trigger landed in.</param>
-    public static ZoomOutcome Ignored(string? process) => new(ZoomAction.Ignored, process, null);
-
     /// <summary>A short sentence for a tooltip or a status line.</summary>
     public override string ToString() => Action switch
     {
         ZoomAction.ZoomedIn => $"Zoomed in {Process} via {Adapter}",
         ZoomAction.ZoomedOut => $"Zoomed out {Process} via {Adapter}",
+        ZoomAction.Handled => $"Nothing to zoom in {Process} ({Reason})",
         ZoomAction.Unhandled => $"Could not zoom {Process}",
         _ => $"Ignored {Process}",
     };

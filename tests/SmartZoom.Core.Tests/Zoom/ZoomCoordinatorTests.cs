@@ -91,14 +91,26 @@ public sealed class ZoomCoordinatorTests
     [Fact]
     public async Task Self_managed_adapter_is_invoked_again_to_toggle_back()
     {
-        _browser.Result = ZoomInResult.Handled;
+        _browser.Result = ZoomInResult.Handled(ZoomReason.AlreadyFits);
         var coordinator = Create();
 
-        Assert.Equal(ZoomAction.ZoomedIn, (await coordinator.HandleTriggerAsync(Browser, Point, CancellationToken.None)).Action);
-        Assert.Equal(ZoomAction.ZoomedIn, (await coordinator.HandleTriggerAsync(Browser, Point, CancellationToken.None)).Action);
+        Assert.Equal(ZoomAction.Handled, (await coordinator.HandleTriggerAsync(Browser, Point, CancellationToken.None)).Action);
+        Assert.Equal(ZoomAction.Handled, (await coordinator.HandleTriggerAsync(Browser, Point, CancellationToken.None)).Action);
 
         Assert.Equal(["in", "in"], _browser.Calls);
         Assert.Equal(0, _store.Count);
+    }
+
+    [Fact]
+    public async Task An_adapter_that_did_nothing_is_not_reported_as_a_zoom()
+    {
+        _browser.Result = ZoomInResult.Handled(ZoomReason.NoBlock);
+        var coordinator = Create();
+
+        var outcome = await coordinator.HandleTriggerAsync(Browser, Point, CancellationToken.None);
+
+        Assert.Equal(ZoomAction.Handled, outcome.Action);
+        Assert.Equal(ZoomReason.NoBlock, outcome.Reason);
     }
 
     [Fact]

@@ -84,7 +84,7 @@ public sealed partial class ZoomCoordinator
         // "None": both mean the trigger is not ours and must stay silent.
         if (_router.Resolve(target.ProcessName) is not { } id || id == AdapterId.None)
         {
-            return ZoomOutcome.Ignored(target.ProcessName);
+            return new ZoomOutcome(ZoomAction.Ignored, target.ProcessName, null, ZoomReason.NoAdapter);
         }
 
         ZoomInResult result;
@@ -120,7 +120,7 @@ public sealed partial class ZoomCoordinator
 
             case ZoomInStatus.Handled:
                 LogHandled(target.ProcessName, id);
-                return new ZoomOutcome(ZoomAction.ZoomedIn, target.ProcessName, id);
+                return new ZoomOutcome(ZoomAction.Handled, target.ProcessName, id, result.Reason);
 
             default:
                 LogUnhandled(target.ProcessName, id);

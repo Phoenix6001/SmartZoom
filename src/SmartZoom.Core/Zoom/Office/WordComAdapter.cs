@@ -67,7 +67,7 @@ public sealed partial class WordComAdapter : ZoomAdapter<WordViewState>
             if (block is not { } bounds || bounds.IsEmpty)
             {
                 LogNoBlock(target.ProcessName);
-                return ZoomInResult.Handled;
+                return ZoomInResult.Handled(ZoomReason.NoBlock);
             }
 
             var viewport = window.Viewport;
@@ -78,7 +78,7 @@ public sealed partial class WordComAdapter : ZoomAdapter<WordViewState>
             if (scale < _minScale)
             {
                 LogAlreadyFits(target.ProcessName, bounds.Width, viewport.Width);
-                return ZoomInResult.Handled;
+                return ZoomInResult.Handled(ZoomReason.AlreadyFits);
             }
 
             var targetZoom = Math.Clamp((int)Math.Round(before.ZoomPercent * scale), MinWordZoom, MaxWordZoom);
@@ -92,7 +92,7 @@ public sealed partial class WordComAdapter : ZoomAdapter<WordViewState>
         catch (COMException ex)
         {
             LogComFailure(ex, target.ProcessName);
-            return ZoomInResult.Handled;
+            return ZoomInResult.Handled(ZoomReason.GestureRefused);
         }
     }
 

@@ -87,7 +87,7 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
         if (hit is null)
         {
             LogNoContent(target.ProcessName);
-            return ZoomInResult.Handled;
+            return ZoomInResult.Handled(ZoomReason.NoContent);
         }
 
         var block = _blocks.Select(hit);
@@ -114,7 +114,7 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
                     LogPath(path, hit.Viewport.Width, hit.Viewport.Height);
                 }
 
-                return ZoomInResult.Handled;
+                return ZoomInResult.Handled(ZoomReason.NoBlock);
             }
         }
 
@@ -127,7 +127,7 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
         {
             // Already fills the width: nothing to zoom to. Handled, but nothing to undo either.
             LogAlreadyFits(target.ProcessName, block.Role, block.Bounds.Width, hit.Viewport.Width);
-            return ZoomInResult.Handled;
+            return ZoomInResult.Handled(ZoomReason.AlreadyFits);
         }
 
         LogPlan(block.Role, block.Bounds.Width, block.Bounds.Height, hit.Viewport.Width, p.Scale, p.Anchor.X, p.Anchor.Y);
@@ -155,7 +155,7 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
         if (!await _pinch.PinchAsync(p.Anchor, p.Scale, _animation, bounds, cancellationToken).ConfigureAwait(false))
         {
             LogPinchRejected(target.ProcessName);
-            return ZoomInResult.Handled;
+            return ZoomInResult.Handled(ZoomReason.GestureRefused);
         }
 
         return ZoomInResult.Applied(new RestoreState(p, bounds));
