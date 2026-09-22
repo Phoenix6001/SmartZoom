@@ -3,8 +3,10 @@ using System.Diagnostics;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
+using SmartZoom.App.Diagnostics;
 using SmartZoom.App.Hosting;
 using SmartZoom.App.Settings;
+using SmartZoom.Core.Diagnostics;
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Settings;
 using SmartZoom.Core.Zoom;
@@ -19,6 +21,8 @@ internal sealed partial class TrayApplicationContext : ApplicationContext
     private readonly SettingsHolder _holder;
     private readonly ZoomEngine _engine;
     private readonly AppPaths _paths;
+    private readonly DiagnosticRecorder _recorder;
+    private readonly IMachineFacts _facts;
     private SettingsForm? _settingsWindow;
     private readonly ZoomActivity _activity;
     private readonly ILogger<TrayApplicationContext> _logger;
@@ -36,6 +40,8 @@ internal sealed partial class TrayApplicationContext : ApplicationContext
         SettingsHolder holder,
         ZoomEngine engine,
         AppPaths paths,
+        DiagnosticRecorder recorder,
+        IMachineFacts facts,
         ZoomActivity activity,
         IHostApplicationLifetime lifetime,
         ILogger<TrayApplicationContext> logger)
@@ -45,6 +51,8 @@ internal sealed partial class TrayApplicationContext : ApplicationContext
         _holder = holder;
         _engine = engine;
         _paths = paths;
+        _recorder = recorder;
+        _facts = facts;
         _activity = activity;
         _logger = logger;
 
@@ -60,6 +68,10 @@ internal sealed partial class TrayApplicationContext : ApplicationContext
             new ToolStripMenuItem("Open &settings file", image: null, (_, _) => OpenWithShell(_paths.SettingsFile)),
             new ToolStripMenuItem("&Reload settings file", image: null, (_, _) => ReloadSettings()),
             new ToolStripMenuItem("Open &log folder", image: null, (_, _) => OpenWithShell(_paths.LogDirectory)),
+            new ToolStripSeparator(),
+            // Opens the page rather than copying silently: a tray item that filled the clipboard unread would
+            // defeat the point of showing the report at all.
+            new ToolStripMenuItem("&Diagnostic report…", image: null, (_, _) => OpenSettings(SettingsTab.Diagnostics)),
             new ToolStripSeparator(),
             new ToolStripMenuItem("E&xit", image: null, (_, _) => ExitThread()),
         ]);
@@ -117,8 +129,12 @@ internal sealed partial class TrayApplicationContext : ApplicationContext
     /// <summary>Asks for the settings window from any thread; the window itself belongs to the UI thread.</summary>
     public void RequestSettings() => _uiContext.Post(_ => OpenSettings(), null);
 
-    /// <summary>Opens the settings window, or brings it to the front if it is already open.</summary>
-    private void OpenSettings()
+    /// <summary>
+    /// Opens the settings window on the given tab, or brings it to the front if it is already open. An
+    /// already-open window does not jump to a different tab — it was opened for a reason, and switching it
+    /// out from under whatever the user is doing there would be more surprising than helpful.
+    /// </summary>
+    private void OpenSettings(SettingsTab tab = SettingsTab.Triggers)
     {
         if (_settingsWindow is { IsDisposed: false } open)
         {
@@ -129,7 +145,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext
             return;
         }
 
-        _settingsWindow = new SettingsForm(_applier, _holder, _engine, _triggerSource, _paths);
+        _settingsWindow = new SettingsForm(_applier, _holder, _engine, _triggerSource, _paths, _recorder, _facts, tab);
         _settingsWindow.FormClosed += (_, _) => _settingsWindow = null;
         _settingsWindow.Show();
         _settingsWindow.Activate();

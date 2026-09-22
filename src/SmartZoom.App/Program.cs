@@ -129,7 +129,11 @@ internal static class Program
             outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}",
             formatProvider: CultureInfo.InvariantCulture,
             rollingInterval: RollingInterval.Day,
-            retainedFileCountLimit: 14)
+            retainedFileCountLimit: 14,
+            // The Diagnostics page reads today's file while this process is still writing it; the default
+            // (non-shared) sink opens the file exclusively, and a plain File.ReadAllLines would always fail
+            // with a sharing violation — exactly when the feature is most likely to be used.
+            shared: true)
         .CreateLogger();
 
     private static IHost BuildHost(AppPaths paths, LoggingLevelSwitch logLevel)

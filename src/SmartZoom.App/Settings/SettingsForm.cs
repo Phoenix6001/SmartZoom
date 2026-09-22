@@ -1,7 +1,9 @@
 using System.Diagnostics;
 
+using SmartZoom.App.Diagnostics;
 using SmartZoom.App.Hosting;
 using SmartZoom.App.Tray;
+using SmartZoom.Core.Diagnostics;
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Settings;
 using SmartZoom.Interop;
@@ -37,7 +39,18 @@ internal sealed class SettingsForm : Form
     /// <param name="engine">Supplies the strategies the applications page offers.</param>
     /// <param name="triggers">Silenced while a trigger is being recorded.</param>
     /// <param name="paths">For the "open the file" escape hatch.</param>
-    public SettingsForm(SettingsApplier applier, SettingsHolder holder, ZoomEngine engine, ITriggerSource triggers, AppPaths paths)
+    /// <param name="recorder">What has gone wrong so far, shown on the Diagnostics tab.</param>
+    /// <param name="facts">What this machine is, shown on the Diagnostics tab.</param>
+    /// <param name="initialTab">Which tab the window opens on.</param>
+    public SettingsForm(
+        SettingsApplier applier,
+        SettingsHolder holder,
+        ZoomEngine engine,
+        ITriggerSource triggers,
+        AppPaths paths,
+        DiagnosticRecorder recorder,
+        IMachineFacts facts,
+        SettingsTab initialTab = SettingsTab.Triggers)
     {
         ArgumentNullException.ThrowIfNull(holder);
         ArgumentNullException.ThrowIfNull(engine);
@@ -61,6 +74,8 @@ internal sealed class SettingsForm : Form
         tabs.TabPages.Add(Page("Triggers", new TriggersPage(_working.Triggers, triggers, SystemInput.DoubleClickTimeMs)));
         tabs.TabPages.Add(Page("Applications", new ApplicationsPage(_working.Routing.Apps, engine.Current.Router.Adapters)));
         tabs.TabPages.Add(Page("Zoom", _zoom));
+        tabs.TabPages.Add(Page("Diagnostics", new DiagnosticsPage(recorder, facts, paths)));
+        tabs.SelectedIndex = (int)initialTab;
 
         _save.Click += async (_, _) => await SaveAsync().ConfigureAwait(true);
 
