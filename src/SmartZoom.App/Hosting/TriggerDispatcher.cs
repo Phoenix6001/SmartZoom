@@ -1,6 +1,8 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
+using SmartZoom.App.Diagnostics;
+using SmartZoom.Core.Diagnostics;
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
 using SmartZoom.Core.Zoom;
@@ -13,6 +15,7 @@ internal sealed partial class TriggerDispatcher(
     IWindowInspector windowInspector,
     ZoomEngine engine,
     ZoomActivity activity,
+    DiagnosticRecorder recorder,
     TimeProvider time,
     ILogger<TriggerDispatcher> logger) : BackgroundService
 {
@@ -50,6 +53,7 @@ internal sealed partial class TriggerDispatcher(
         if (target is null)
         {
             LogNoWindow(x, y);
+            recorder.Note(new DiagnosticKey(DiagnosticKind.NoWindow, null, null, null));
             return;
         }
 
@@ -61,11 +65,27 @@ internal sealed partial class TriggerDispatcher(
             var outcome = await engine.HandleTriggerAsync(target, trigger.Position, cancellationToken).ConfigureAwait(false);
             LogOutcome(outcome.Action);
             activity.Report(outcome);
+
+            if (outcome.Action is ZoomAction.Handled or ZoomAction.Unhandled or ZoomAction.Ignored)
+            {
+                var (key, sample) = DiagnosticSampleFactory.ForZoomedNothing(outcome, time.GetUtcNow());
+                recorder.Note(key);
+                if (sample is not null)
+                    recorder.Sample(sample);
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             // One failed zoom must not take the dispatcher (and with it, every future trigger) down.
             LogZoomFailed(ex, target.ProcessName);
+
+            var key = new DiagnosticKey(DiagnosticKind.AdapterThrew, target.ProcessName, null, ex.GetType().Name);
+            recorder.Note(key);
+            recorder.Sample(new DiagnosticSample(
+                key,
+                time.GetUtcNow(),
+                Detail: null,
+                Exception: Redaction.Truncate($"{ex.GetType().FullName}: {ex.Message}{Environment.NewLine}{ex.StackTrace}", 4000)));
         }
     }
 

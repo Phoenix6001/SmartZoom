@@ -10,7 +10,11 @@ namespace SmartZoom.Core.Zoom;
 /// over to Ctrl+wheel, and this says who finished the job. Null when nothing was tried.
 /// </param>
 /// <param name="Reason">Why nothing was zoomed, when <see cref="Action"/> is <see cref="ZoomAction.Handled"/> or <see cref="ZoomAction.Ignored"/>.</param>
-public sealed record ZoomOutcome(ZoomAction Action, string? Process, AdapterId? Adapter, ZoomReason? Reason = null)
+/// <param name="Detail">
+/// A privacy-safe description of what was under the cursor, when one is available. Never a title, a URL
+/// or a coordinate — see <see cref="Content.ContentPath.Shape"/>, the only intended source of this value.
+/// </param>
+public sealed record ZoomOutcome(ZoomAction Action, string? Process, AdapterId? Adapter, ZoomReason? Reason = null, string? Detail = null)
 {
     /// <summary>A short sentence for a tooltip or a status line.</summary>
     public override string ToString() => Action switch

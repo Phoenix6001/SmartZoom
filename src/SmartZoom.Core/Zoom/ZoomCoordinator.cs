@@ -120,7 +120,7 @@ public sealed partial class ZoomCoordinator
 
             case ZoomInStatus.Handled:
                 LogHandled(target.ProcessName, id);
-                return new ZoomOutcome(ZoomAction.Handled, target.ProcessName, id, result.Reason);
+                return new ZoomOutcome(ZoomAction.Handled, target.ProcessName, id, result.Reason, result.Detail);
 
             default:
                 LogUnhandled(target.ProcessName, id);

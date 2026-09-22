@@ -112,18 +112,16 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
                 LogNoBlock(target.ProcessName, hit?.Chain.Count ?? 0);
                 if (hit is not null && _logger.IsEnabled(LogLevel.Debug))
                 {
-                    var path = string.Join(" < ", hit.Chain.Select(n =>
-                        $"{Name(n)} {n.Bounds.Width}x{n.Bounds.Height}@({n.Bounds.Left},{n.Bounds.Top})"));
+                    var path = ContentPath.Describe(hit.Chain);
                     LogPath(path, hit.Viewport.Width, hit.Viewport.Height);
                 }
 
-                return ZoomInResult.Handled(ZoomReason.NoBlock);
+                // Role and size only, via ContentPath.Shape — never Describe's coordinates, and never any
+                // text, which ContentNode does not carry in the first place. This is what makes "no zoomable
+                // block" diagnosable from a bug report without it ever containing what was on the page.
+                return ZoomInResult.Handled(ZoomReason.NoBlock, hit is null ? null : ContentPath.Shape(hit.Chain));
             }
         }
-
-        // Local so the diagnostic above reads as one expression; see ContentNode.RawRole for why it exists.
-        static string Name(ContentNode node) =>
-            node.Role == ContentRole.Other ? $"Other({node.RawRole})" : node.Role.ToString();
 
         var plan = _planner.Plan(block.Bounds, hit.Viewport, point, _insets);
         if (plan is not { } p)

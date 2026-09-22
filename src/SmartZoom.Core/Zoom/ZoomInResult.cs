@@ -14,7 +14,12 @@ public sealed class ZoomInResult
 
     /// <summary>Dealt with, with nothing for the coordinator to undo and no fallback to try.</summary>
     /// <param name="reason">Why nothing was zoomed; recorded by diagnostics and shown in the tray.</param>
-    public static ZoomInResult Handled(ZoomReason reason) => new(ZoomInStatus.Handled, null) { Reason = reason };
+    /// <param name="detail">
+    /// A privacy-safe description of what was under the cursor, or null. Never a title, a URL or a
+    /// coordinate — see <see cref="Content.ContentPath.Shape"/>, the only intended source of this value.
+    /// </param>
+    public static ZoomInResult Handled(ZoomReason reason, string? detail = null) =>
+        new(ZoomInStatus.Handled, null) { Reason = reason, Detail = detail };
 
     /// <summary>What happened.</summary>
     public ZoomInStatus Status { get; }
@@ -24,6 +29,9 @@ public sealed class ZoomInResult
 
     /// <summary>Why nothing happened, when <see cref="Status"/> is <see cref="ZoomInStatus.Handled"/>.</summary>
     public ZoomReason? Reason { get; private init; }
+
+    /// <summary>A privacy-safe description of what was under the cursor, when one is available.</summary>
+    public string? Detail { get; private init; }
 
     /// <summary>The zoom was applied; <paramref name="restoreState"/> will be passed to <see cref="IZoomAdapter.ZoomOutAsync"/> to undo it.</summary>
     /// <param name="restoreState">Adapter-specific undo data.</param>

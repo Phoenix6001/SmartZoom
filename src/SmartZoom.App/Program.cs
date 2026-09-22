@@ -85,6 +85,20 @@ internal static class Program
         try
         {
             using var host = BuildHost(paths, level);
+
+            // Wired here, once the DI container exists, rather than "before the host is built": the recorder
+            // is a singleton shared with the flush timer and the gesture-pacing sink, and a second, separately
+            // constructed one would split the record in two. Written synchronously in the handler rather than
+            // left to the flush timer, because the timer will not run again after this — a crash record that
+            // dies with the crash is exactly the failure this exists to prevent.
+            var recorder = host.Services.GetRequiredService<DiagnosticRecorder>();
+            AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            {
+                if (e.ExceptionObject is Exception ex)
+                    Crash.Record(recorder, ex);
+            };
+            Application.ThreadException += (_, e) => Crash.Record(recorder, e.Exception);
+
             host.Start();
             Log.ForContext(typeof(Program)).Information("SmartZoom {Version} started.", typeof(Program).Assembly.GetName().Version);
 
@@ -154,6 +168,7 @@ internal static class Program
             sp.GetRequiredService<TimeProvider>(),
             sp.GetRequiredService<IMachineFacts>().AppVersion));
         builder.Services.AddSingleton<IGesturePacingSink>(sp => sp.GetRequiredService<DiagnosticRecorder>());
+        builder.Services.AddHostedService<DiagnosticFlushService>();
 
         builder.Services.AddSingleton<IPinchInjector, TouchPinchInjector>();
         builder.Services.AddSingleton<IWindowActivator, WindowActivator>();
