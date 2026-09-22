@@ -5,6 +5,7 @@ using SmartZoom.Core.Diagnostics;
 
 using Windows.Win32;
 using Windows.Win32.Graphics.Gdi;
+using Windows.Win32.UI.HiDpi;
 
 namespace SmartZoom.Interop.Windows;
 
@@ -48,15 +49,27 @@ public sealed class MachineFacts : IMachineFacts
                 (int)mode.dmPelsWidth,
                 (int)mode.dmPelsHeight,
                 (int)mode.dmDisplayFrequency,
-                Scale(mode),
+                Scale(mode.dmPosition.x, mode.dmPosition.y),
                 Primary: (device.StateFlags & DISPLAY_DEVICE_STATE_FLAGS.DISPLAY_DEVICE_PRIMARY_DEVICE) != 0));
         }
 
         return displays;
     }
 
-    // dmLogPixels is not populated by EnumDisplaySettings on every driver, so fall back to 1.0 rather than
-    // reporting a scale of zero, which would read as a fault rather than as "not reported".
-    private static double Scale(DEVMODEW mode) =>
-        mode.dmLogPixels > 0 ? Math.Round(mode.dmLogPixels / 96.0, 2) : 1.0;
+    // DEVMODEW.dmLogPixels is not a usable source of scale: it is the legacy GDI-compatibility field, stuck at
+    // 96 regardless of the monitor's actual per-monitor DPI, so it would silently under-report a scaled
+    // display (e.g. it reads 96 -> 1.0 on a monitor Windows is actually driving at 200%). The real value comes
+    // from GetDpiForMonitor for a point known to be inside this display (dmPosition + 1 px, since dmPosition is
+    // the display's desktop-coordinate origin). If that call fails - no monitor at the point, or the API is
+    // unavailable - fall back to 1.0 rather than reporting 0, which would read as a fault rather than as
+    // "not reported": 1.0 here means "scale unknown", not "confirmed 100%".
+    private static double Scale(int x, int y)
+    {
+        var monitor = PInvoke.MonitorFromPoint(new System.Drawing.Point(x + 1, y + 1), MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
+        if (monitor.IsNull)
+            return 1.0;
+
+        var hr = PInvoke.GetDpiForMonitor(monitor, MONITOR_DPI_TYPE.MDT_EFFECTIVE_DPI, out var dpiX, out _);
+        return hr.Succeeded && dpiX > 0 ? Math.Round(dpiX / 96.0, 2) : 1.0;
+    }
 }
