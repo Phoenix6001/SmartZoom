@@ -105,11 +105,17 @@ cannot.
 
 1. **Your adapter**, in `src/SmartZoom.Core/Zoom/`, with its `Descriptor`, plus any Core interface and its
    Interop implementation. Add P/Invokes to `src/SmartZoom.Interop/NativeMethods.txt` if you need new ones.
-2. **`src/SmartZoom.App/Program.cs`** — register it as an `IZoomAdapter` alongside whatever it depends on.
+2. **`src/SmartZoom.App/Hosting/ZoomPipelineFactory.cs`** — one line in its `Adapters` list. Anything your
+   adapter needs that has no settings in it (an injector, an automation object) is a singleton registered in
+   `Program.cs` and injected into the factory.
 
 That is all the routing there is. `ZoomRouter` is built from the descriptors of the adapters that are
 actually registered, so forgetting step 2 means your application is simply not handled, which is the same
 thing as not having written the adapter — it cannot leave a half-wired route that swallows presses.
+
+One rule the factory implies: **copy what you need from the settings in your constructor**. That is what lets
+the whole set of adapters be rebuilt when a setting changes, which is how the settings window applies without
+a restart.
 
 Then add your descriptor to the `Registered` list in `tests/SmartZoom.Core.Tests/Routing/ZoomRouterTests.cs`,
 which asserts the shipped defaults, write tests for the adapter itself, and add a row to the support table in

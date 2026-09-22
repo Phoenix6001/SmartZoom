@@ -57,6 +57,26 @@ public sealed class WindowZoomStateStore
         return false;
     }
 
+    /// <summary>
+    /// Forgets everything one adapter recorded, for when its restore state has stopped meaning what it
+    /// meant — settings were changed and the adapter behind an id was replaced by a different one.
+    /// </summary>
+    /// <param name="adapter">The adapter whose entries to drop.</param>
+    /// <returns>How many windows were forgotten. They stay zoomed; nothing here can undo them.</returns>
+    public int RemoveAll(AdapterId adapter)
+    {
+        lock (_gate)
+        {
+            var stale = _entries.Where(e => e.Value.Adapter == adapter).Select(e => e.Key).ToList();
+            foreach (var window in stale)
+            {
+                _entries.Remove(window);
+            }
+
+            return stale.Count;
+        }
+    }
+
     /// <summary>Drops entries whose window no longer exists or now belongs to a different process.</summary>
     /// <param name="isAlive">Returns true if the window handle still refers to a window owned by the given process.</param>
     /// <returns>Number of entries removed.</returns>

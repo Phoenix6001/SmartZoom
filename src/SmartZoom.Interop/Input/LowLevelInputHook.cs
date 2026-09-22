@@ -46,9 +46,10 @@ public sealed partial class LowLevelInputHook : ITriggerSource, IDisposable
     private const int StateRunning = 1;
     private const int StateStopped = 2;
 
-    private readonly TriggerState[] _triggers;
-    private readonly MouseTriggerState[] _mouseTriggers;
-    private readonly HotkeyTriggerState[] _hotkeyTriggers;
+    // Not readonly: SetTriggers replaces all three under _gate, which is the same lock the callbacks take.
+    private TriggerState[] _triggers;
+    private MouseTriggerState[] _mouseTriggers;
+    private HotkeyTriggerState[] _hotkeyTriggers;
     private readonly ModifierTracker _modifiers = new();
     private readonly ILogger<LowLevelInputHook> _logger;
     private readonly Lock _gate = new();
@@ -79,7 +80,7 @@ public sealed partial class LowLevelInputHook : ITriggerSource, IDisposable
     private int _installError;
     private Task? _replayWorker;
     private Task? _observationWorker;
-    private bool _observe;
+    private volatile bool _observe;
     private bool _enabled = true;
     private int _state = StateCreated;
 
@@ -92,17 +93,7 @@ public sealed partial class LowLevelInputHook : ITriggerSource, IDisposable
         ArgumentNullException.ThrowIfNull(triggers);
         ArgumentNullException.ThrowIfNull(logger);
 
-        _triggers = triggers.Select(TriggerState.Create).ToArray();
-        if (_triggers.Length == 0)
-            throw new ArgumentException("At least one trigger is required.", nameof(triggers));
-
-        _mouseTriggers = _triggers.OfType<MouseTriggerState>().ToArray();
-        _hotkeyTriggers = _triggers.OfType<HotkeyTriggerState>().ToArray();
-
-        if (_mouseTriggers.Select(t => t.Button).Distinct().Count() != _mouseTriggers.Length)
-            throw new ArgumentException("Each mouse button can only be used by one trigger.", nameof(triggers));
-        if (_hotkeyTriggers.Select(t => t.Matcher.Combo).Distinct().Count() != _hotkeyTriggers.Length)
-            throw new ArgumentException("Each key combination can only be used by one trigger.", nameof(triggers));
+        (_triggers, _mouseTriggers, _hotkeyTriggers) = Build(triggers);
 
         _logger = logger;
         _mouseProc = MouseCallback;
@@ -141,6 +132,60 @@ public sealed partial class LowLevelInputHook : ITriggerSource, IDisposable
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// The hooks themselves are untouched; only what they watch for changes. Everything that can fail — the
+    /// detectors, and the rule that each input belongs to one trigger — happens before any state is replaced,
+    /// so a rejected set leaves the old one running exactly as it was.
+    /// </remarks>
+    public void SetTriggers(IEnumerable<TriggerDefinition> triggers)
+    {
+        ArgumentNullException.ThrowIfNull(triggers);
+
+        var built = Build(triggers);
+
+        string names;
+        lock (_gate)
+        {
+            // Anything held for a possible second tap belongs to the detector that swallowed it, and that
+            // detector is about to be thrown away; let the press reach the application first.
+            ResetAllLocked();
+
+            (_triggers, _mouseTriggers, _hotkeyTriggers) = built;
+
+            // The old set may have left the timer armed for a deadline no detector is waiting on any more.
+            _timeoutTimer.Change(Timeout.Infinite, Timeout.Infinite);
+            ArmTimeoutLocked();
+
+            names = string.Join(", ", _triggers.Select(t => t.Definition.DisplayName));
+        }
+
+        // Re-sampled here as well as at StartCapture, so turning the log level up brings the per-press
+        // diagnostics back without restarting.
+        _observe = _logger.IsEnabled(LogLevel.Debug);
+
+        LogTriggersChanged(names);
+    }
+
+    /// <summary>Validates a trigger set and shapes it into the three arrays the callbacks read.</summary>
+    /// <exception cref="ArgumentException">No triggers, or two triggers share an input.</exception>
+    private static (TriggerState[] All, MouseTriggerState[] Mouse, HotkeyTriggerState[] Hotkeys) Build(IEnumerable<TriggerDefinition> triggers)
+    {
+        var all = triggers.Select(TriggerState.Create).ToArray();
+        if (all.Length == 0)
+            throw new ArgumentException("At least one trigger is required.", nameof(triggers));
+
+        var mouse = all.OfType<MouseTriggerState>().ToArray();
+        var hotkeys = all.OfType<HotkeyTriggerState>().ToArray();
+
+        if (mouse.Select(t => t.Button).Distinct().Count() != mouse.Length)
+            throw new ArgumentException("Each mouse button can only be used by one trigger.", nameof(triggers));
+        if (hotkeys.Select(t => t.Matcher.Combo).Distinct().Count() != hotkeys.Length)
+            throw new ArgumentException("Each key combination can only be used by one trigger.", nameof(triggers));
+
+        return (all, mouse, hotkeys);
+    }
+
+    /// <inheritdoc />
     /// <exception cref="InvalidOperationException">The hook was already started.</exception>
     /// <exception cref="Win32Exception">Windows refused to install a hook.</exception>
     public void StartCapture()
@@ -150,9 +195,10 @@ public sealed partial class LowLevelInputHook : ITriggerSource, IDisposable
 
         _replayWorker = Task.Run(ReplayLoopAsync);
 
-        // Sampled once: toggling log levels at runtime isn't supported, and this keeps the callbacks branch-cheap.
+        // The observation worker runs for the life of the capture; _observe is what the callbacks check, and
+        // SetTriggers re-samples it, so the log level can be turned up later without a restart.
         _observe = _logger.IsEnabled(LogLevel.Debug);
-        _observationWorker = _observe ? Task.Run(ObservationLoopAsync) : null;
+        _observationWorker = Task.Run(ObservationLoopAsync);
 
         _hookThread = new Thread(HookThreadMain)
         {
@@ -226,10 +272,11 @@ public sealed partial class LowLevelInputHook : ITriggerSource, IDisposable
             return;
         }
 
-        var keyboardHook = _hotkeyTriggers.Length == 0
-            ? HHOOK.Null
-            : PInvoke.SetWindowsHookEx(WINDOWS_HOOK_ID.WH_KEYBOARD_LL, _keyboardProc, module, 0);
-        if (_hotkeyTriggers.Length > 0 && keyboardHook.IsNull)
+        // Installed unconditionally, because SetTriggers can add a hotkey trigger after capture has started
+        // and this thread is the only one that may install a hook. The callback returns immediately when no
+        // hotkey trigger matches, and the privacy rule is unchanged: it observes modifiers and configured keys.
+        var keyboardHook = PInvoke.SetWindowsHookEx(WINDOWS_HOOK_ID.WH_KEYBOARD_LL, _keyboardProc, module, 0);
+        if (keyboardHook.IsNull)
         {
             _installError = Marshal.GetLastPInvokeError();
             PInvoke.UnhookWindowsHookEx(mouseHook);
@@ -467,6 +514,9 @@ public sealed partial class LowLevelInputHook : ITriggerSource, IDisposable
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Input hooks installed. Triggers: {Triggers}.")]
     private partial void LogStarted(string triggers);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Triggers changed to: {Triggers}.")]
+    private partial void LogTriggersChanged(string triggers);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Input hooks removed.")]
     private partial void LogStopped();

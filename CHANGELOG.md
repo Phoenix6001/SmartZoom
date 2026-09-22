@@ -27,6 +27,15 @@ Nothing has been released yet, so everything so far lives under Unreleased.
 - The tray tooltip names the last zoom and the strategy that performed it, so what happened is visible
   without opening a log file.
 - `Logging.Level` in the settings file. Logging was hard-wired to Debug with no way to turn it down.
+- **A settings window.** Triggers are recorded by pressing them rather than typed as `XButton2` into JSON;
+  applications are routed with a picker built from what the adapters say about themselves; the settings
+  people actually turn have controls. Double-click the tray icon, or start SmartZoom while it is already
+  running, to open it.
+- **Settings apply without a restart**, from the window and from **Reload settings file** in the tray menu
+  for people who edit the JSON. Adapters still copy their settings at construction — the composition root
+  builds a new set instead, and the input hook takes a new trigger set in place.
+- `SettingsValidator` checks a settings file by running the real constructors, so a bad value is a message
+  next to the control rather than an exception at startup.
 
 ### Changed, breaking
 
@@ -76,6 +85,5 @@ Nothing has been released yet, so everything so far lives under Unreleased.
 
 ### Known gaps
 
-- Settings changes need a restart.
 - `SmartZoom.Interop` has no automated tests; the measured constants in `docs/measurements.md` were verified by
   hand on one machine at 200% display scaling.

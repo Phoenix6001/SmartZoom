@@ -98,7 +98,7 @@ public sealed partial class ShortcutSender
         finally
         {
             if (previous != 0 && previous != target.RootWindow)
-                await RestoreForegroundAsync(previous, target.ProcessName, cancellationToken).ConfigureAwait(false);
+                await RestoreForegroundAsync(previous, target.ProcessName).ConfigureAwait(false);
         }
     }
 
@@ -135,9 +135,14 @@ public sealed partial class ShortcutSender
         return true;
     }
 
-    private async Task RestoreForegroundAsync(nint previous, string? process, CancellationToken cancellationToken)
+    /// <summary>
+    /// Puts the window that was in front back. Deliberately not cancellable: this runs in a `finally`, and a
+    /// cancelled zoom that skipped it would leave the reader on top of everything, catching the user's next
+    /// trigger — the exact thing bringing the foreground back exists to prevent.
+    /// </summary>
+    private async Task RestoreForegroundAsync(nint previous, string? process)
     {
-        await Task.Delay(KeyDeliverySettle, _time, cancellationToken).ConfigureAwait(false);
+        await Task.Delay(KeyDeliverySettle, _time, CancellationToken.None).ConfigureAwait(false);
         if (!_activator.TryActivate(previous))
             LogNotRestored(process);
     }

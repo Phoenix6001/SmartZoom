@@ -40,7 +40,11 @@ internal static class Program
         using var singleInstance = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out var isFirstInstance);
         if (!isFirstInstance)
         {
-            MessageBox.Show("SmartZoom is already running. Look for its icon in the notification area.", "SmartZoom", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            // Starting a tray app that is already running is somebody looking for its window, so the running
+            // instance shows one instead of this one complaining and exiting.
+            if (!SecondInstanceListener.TryRequestSettings())
+                MessageBox.Show("SmartZoom is already running. Look for its icon in the notification area.", "SmartZoom", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
             return 0;
         }
 
@@ -51,7 +55,8 @@ internal static class Program
         var paths = AppPaths.CreateDefault();
 
         // The logger has to exist before the settings can be read (reading them is itself logged), so it
-        // starts at Debug and the file's own level is applied to this switch a moment later.
+        // starts at Debug and the file's own level is applied to this switch a moment later. It is a singleton
+        // rather than a local so the level can be changed again later, from the settings window.
         var level = new LoggingLevelSwitch(LogEventLevel.Debug);
         Log.Logger = CreateLogger(paths, level);
 
@@ -61,8 +66,7 @@ internal static class Program
 
         try
         {
-            using var host = BuildHost(paths);
-            level.MinimumLevel = Serilog(host.Services.GetRequiredService<SmartZoomSettings>().Logging.Level);
+            using var host = BuildHost(paths, level);
             host.Start();
             Log.ForContext(typeof(Program)).Information("SmartZoom {Version} started.", typeof(Program).Assembly.GetName().Version);
 
@@ -83,18 +87,6 @@ internal static class Program
         }
     }
 
-    /// <summary>Maps the setting's level onto Serilog's, which is the same ladder under another name.</summary>
-    private static LogEventLevel Serilog(LogLevel level) => level switch
-    {
-        LogLevel.Trace => LogEventLevel.Verbose,
-        LogLevel.Debug => LogEventLevel.Debug,
-        LogLevel.Information => LogEventLevel.Information,
-        LogLevel.Warning => LogEventLevel.Warning,
-        LogLevel.Error => LogEventLevel.Error,
-        LogLevel.Critical => LogEventLevel.Fatal,
-        _ => LogEventLevel.Fatal,
-    };
-
     private static Serilog.Core.Logger CreateLogger(AppPaths paths, LoggingLevelSwitch level) => new LoggerConfiguration()
         .MinimumLevel.ControlledBy(level)
         .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
@@ -108,7 +100,7 @@ internal static class Program
             retainedFileCountLimit: 14)
         .CreateLogger();
 
-    private static IHost BuildHost(AppPaths paths)
+    private static IHost BuildHost(AppPaths paths, LoggingLevelSwitch logLevel)
     {
         var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
         {
@@ -122,85 +114,39 @@ internal static class Program
         builder.Services.Configure<ConsoleLifetimeOptions>(options => options.SuppressStatusMessages = true);
 
         builder.Services.AddSingleton(paths);
+        builder.Services.AddSingleton(logLevel);
         builder.Services.AddSingleton<SettingsStore>();
-        builder.Services.AddSingleton(sp => sp.GetRequiredService<SettingsStore>().Load());
-        builder.Services.AddSingleton<IWindowInspector, WindowInspector>();
+        builder.Services.AddSingleton(sp => new SettingsHolder(sp.GetRequiredService<SettingsStore>().Load()));
         builder.Services.AddSingleton<ITriggerSource>(CreateTriggerSource);
 
+        // Everything below has no settings in it; one instance is shared by every pipeline the factory builds.
         builder.Services.AddSingleton(TimeProvider.System);
+        builder.Services.AddSingleton<IWindowInspector, WindowInspector>();
         builder.Services.AddSingleton<IInputInjector, SendInputInjector>();
-        builder.Services.AddSingleton<IZoomAdapter>(sp => new CtrlWheelAdapter(
-            sp.GetRequiredService<IInputInjector>(),
-            sp.GetRequiredService<SmartZoomSettings>().Zoom.CtrlWheel,
-            sp.GetRequiredService<TimeProvider>()));
         builder.Services.AddSingleton<ChromiumAccessibilityWake>();
         builder.Services.AddSingleton<IContentHitTester, MsaaContentHitTester>();
         builder.Services.AddSingleton<TouchDevices>();
         builder.Services.AddSingleton<IPinchInjector, TouchPinchInjector>();
-        builder.Services.AddSingleton<IZoomAdapter>(sp => new BrowserAdapter(
-            sp.GetRequiredService<IContentHitTester>(),
-            sp.GetRequiredService<IPinchInjector>(),
-            sp.GetRequiredService<SmartZoomSettings>().Zoom,
-            sp.GetRequiredService<ILogger<BrowserAdapter>>()));
         builder.Services.AddSingleton<IWindowActivator, WindowActivator>();
         builder.Services.AddSingleton<IReaderView, ReaderView>();
         builder.Services.AddSingleton<ShortcutSender>();
-
-        // The two reader strategies share one id, so exactly one of them is registered; "Zoom.Reader.Mode"
-        // is the choice, and it is made here rather than inside an adapter that is secretly two adapters.
-        builder.Services.AddSingleton<IZoomAdapter>(sp =>
-        {
-            var zoom = sp.GetRequiredService<SmartZoomSettings>().Zoom;
-            var shortcuts = sp.GetRequiredService<ShortcutSender>();
-
-            if (zoom.Reader.Mode == ReaderZoomMode.Shortcuts)
-            {
-                return new ReaderShortcutAdapter(
-                    shortcuts,
-                    sp.GetRequiredService<IReaderView>(),
-                    zoom.Reader,
-                    sp.GetRequiredService<ILogger<ReaderShortcutAdapter>>());
-            }
-
-            return new ReaderPinchAdapter(
-                sp.GetRequiredService<IPinchInjector>(),
-                sp.GetRequiredService<IReaderView>(),
-                shortcuts,
-                zoom.Reader,
-                TimeSpan.FromMilliseconds(zoom.Animate ? zoom.Reader.AnimationMs : 0),
-                sp.GetRequiredService<ILogger<ReaderPinchAdapter>>());
-        });
         builder.Services.AddSingleton<IWordAutomation, WordAutomation>();
-        builder.Services.AddSingleton<IZoomAdapter>(sp => new WordComAdapter(
-            sp.GetRequiredService<IWordAutomation>(),
-            sp.GetRequiredService<SmartZoomSettings>().Zoom,
-            sp.GetRequiredService<TimeProvider>(),
-            sp.GetRequiredService<ILogger<WordComAdapter>>()));
         builder.Services.AddSingleton<IExcelAutomation, ExcelAutomation>();
-        builder.Services.AddSingleton<IZoomAdapter>(sp => new ExcelComAdapter(
-            sp.GetRequiredService<IExcelAutomation>(),
-            sp.GetRequiredService<SmartZoomSettings>().Zoom,
-            sp.GetRequiredService<ILogger<ExcelComAdapter>>()));
         builder.Services.AddSingleton<WindowZoomStateStore>();
 
-        // Routing is built from the adapters that are actually registered above, so an application can
-        // never be routed to a strategy this build does not contain, and new defaults reach users who
-        // already have a settings file.
-        builder.Services.AddSingleton(sp => new ZoomRouter(
-            sp.GetServices<IZoomAdapter>().Select(a => a.Descriptor),
-            sp.GetRequiredService<SmartZoomSettings>().Routing,
-            sp.GetRequiredService<ILogger<ZoomRouter>>()));
-        builder.Services.AddSingleton(sp => new ZoomCoordinator(
-            sp.GetRequiredService<ZoomRouter>(),
-            sp.GetServices<IZoomAdapter>(),
+        // The adapters, the routing table and the coordinator are built from a settings snapshot, so that
+        // changing a setting can build a new set rather than restart the process. See ZoomPipelineFactory.
+        builder.Services.AddSingleton<ZoomPipelineFactory>();
+        builder.Services.AddSingleton(sp => new ZoomEngine(
+            sp.GetRequiredService<ZoomPipelineFactory>().Build(sp.GetRequiredService<SettingsHolder>().Current),
             sp.GetRequiredService<WindowZoomStateStore>(),
-            sp.GetRequiredService<IWindowInspector>(),
-            sp.GetRequiredService<SmartZoomSettings>().Zoom.FallbackToCtrlWheel,
-            sp.GetRequiredService<ILogger<ZoomCoordinator>>()));
+            sp.GetRequiredService<ILogger<ZoomEngine>>()));
+        builder.Services.AddSingleton<SettingsApplier>();
 
         // Hosted services start in registration order: capture must be running before the dispatcher reads from it.
         builder.Services.AddSingleton<ZoomActivity>();
         builder.Services.AddHostedService<TriggerCaptureService>();
+        builder.Services.AddHostedService<SecondInstanceListener>();
         builder.Services.AddHostedService<TriggerDispatcher>();
         builder.Services.AddSingleton<TrayApplicationContext>();
 
@@ -209,7 +155,7 @@ internal static class Program
 
     private static LowLevelInputHook CreateTriggerSource(IServiceProvider services)
     {
-        var settings = services.GetRequiredService<SmartZoomSettings>();
+        var settings = services.GetRequiredService<SettingsHolder>().Current;
         var systemDoubleClick = SystemInput.DoubleClickTimeMs;
         var triggers = settings.Triggers.Select(t => t.ToDefinition(systemDoubleClick)).ToList();
 

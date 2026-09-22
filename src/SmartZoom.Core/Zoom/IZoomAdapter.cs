@@ -21,6 +21,13 @@ public interface IZoomAdapter
     /// </summary>
     AdapterDescriptor Descriptor { get; }
 
+    /// <summary>
+    /// The type this adapter hands out as its restore state. The coordinator stores restore state as
+    /// <see cref="object"/>, so this is how it can tell — without catching an exception — that an entry
+    /// left behind by an earlier build of this adapter is no longer one this build can undo.
+    /// </summary>
+    Type RestoreType { get; }
+
     /// <summary>Zooms the target in, centered on the cursor.</summary>
     /// <param name="target">Window under the cursor.</param>
     /// <param name="point">Cursor position in physical pixels.</param>

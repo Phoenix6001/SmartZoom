@@ -11,6 +11,14 @@ public interface ITriggerSource
     /// <summary>When false, all input passes through untouched and no triggers are raised.</summary>
     bool Enabled { get; set; }
 
+    /// <summary>
+    /// Replaces the gestures being watched for, without interrupting capture. Any press being held for a
+    /// possible second tap is released to the application first.
+    /// </summary>
+    /// <param name="triggers">The new set. Buttons and key combinations must be distinct.</param>
+    /// <exception cref="ArgumentException">No triggers, or two triggers share an input.</exception>
+    void SetTriggers(IEnumerable<TriggerDefinition> triggers);
+
     /// <summary>Begins capturing input. Throws if capture cannot be installed.</summary>
     void StartCapture();
 

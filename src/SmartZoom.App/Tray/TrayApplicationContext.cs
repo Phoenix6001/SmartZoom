@@ -15,9 +15,11 @@ namespace SmartZoom.App.Tray;
 internal sealed partial class TrayApplicationContext : ApplicationContext
 {
     private readonly ITriggerSource _triggerSource;
-    private readonly SmartZoomSettings _settings;
-    private readonly SettingsStore _settingsStore;
+    private readonly SettingsApplier _applier;
+    private readonly SettingsHolder _holder;
+    private readonly ZoomEngine _engine;
     private readonly AppPaths _paths;
+    private SettingsForm? _settingsWindow;
     private readonly ZoomActivity _activity;
     private readonly ILogger<TrayApplicationContext> _logger;
     private readonly NotifyIcon _notifyIcon;
@@ -29,16 +31,18 @@ internal sealed partial class TrayApplicationContext : ApplicationContext
 
     public TrayApplicationContext(
         ITriggerSource triggerSource,
-        SmartZoomSettings settings,
-        SettingsStore settingsStore,
+        SettingsApplier applier,
+        SettingsHolder holder,
+        ZoomEngine engine,
         AppPaths paths,
         ZoomActivity activity,
         IHostApplicationLifetime lifetime,
         ILogger<TrayApplicationContext> logger)
     {
         _triggerSource = triggerSource;
-        _settings = settings;
-        _settingsStore = settingsStore;
+        _applier = applier;
+        _holder = holder;
+        _engine = engine;
         _paths = paths;
         _activity = activity;
         _logger = logger;
@@ -51,7 +55,9 @@ internal sealed partial class TrayApplicationContext : ApplicationContext
         [
             _enabledItem,
             new ToolStripSeparator(),
-            new ToolStripMenuItem("Open &settings file (restart to apply)", image: null, (_, _) => OpenWithShell(_paths.SettingsFile)),
+            new ToolStripMenuItem("&Settings…", image: null, (_, _) => OpenSettings()) { Font = new Font(SystemFonts.MenuFont!, FontStyle.Bold) },
+            new ToolStripMenuItem("Open &settings file", image: null, (_, _) => OpenWithShell(_paths.SettingsFile)),
+            new ToolStripMenuItem("&Reload settings file", image: null, (_, _) => ReloadSettings()),
             new ToolStripMenuItem("Open &log folder", image: null, (_, _) => OpenWithShell(_paths.LogDirectory)),
             new ToolStripSeparator(),
             new ToolStripMenuItem("E&xit", image: null, (_, _) => ExitThread()),
@@ -59,10 +65,11 @@ internal sealed partial class TrayApplicationContext : ApplicationContext
 
         _notifyIcon = new NotifyIcon
         {
-            Icon = LoadIcon(),
+            Icon = TrayIcon.Load(),
             ContextMenuStrip = _menu,
             Visible = true,
         };
+        _notifyIcon.DoubleClick += (_, _) => OpenSettings();
         UpdateTooltip();
 
         // If the host stops on its own (e.g. a hosted service faulted), don't leave a tray icon with no hook
@@ -73,13 +80,6 @@ internal sealed partial class TrayApplicationContext : ApplicationContext
 
         // Zooms are reported from the dispatcher's thread; the tooltip belongs to the UI thread.
         _activity.Happened += OnZoomHappened;
-    }
-
-    /// <summary>The application's own icon, at whatever size this display's scaling wants in the tray.</summary>
-    private static Icon LoadIcon()
-    {
-        using var stream = typeof(TrayApplicationContext).Assembly.GetManifestResourceStream("SmartZoom.App.Resources.SmartZoom.ico");
-        return stream is null ? SystemIcons.Application : new Icon(stream, SystemInformation.SmallIconSize);
     }
 
     protected override void ExitThreadCore()
@@ -104,23 +104,50 @@ internal sealed partial class TrayApplicationContext : ApplicationContext
 
     private void OnEnabledChanged(object? sender, EventArgs e)
     {
-        _triggerSource.Enabled = _enabledItem.Checked;
-        _settings.Enabled = _enabledItem.Checked;
+        // Through the applier, because it is the only thing that may write the settings file: a second writer
+        // holding its own copy is how the file ends up describing settings the app is not running.
+        _applier.SetEnabled(_enabledItem.Checked);
         UpdateTooltip();
-
-        try
-        {
-            _settingsStore.Save(_settings);
-        }
-        catch (IOException ex)
-        {
-            LogSaveFailed(ex);
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            LogSaveFailed(ex);
-        }
     }
+
+    /// <summary>Asks for the settings window from any thread; the window itself belongs to the UI thread.</summary>
+    public void RequestSettings() => _uiContext.Post(_ => OpenSettings(), null);
+
+    /// <summary>Opens the settings window, or brings it to the front if it is already open.</summary>
+    private void OpenSettings()
+    {
+        if (_settingsWindow is { IsDisposed: false } open)
+        {
+            if (open.WindowState == FormWindowState.Minimized)
+                open.WindowState = FormWindowState.Normal;
+
+            open.Activate();
+            return;
+        }
+
+        _settingsWindow = new SettingsForm(_applier, _holder, _engine, _triggerSource, _paths);
+        _settingsWindow.FormClosed += (_, _) => _settingsWindow = null;
+        _settingsWindow.Show();
+        _settingsWindow.Activate();
+    }
+
+    /// <summary>
+    /// Applies the settings file as it stands, for people who edit the JSON rather than use the window.
+    /// Runs off the UI thread: applying waits for any zoom in flight.
+    /// </summary>
+    private void ReloadSettings() => _ = Task.Run(async () =>
+    {
+        var result = await _applier.ReloadAsync().ConfigureAwait(false);
+        var summary = result.InForce
+            ? "Settings reloaded."
+            : "The settings file was not applied:" + Environment.NewLine + Environment.NewLine
+                + string.Join(Environment.NewLine, result.Problems.Select(p => p.ToString()));
+
+        _uiContext.Post(_ => Notify(summary, result.InForce), null);
+    });
+
+    private void Notify(string text, bool good) =>
+        _notifyIcon.ShowBalloonTip(5000, "SmartZoom", text, good ? ToolTipIcon.Info : ToolTipIcon.Warning);
 
     private void OnZoomHappened(object? sender, ZoomOutcome outcome) =>
         _uiContext.Post(
@@ -152,9 +179,6 @@ internal sealed partial class TrayApplicationContext : ApplicationContext
             LogOpenFailed(ex, path);
         }
     }
-
-    [LoggerMessage(Level = LogLevel.Error, Message = "Failed to save settings.")]
-    private partial void LogSaveFailed(Exception exception);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to open {Path}.")]
     private partial void LogOpenFailed(Exception exception, string path);

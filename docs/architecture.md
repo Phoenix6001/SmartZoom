@@ -90,11 +90,22 @@ exactly where it started. And every gesture constant was measured, not derived �
 
 ## Settings
 
-`%APPDATA%\SmartZoom\settings.json`, read once at startup into a single `SmartZoomSettings` object that is
-registered as a singleton. Adapters receive their own section by constructor injection. Editing the file
-requires a restart; the tray menu says so.
+`%APPDATA%\SmartZoom\settings.json`, read at startup into a `SmartZoomSettings` that lives behind
+`SettingsHolder` — one object, one owner, so nothing can hold a stale copy and write it back over the file.
 
-A file written by an older version keeps its lists exactly as written — new defaults are not merged in.
+Adapters copy the values they need when they are constructed, which is what makes them cheap and testable.
+Changing a setting therefore means **building a new set of them**, not poking the old ones:
+`ZoomPipelineFactory` builds a fresh router, adapters and coordinator from a settings snapshot, and
+`ZoomEngine` swaps that in behind a gate it shares with the dispatcher, so a zoom and a settings change can
+never interleave. Triggers are the exception: `LowLevelInputHook.SetTriggers` takes a new set in place, under
+the same lock its callbacks use, because installing a second pair of hooks to change a button would be a much
+larger thing to get right.
+
+`SettingsApplier` is the only thing that writes the file, and it writes it **after** the change is in force —
+a file written first would describe a state the process was never in.
+
+A file written by an older version still loads; keys it carries for shapes that no longer exist are ignored,
+and the defaults take over.
 
 ## Adding support for an application
 

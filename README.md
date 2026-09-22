@@ -35,7 +35,10 @@ dotnet test
 dotnet run --project src/SmartZoom.App
 ```
 
-SmartZoom runs in the notification area. Right-click the icon for **Enabled**, **Open settings file (restart to apply)**,
+SmartZoom runs in the notification area. Double-click the icon — or right-click it and choose
+**Settings…** — for the settings window: triggers you record by pressing them, which application is handled
+how, and the zoom settings worth turning. Saving applies at once; nothing needs a restart. The rest of the
+right-click menu is **Enabled**, **Open settings file**, **Reload settings file**,
 **Open log folder**, and **Exit**.
 
 Publish a single-file executable:
@@ -46,8 +49,9 @@ dotnet publish src/SmartZoom.App -c Release -r win-x64
 
 ## Configuration
 
-Settings are created on first run at `%APPDATA%\SmartZoom\settings.json`. In this release, restart
-SmartZoom after editing.
+Most of this is in the settings window. The file is still there for the tuning the window leaves out, and
+editing it by hand is a first-class path: **Reload settings file** in the tray menu applies it without a
+restart, exactly as Save does.
 
 ```jsonc
 {
@@ -217,7 +221,7 @@ depending on which window is focused.
 4. 🔧 **M4** Firefox ✅, per-user installer
 5. 🔧 **M5** Office and PDF readers: Word ✅, Acrobat ✅, Excel ✅, PowerPoint (unclaimed — see
    [docs/adding-an-application.md](docs/adding-an-application.md))
-6. **M6** Settings UI, live reload, multi-monitor and mixed-DPI polish
+6. 🔧 **M6** Settings window ✅, live reload ✅, multi-monitor and mixed-DPI polish
 
 ## Contributing
 

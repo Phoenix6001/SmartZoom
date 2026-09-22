@@ -53,6 +53,15 @@ internal sealed partial class SettingsStore(AppPaths paths, ILogger<SettingsStor
         }
     }
 
+    /// <summary>
+    /// An independent copy, made the same way the file is written and read, so a settings window can be
+    /// edited and thrown away without touching what the app is running.
+    /// </summary>
+    /// <param name="settings">The settings to copy.</param>
+    public static SmartZoomSettings Clone(SmartZoomSettings settings) =>
+        JsonSerializer.Deserialize<SmartZoomSettings>(JsonSerializer.Serialize(settings, JsonOptions), JsonOptions)
+        ?? new SmartZoomSettings();
+
     /// <summary>Writes the settings atomically (temp file + replace) so a crash can't leave a truncated file.</summary>
     public void Save(SmartZoomSettings settings)
     {

@@ -11,7 +11,7 @@ namespace SmartZoom.App.Hosting;
 internal sealed partial class TriggerDispatcher(
     ITriggerSource triggerSource,
     IWindowInspector windowInspector,
-    ZoomCoordinator coordinator,
+    ZoomEngine engine,
     ZoomActivity activity,
     ILogger<TriggerDispatcher> logger) : BackgroundService
 {
@@ -56,7 +56,7 @@ internal sealed partial class TriggerDispatcher(
 
         try
         {
-            var outcome = await coordinator.HandleTriggerAsync(target, trigger.Position, cancellationToken).ConfigureAwait(false);
+            var outcome = await engine.HandleTriggerAsync(target, trigger.Position, cancellationToken).ConfigureAwait(false);
             LogOutcome(outcome.Action);
             activity.Report(outcome);
         }

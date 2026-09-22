@@ -58,16 +58,26 @@ public sealed partial class ZoomCoordinator
 
         if (_state.TryTake(target, out var previousId, out var restoreState))
         {
-            if (_adapters.TryGetValue(previousId, out var previous))
+            // TryTake has already removed the entry, so everything below has to cope without it.
+            if (!_adapters.TryGetValue(previousId, out var previous))
+            {
+                // The window was zoomed by an adapter this process no longer has. Nothing can undo it from
+                // here, so say so instead of silently zooming the window a second time.
+                LogRestoreImpossible(target.ProcessName, previousId);
+            }
+            else if (!previous.RestoreType.IsInstanceOfType(restoreState))
+            {
+                // Same id, different adapter behind it: the reader's two modes, after a settings change that
+                // the applier failed to invalidate. Zooming in again is a worse answer than it sounds, but it
+                // is far better than the alternative, which is an exception and a window stuck zoomed.
+                LogRestoreObsolete(target.ProcessName, previousId, restoreState.GetType().Name, previous.RestoreType.Name);
+            }
+            else
             {
                 await previous.ZoomOutAsync(target, restoreState, cancellationToken).ConfigureAwait(false);
                 LogZoomedOut(target.ProcessName, previousId);
                 return new ZoomOutcome(ZoomAction.ZoomedOut, target.ProcessName, previousId);
             }
-
-            // Only reachable when the window was zoomed by an adapter this process no longer has. Nothing
-            // can undo it from here, so say so instead of silently zooming the window a second time.
-            LogRestoreImpossible(target.ProcessName, previousId);
         }
 
         // No entry at all is the normal case for most applications on a machine, and so is an explicit
@@ -149,4 +159,7 @@ public sealed partial class ZoomCoordinator
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "{Process} was zoomed by \"{Adapter}\", which is no longer registered, so the zoom cannot be undone. Undo it in the application itself.")]
     private partial void LogRestoreImpossible(string? process, AdapterId adapter);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{Process} was zoomed by a different \"{Adapter}\" than the one running now ({Stored} rather than {Expected}); that zoom cannot be undone, so this press zooms in again.")]
+    private partial void LogRestoreObsolete(string? process, AdapterId adapter, string stored, string expected);
 }

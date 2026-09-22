@@ -150,6 +150,8 @@ public sealed class ZoomCoordinatorTests
 
         public AdapterDescriptor Descriptor => descriptor;
 
+        public Type RestoreType { get; set; } = typeof(string);
+
         /// <summary>Null means "Applied with a fresh state object each time".</summary>
         public ZoomInResult? Result { get; set; }
 

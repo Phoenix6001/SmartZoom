@@ -15,6 +15,8 @@ public abstract class ZoomAdapter<TRestore>(AdapterDescriptor descriptor) : IZoo
 {
     AdapterDescriptor IZoomAdapter.Descriptor => descriptor;
 
+    Type IZoomAdapter.RestoreType => typeof(TRestore);
+
     Task<ZoomInResult> IZoomAdapter.ZoomInAsync(TargetInfo target, ScreenPoint point, CancellationToken cancellationToken) =>
         ZoomInAsync(target, point, cancellationToken);
 
