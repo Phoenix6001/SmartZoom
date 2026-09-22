@@ -32,6 +32,19 @@ internal sealed class DiagnosticsPage : UserControl
     private readonly Button _save = new() { Text = "&Save…", AutoSize = true, Name = "SaveReport" };
     private readonly Button _clear = new() { Text = "Clear recorded &data", AutoSize = true, Name = "ClearData" };
 
+    // What Copy or Save actually did — a failed clipboard or file write must never look identical to a
+    // successful one, since reading this page IS the consent step: the user has to be able to tell whether
+    // the thing they are about to paste actually made it anywhere.
+    private readonly Label _status = new()
+    {
+        Dock = DockStyle.Fill,
+        AutoSize = false,
+        Height = 20,
+        AutoEllipsis = true,
+        Margin = new Padding(0, 4, 0, 0),
+        Name = "Status",
+    };
+
     /// <summary>Creates the page over the live recorder.</summary>
     /// <param name="recorder">Only ever read through <see cref="DiagnosticRecorder.Snapshot"/>: it may be
     /// written from the dispatcher thread at any moment, and enumerating it live would throw.</param>
@@ -54,7 +67,7 @@ internal sealed class DiagnosticsPage : UserControl
         _enabled.Checked = recorder.Enabled;
         _enabled.CheckedChanged += (_, _) => recorder.Enabled = _enabled.Checked;
         _includeLog.CheckedChanged += (_, _) => Render();
-        _copy.Click += (_, _) => Clipboard.SetText(_report.Text);
+        _copy.Click += (_, _) => Copy();
         _save.Click += (_, _) => Save();
         _clear.Click += (_, _) => { recorder.Clear(); Render(); };
 
@@ -69,9 +82,10 @@ internal sealed class DiagnosticsPage : UserControl
         foreach (Control control in buttons.Controls)
             control.Margin = new Padding(0, 6, 8, 0);
 
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3 };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4 };
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.Controls.Add(new Label
         {
@@ -83,14 +97,52 @@ internal sealed class DiagnosticsPage : UserControl
         });
         layout.Controls.Add(_report);
         layout.Controls.Add(buttons);
+        layout.Controls.Add(_status);
         return layout;
     }
 
+    /// <summary>
+    /// Guarded: <see cref="Clipboard.SetText(string)"/> is notoriously flaky when another process holds the
+    /// clipboard open. Left unguarded, that throw would land in the app-wide handler, which both logs it and
+    /// records it as a crash — turning a clipboard hiccup into a false crash entry in the very record this
+    /// page exists to make trustworthy. The status line is how the user tells a real copy from a failed one.
+    /// </summary>
+    private void Copy()
+    {
+        try
+        {
+            Clipboard.SetText(_report.Text);
+            ShowStatus("Copied to the clipboard.", failed: false);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            ShowStatus($"Couldn't copy to the clipboard: {ex.Message}", failed: true);
+        }
+    }
+
+    /// <summary>Guarded for the same reason as <see cref="Copy"/>: a bad path or permission error must not
+    /// reach the app-wide handler and be recorded as a crash.</summary>
     private void Save()
     {
         using var dialog = new SaveFileDialog { FileName = "smartzoom-diagnostics.md", Filter = "Markdown|*.md" };
-        if (dialog.ShowDialog(this) == DialogResult.OK)
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+            return;
+
+        try
+        {
             File.WriteAllText(dialog.FileName, _report.Text);
+            ShowStatus($"Saved to {dialog.FileName}.", failed: false);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            ShowStatus($"Couldn't save: {ex.Message}", failed: true);
+        }
+    }
+
+    private void ShowStatus(string text, bool failed)
+    {
+        _status.Text = text;
+        _status.ForeColor = failed ? Color.FromArgb(0xB0, 0x30, 0x20) : SystemColors.GrayText;
     }
 
     private void Render()
