@@ -14,6 +14,19 @@ public sealed class DiagnosticCounter
         Count = 1;
     }
 
+    /// <summary>Creates an independent copy of <paramref name="source"/>.</summary>
+    /// <param name="source">The counter to copy.</param>
+    /// <remarks>Used to build a point-in-time snapshot that cannot be affected by later mutation of the original.</remarks>
+    public DiagnosticCounter(DiagnosticCounter source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        Key = source.Key;
+        Count = source.Count;
+        FirstSeen = source.FirstSeen;
+        LastSeen = source.LastSeen;
+    }
+
     /// <summary>What is being counted.</summary>
     public DiagnosticKey Key { get; }
 

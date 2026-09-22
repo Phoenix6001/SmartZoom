@@ -23,6 +23,23 @@ public sealed class DiagnosticRecord
     /// <param name="version">The version that produced it; a record from another version is discarded on load.</param>
     public DiagnosticRecord(string version) => Version = version;
 
+    /// <summary>Creates an independent copy of <paramref name="source"/> that shares no mutable state with it.</summary>
+    /// <param name="source">The record to copy.</param>
+    /// <remarks>
+    /// The copy's counters and samples are copied by value, so mutating <paramref name="source"/> afterwards
+    /// cannot be observed through the copy. This is how a caller who must not tear a record mid-mutation (for
+    /// example while enumerating it on another thread) gets a safe, immutable-in-practice view.
+    /// </remarks>
+    public DiagnosticRecord(DiagnosticRecord source)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        Version = source.Version;
+        OmittedKeys = source.OmittedKeys;
+        _counters = source._counters.ToDictionary(kv => kv.Key, kv => new DiagnosticCounter(kv.Value));
+        _samples = [.. source._samples];
+    }
+
     /// <summary>The SmartZoom version this record describes.</summary>
     public string Version { get; }
 

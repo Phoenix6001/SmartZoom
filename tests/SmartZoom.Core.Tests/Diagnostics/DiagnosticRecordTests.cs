@@ -68,4 +68,50 @@ public class DiagnosticRecordTests
             Assert.DoesNotContain(record.Samples, s => s.Detail == "shape4");
         }
     }
+
+    public sealed class A_record_from_another_version
+    {
+        [Fact]
+        public void Carries_its_version_so_a_loader_can_reject_it()
+        {
+            Assert.Equal("0.2.0", new DiagnosticRecord("0.2.0").Version);
+        }
+    }
+
+    public sealed class A_copy_made_with_the_copy_constructor
+    {
+        [Fact]
+        public void Is_unaffected_by_later_mutation_of_the_source()
+        {
+            var source = new DiagnosticRecord("0.1.0");
+            source.Note(Key(), Noon);
+            source.Sample(new DiagnosticSample(Key(), Noon, "before", null));
+
+            var copy = new DiagnosticRecord(source);
+
+            source.Note(Key(), Noon.AddMinutes(5));
+            source.Note(Key("other"), Noon);
+            source.Sample(new DiagnosticSample(Key(), Noon.AddMinutes(5), "after", null));
+
+            var counter = Assert.Single(copy.Counters);
+            Assert.Equal(1, counter.Count);
+            Assert.Equal(Noon, counter.LastSeen);
+            var sample = Assert.Single(copy.Samples);
+            Assert.Equal("before", sample.Detail);
+        }
+
+        [Fact]
+        public void Carries_the_same_version_and_omitted_count()
+        {
+            var source = new DiagnosticRecord("0.3.0");
+            for (var i = 0; i < 201; i++)
+                source.Note(Key($"app{i}"), Noon);
+
+            var copy = new DiagnosticRecord(source);
+
+            Assert.Equal("0.3.0", copy.Version);
+            Assert.Equal(1, copy.OmittedKeys);
+            Assert.Equal(200, copy.Counters.Count);
+        }
+    }
 }

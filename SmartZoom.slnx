@@ -8,6 +8,7 @@
     <Project Path="tools/SmartZoom.Probe/SmartZoom.Probe.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/SmartZoom.App.Tests/SmartZoom.App.Tests.csproj" />
     <Project Path="tests/SmartZoom.Core.Tests/SmartZoom.Core.Tests.csproj" />
   </Folder>
 </Solution>

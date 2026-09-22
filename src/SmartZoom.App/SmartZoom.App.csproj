@@ -39,4 +39,10 @@
     <ProjectReference Include="..\SmartZoom.Interop\SmartZoom.Interop.csproj" />
   </ItemGroup>
 
+  <!-- Lets the App test project exercise internal types (DiagnosticRecorder, DiagnosticStore, AppPaths, ...)
+       directly, the same way they are used in production, without making them public. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="SmartZoom.App.Tests" />
+  </ItemGroup>
+
 </Project>
