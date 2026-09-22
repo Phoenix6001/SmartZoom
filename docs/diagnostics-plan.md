@@ -1891,3 +1891,122 @@ Expected: no matches. If there are any, the design has been violated.
 git add SECURITY.md CONTRIBUTING.md README.md CHANGELOG.md
 git commit -m "Document the local diagnostics record and the report"
 ```
+
+---
+
+### Task 11: QA — the whole thing, against the real machine
+
+Unit tests prove the tally counts and the renderer renders. They cannot prove that a real press in a real
+browser produces a real row, that the file on disk honours the privacy contract, or that the page a user
+actually opens says something true. This task is that pass. It writes no production code: anything it finds
+is a finding, reported for the fix loop.
+
+**Files:**
+- Create: `.superpowers/sdd/diagnostics-plan/qa-report.md` (the findings; not committed)
+- Modify: none. **If a check fails, report it — do not fix it here.**
+
+**Interfaces:**
+- Consumes: everything from Tasks 1–10.
+- Produces: a pass/fail list.
+
+- [ ] **Step 1: Build and start the real app**
+
+```powershell
+Get-Process SmartZoom -ErrorAction SilentlyContinue | Stop-Process -Force
+dotnet build
+dotnet test
+dotnet format --verify-no-changes
+Start-Process "src\SmartZoom.App\bin\Debug\net10.0-windows10.0.17763.0\SmartZoom.exe"
+```
+
+Expected: warning-free build, all tests pass, no formatting changes, the tray icon appears.
+
+- [ ] **Step 2: Produce real no-op presses**
+
+Open a browser on `https://en.wikipedia.org/wiki/Computer_mouse`, maximize it, and put the pointer in the
+**empty margin to the right of the article** — around 72% of the window's width, 30% of its height. That
+point has no zoomable block, which is exactly what is being recorded. Press the trigger three times.
+
+Verify in `%LOCALAPPDATA%\SmartZoom\logs` that three presses were seen and each reported nothing zoomed.
+
+- [ ] **Step 3: Check the file, and check it against the privacy contract**
+
+Wait 30 seconds for the flush, then:
+
+```powershell
+Get-Content "$env:LOCALAPPDATA\SmartZoom\diagnostics.json"
+```
+
+Expected: one counter, `Count: 3`, the browser's process name, adapter `Browser`, reason `NoBlock`.
+
+Then the contract, which is the point of the whole design. The file must contain **none** of these:
+
+```powershell
+$f = Get-Content "$env:LOCALAPPDATA\SmartZoom\diagnostics.json" -Raw
+foreach ($bad in 'Wikipedia', 'Computer mouse', 'http', 'C:\Users', $env:USERNAME, $env:COMPUTERNAME) {
+  "{0,-22} {1}" -f $bad, $(if ($f -like "*$bad*") { 'FOUND - CONTRACT VIOLATED' } else { 'absent - ok' })
+}
+```
+
+Expected: every line `absent - ok`. A window title, a URL, a user path, the username or the machine name in
+that file is a **Critical** finding.
+
+- [ ] **Step 4: Read the report a user would read**
+
+Open the settings window (double-click the tray icon, or tray → **Diagnostic report…**) and go to
+**Diagnostics**.
+
+- The report renders, and the **Displays** section names this machine's real resolution, refresh rate and
+  scale. Compare against `Get-CimInstance Win32_VideoController | Select-Object CurrentRefreshRate,
+  CurrentHorizontalResolution`. A wrong refresh rate here is an Important finding — that number is the
+  reason the section exists.
+- The **What didn't work** table shows the three presses.
+- **Gesture health** appears only if a zoom has actually happened; zoom something successfully, reopen, and
+  confirm it appears and its frame interval matches the display's refresh period.
+- Read the whole report: no window titles, no URLs, no `C:\Users\<you>`.
+
+- [ ] **Step 5: The controls do what they say**
+
+- **Copy**, then paste into a text editor: identical to what was on screen.
+- **Save…**: writes a `.md` file that opens as markdown.
+- **Clear recorded data**: the table empties, and within 30 seconds so does `diagnostics.json`.
+- Untick **Record what doesn't work**, repeat Step 2, refresh: **no new rows**. Tick it again.
+- Tick **Include recent log lines**: the log section appears, and paths in it are redacted.
+
+- [ ] **Step 6: A crash is recorded even though it kills the process**
+
+The crash path is the one thing a timer cannot save. With the app running, kill it in a way that raises an
+unhandled exception rather than terminating it outright — if no such hook is reachable by hand, verify
+instead by reading `Crash.Record` and confirming it calls `Flush()` synchronously, and say in the report
+that it was verified by inspection rather than by a real crash.
+
+- [ ] **Step 7: The constraint that the whole design rests on**
+
+```powershell
+Select-String -Path "src\**\*.cs" -Pattern "HttpClient|WebClient|Socket|WebRequest|UploadString|HttpRequestMessage" |
+  Where-Object { $_.Path -notlike "*\obj\*" -and $_.Path -notlike "*\bin\*" }
+```
+
+Expected: **no matches.** Any match is a Critical finding — `SECURITY.md` states SmartZoom makes no network
+connections, and this feature was designed so that stays true.
+
+- [ ] **Step 8: No regression in the thing the app is for**
+
+Zoom something real: point at a paragraph in a browser, press, press again. It zooms and returns. Task 1
+changed every adapter's "did nothing" path, so confirm a **successful** zoom still reports as a zoom — the
+tray tooltip should say "Zoomed in …", not "Nothing to zoom".
+
+- [ ] **Step 9: Put the machine back**
+
+```powershell
+Get-Process SmartZoom -ErrorAction SilentlyContinue | Stop-Process -Force
+Remove-Item "$env:LOCALAPPDATA\SmartZoom\diagnostics.json" -ErrorAction SilentlyContinue
+```
+
+Close any browser window this pass opened. Leave `%APPDATA%\SmartZoom\settings.json` as it was found — if
+the on/off switch was left off, turn it back on.
+
+- [ ] **Step 10: Report**
+
+Write `.superpowers/sdd/diagnostics-plan/qa-report.md`: every step, PASS or FAIL, with the actual output for
+anything that failed and the exact command that produced it. Do not fix anything. Do not commit.
