@@ -53,7 +53,19 @@ internal sealed partial class TriggerDispatcher(
         if (target is null)
         {
             LogNoWindow(x, y);
-            recorder.Note(new DiagnosticKey(DiagnosticKind.NoWindow, null, null, null));
+
+            // Guarded like the two record calls below: this one runs before DispatchAsync's own try/catch,
+            // so without its own guard a diagnostics failure here would escape ExecuteAsync's await foreach
+            // entirely and silently end the dispatcher — every future trigger, gone, with nothing in the log.
+            try
+            {
+                recorder.Note(new DiagnosticKey(DiagnosticKind.NoWindow, null, null, null));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                LogDiagnosticsFailed(ex);
+            }
+
             return;
         }
 
@@ -104,4 +116,7 @@ internal sealed partial class TriggerDispatcher(
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Zoom failed for {Process}.")]
     private partial void LogZoomFailed(Exception exception, string? process);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Failed to record a diagnostic; continuing.")]
+    private partial void LogDiagnosticsFailed(Exception exception);
 }

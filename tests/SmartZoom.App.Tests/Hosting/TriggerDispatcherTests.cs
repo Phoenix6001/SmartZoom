@@ -59,6 +59,38 @@ public sealed class TriggerDispatcherTests
     }
 
     [Fact]
+    public async Task A_trigger_that_hits_no_window_leaves_the_dispatcher_running_even_if_recording_throws()
+    {
+        // A real throw from DiagnosticRecorder.Note, not a fake standing in for one: TimeProvider.GetUtcNow()
+        // is the only thing Note calls that could plausibly fail, so making IT throw exercises the guard
+        // through the actual production code path rather than asserting against a stand-in.
+        var windows = new FakeWindowInspector { Target = null };
+        using var temp = new TempDirectory();
+        var recorder = new DiagnosticRecorder(
+            new DiagnosticStore(
+                new AppPaths(SettingsDirectory: temp.Path, LogDirectory: Path.Combine(temp.Path, "logs")),
+                NullLogger<DiagnosticStore>.Instance),
+            new ThrowingTimeProvider(),
+            version: "0.1.0-test");
+
+        var dispatcher = new TriggerDispatcher(
+            _source, windows, ScriptedEngine(), _activity, recorder, TimeProvider.System, NullLogger<TriggerDispatcher>.Instance);
+
+        await dispatcher.StartAsync(CancellationToken.None);
+        _source.Writer.TryWrite(new TriggerEvent(Point, unchecked((uint)Environment.TickCount)));
+        _source.Writer.TryWrite(new TriggerEvent(Point, unchecked((uint)Environment.TickCount)));
+        _source.Writer.Complete();
+
+        // If the guard were missing, recorder.Note's throw would escape DispatchAsync and ExecuteAsync's
+        // await foreach, faulting this task instead of completing it — awaiting it would rethrow.
+        await dispatcher.ExecuteTask!;
+
+        // Not just "the task didn't fault": the loop kept reading. A second trigger reached GetTargetAt,
+        // which only happens on the next iteration of the still-running await foreach.
+        Assert.Equal(2, windows.Calls);
+    }
+
+    [Fact]
     public async Task A_press_that_zoomed_nothing_because_no_adapter_claims_the_process_is_counted()
     {
         var target = new TargetInfo(0x2, 0x2, 2, "notepad", "R", "H");
@@ -150,9 +182,23 @@ public sealed class TriggerDispatcherTests
     {
         public TargetInfo? Target { get; set; }
 
-        public TargetInfo? GetTargetAt(ScreenPoint point) => Target;
+        public int Calls { get; private set; }
+
+        public TargetInfo? GetTargetAt(ScreenPoint point)
+        {
+            Calls++;
+            return Target;
+        }
 
         public bool IsWindowAlive(nint window, uint processId) => true;
+    }
+
+    // Throws from GetUtcNow(), the one thing DiagnosticRecorder.Note calls that could plausibly fail, so a
+    // DiagnosticRecorder built with this genuinely throws from Note/Sample rather than being a fake that only
+    // pretends to.
+    private sealed class ThrowingTimeProvider : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => throw new InvalidOperationException("diagnostics boom");
     }
 
     // A coordinator built from an adapter with no default-claimed process never calls GetTargetAt itself
