@@ -54,3 +54,9 @@ ScreenToClient
 EnumDisplaySettings
 DEVMODEW
 ENUM_DISPLAY_SETTINGS_MODE
+
+// Machine facts (diagnostics report)
+EnumDisplayDevices
+DISPLAY_DEVICEW
+GetDpiForMonitor
+MonitorFromPoint
