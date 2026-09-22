@@ -66,6 +66,99 @@ internal static class Screen
             $"best scale {best.Scale:F4} at offset {best.Offset} px (score {best.Score:F2})"));
     }
 
+    /// <summary>
+    /// The trajectory of a zoom, frame by frame: where the ink sits and how far it is spread.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Written because the two obvious metrics both lie about motion. "Percentage of differing pixels"
+    /// saturates on text — once a frame moves further than about a character width, nearly every pixel
+    /// differs and the number stops responding to speed — and template matching loses its lock entirely once
+    /// content triples in size. Both made a perfectly smooth zoom look ragged and a ragged one look smooth.
+    /// </para>
+    /// <para>
+    /// Ink spread does neither. Magnifying content by a factor about an anchor multiplies the spread of its
+    /// dark pixels about their centroid by that same factor, so the spread of each frame, divided by the
+    /// spread of the first, IS the scale reached in that frame — continuous, unsaturating, and needing no
+    /// feature to track. A zoom that only ever grows prints a rising column; a wobble prints as a fall
+    /// between two rises, which the "step" column shows directly.
+    /// </para>
+    /// </remarks>
+    /// <param name="paths">The frames, in the order they were captured.</param>
+    public static void Track(IReadOnlyList<string> paths)
+    {
+        double? first = null;
+        double? previous = null;
+
+        Console.WriteLine("frame  centroid(x,y)      spread   scale   step");
+
+        for (var i = 0; i < paths.Count; i++)
+        {
+            var pixels = Load(paths[i], null);
+            var (cx, cy, spread) = Ink(pixels);
+            first ??= spread;
+
+            // A frame with no ink at all (a blank strip) would divide by zero and mean nothing anyway.
+            if (first is not > 0)
+            {
+                Console.WriteLine($"{i,5}  no ink to track in {Path.GetFileName(paths[i])}");
+                return;
+            }
+
+            var scale = spread / first.Value;
+            var step = previous is { } p ? scale - p : 0;
+            previous = scale;
+
+            var arrow = step > 0.004 ? "up" : step < -0.004 ? "DOWN" : "-";
+            Console.WriteLine($"{i,5}  ({cx,6:F1},{cy,6:F1})  {spread,7:F2}  {scale,6:F3}  {step,7:F3} {arrow}");
+        }
+    }
+
+    /// <summary>The centroid of the dark pixels, and their mean distance from it.</summary>
+    private static (double X, double Y, double Spread) Ink(int[,] pixels)
+    {
+        var height = pixels.GetLength(0);
+        var width = pixels.GetLength(1);
+
+        // Weight by how dark a pixel is, so text counts and the page behind it does not. The floor keeps
+        // anti-aliasing and panel noise out of the centroid without discarding grey text.
+        const int Floor = 40;
+
+        double weight = 0, sumX = 0, sumY = 0;
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                var ink = 255 - pixels[y, x];
+                if (ink <= Floor)
+                    continue;
+
+                weight += ink;
+                sumX += ink * x;
+                sumY += ink * y;
+            }
+        }
+
+        if (weight <= 0)
+            return (0, 0, 0);
+
+        var cx = sumX / weight;
+        var cy = sumY / weight;
+
+        double spread = 0;
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                var ink = 255 - pixels[y, x];
+                if (ink > Floor)
+                    spread += ink * (Math.Abs(x - cx) + Math.Abs(y - cy));
+            }
+        }
+
+        return (cx, cy, spread / weight);
+    }
+
     private static Bitmap Capture(PixelRect area)
     {
         var bitmap = new Bitmap(area.Width, area.Height, PixelFormat.Format32bppArgb);

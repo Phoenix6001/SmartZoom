@@ -484,3 +484,7 @@ $RECYCLE.BIN/
 # Claude Code local context (memory, settings)
 .claude/
 CLAUDE.md
+
+# Installer build output: the published payload and the setup executable itself.
+install/publish/
+install/output/

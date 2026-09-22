@@ -14,9 +14,12 @@
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
 
+    <!-- Nothing is released yet; the installer stamps this into the executable and its own filename. -->
+    <Version>0.1.0</Version>
+
     <Authors>SmartZoom contributors</Authors>
     <Product>SmartZoom</Product>
-    <Copyright>Copyright (c) 2026 Henok and SmartZoom contributors</Copyright>
+    <Copyright>Copyright (c) 2026 SmartZoom</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryType>git</RepositoryType>
   </PropertyGroup>

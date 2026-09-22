@@ -29,7 +29,7 @@ internal sealed class SettingsForm : Form
     };
 
     private readonly Button _save = new() { Text = "&Save", AutoSize = true, Name = "Save" };
-    private readonly Button _close = new() { Text = "&Close", AutoSize = true, DialogResult = DialogResult.Cancel, Name = "Close" };
+    private readonly Button _close = new() { Text = "&Close", AutoSize = true, Name = "Close" };
 
     /// <summary>Opens the window on a copy of the settings in force.</summary>
     /// <param name="applier">Validates and applies whatever is saved here.</param>
@@ -63,6 +63,10 @@ internal sealed class SettingsForm : Form
         tabs.TabPages.Add(Page("Zoom", _zoom));
 
         _save.Click += async (_, _) => await SaveAsync().ConfigureAwait(true);
+
+        // Close() rather than a DialogResult: this window is shown modelessly, and DialogResult only closes
+        // a form that was opened with ShowDialog. CancelButton routes Escape through the same handler.
+        _close.Click += (_, _) => Close();
 
         Controls.Add(BuildLayout(tabs));
     }

@@ -27,7 +27,8 @@ internal sealed partial class TrayApplicationContext : ApplicationContext
     private readonly ToolStripMenuItem _enabledItem;
     private readonly CancellationTokenRegistration _hostStoppingRegistration;
     private readonly SynchronizationContext _uiContext;
-    private string _lastAction = "no zoom yet";
+    private readonly System.Windows.Forms.Timer _tooltipClock = new() { Interval = 30_000 };
+    private string _lastAction = "no press seen yet";
 
     public TrayApplicationContext(
         ITriggerSource triggerSource,
@@ -80,6 +81,8 @@ internal sealed partial class TrayApplicationContext : ApplicationContext
 
         // Zooms are reported from the dispatcher's thread; the tooltip belongs to the UI thread.
         _activity.Happened += OnZoomHappened;
+        _tooltipClock.Tick += (_, _) => UpdateTooltip();
+        _tooltipClock.Start();
     }
 
     protected override void ExitThreadCore()
@@ -94,6 +97,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext
         if (disposing)
         {
             _activity.Happened -= OnZoomHappened;
+            _tooltipClock.Dispose();
             _hostStoppingRegistration.Dispose();
             _notifyIcon.Dispose();
             _menu.Dispose();
@@ -146,6 +150,20 @@ internal sealed partial class TrayApplicationContext : ApplicationContext
         _uiContext.Post(_ => Notify(summary, result.InForce), null);
     });
 
+    /// <summary>How long ago a press last arrived, or nothing at all before the first one.</summary>
+    private string Since()
+    {
+        if (_activity.LastTrigger is not { } last)
+            return string.Empty;
+
+        var idle = DateTimeOffset.UtcNow - last;
+        return idle < TimeSpan.FromMinutes(1)
+            ? " (just now)"
+            : idle < TimeSpan.FromHours(1)
+                ? $" ({idle.Minutes} min ago)"
+                : $" ({(int)idle.TotalHours} h ago)";
+    }
+
     private void Notify(string text, bool good) =>
         _notifyIcon.ShowBalloonTip(5000, "SmartZoom", text, good ? ToolTipIcon.Info : ToolTipIcon.Warning);
 
@@ -161,7 +179,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext
     private void UpdateTooltip()
     {
         var header = _enabledItem.Checked ? "SmartZoom" : "SmartZoom (disabled)";
-        var text = header + Environment.NewLine + _lastAction;
+        var text = header + Environment.NewLine + _lastAction + Since();
 
         // The notification area truncates silently past 63 characters on older shells, and a sentence that
         // ends in an ellipsis reads better than one that simply stops.

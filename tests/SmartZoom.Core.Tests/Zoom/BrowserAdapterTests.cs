@@ -37,11 +37,11 @@ public sealed class BrowserAdapterTests
         var result = await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None);
 
         Assert.Equal(ZoomInStatus.Applied, result.Status);
-        // Zoom-in is preceded by an instant baseline pinch-out that undoes any leftover visual zoom.
-        Assert.Equal(2, _pinch.Calls.Count);
-        Assert.Equal(0.9 / 3.0, _pinch.Calls[0].Factor, precision: 9);
-        Assert.Equal(TimeSpan.Zero, _pinch.Calls[0].Duration);
-        var pinch = _pinch.Calls[1];
+
+        // Exactly one gesture: the zoom the user asked for. Zoom-in used to be preceded by an instant
+        // baseline pinch-out, which some browsers draw as a shrink-and-rebound before the zoom starts.
+        Assert.Single(_pinch.Calls);
+        var pinch = _pinch.Calls[0];
         Assert.Equal(1874.0 / (949 + 32), pinch.Factor, precision: 6);
         Assert.Equal(TimeSpan.FromMilliseconds(180), pinch.Duration);
         Assert.Equal(pinch.Factor, Assert.IsType<BrowserAdapter.RestoreState>(result.RestoreState).Plan.Scale);
@@ -53,11 +53,11 @@ public sealed class BrowserAdapterTests
         _hits.Result = ParagraphHit;
         var adapter = Create();
         var result = await adapter.ZoomInAsync(Brave, Cursor, CancellationToken.None);
-        var zoomIn = _pinch.Calls[1];
+        var zoomIn = _pinch.Calls[0];
 
         await adapter.ZoomOutAsync(Brave, result.RestoreState!, CancellationToken.None);
 
-        var zoomOut = _pinch.Calls[2];
+        var zoomOut = _pinch.Calls[1];
         Assert.Equal(zoomIn.Anchor, zoomOut.Anchor);
         Assert.Equal(0.9 / zoomIn.Factor, zoomOut.Factor, precision: 9);
     }
@@ -94,7 +94,26 @@ public sealed class BrowserAdapterTests
         var result = await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None);
 
         Assert.Equal(ZoomInStatus.Applied, result.Status);
-        Assert.Equal(3, _pinch.Calls.Count); // reset, baseline, zoom-in
+
+        // The reset that rescued the hit-test, then the zoom itself — and nothing in between.
+        Assert.Equal(2, _pinch.Calls.Count);
+        Assert.Equal(0.9 / 3.0, _pinch.Calls[0].Factor, precision: 9);
+        Assert.Equal(TimeSpan.Zero, _pinch.Calls[0].Duration);
+    }
+
+    [Fact]
+    public async Task A_zoom_that_found_its_block_sends_no_gesture_before_the_zoom()
+    {
+        // Regression guard. A baseline pinch-out used to run before every zoom-in, on the theory that the
+        // browser clamps it at 1.0 and nobody sees it. Edge draws the shrink before clamping and rebounds,
+        // which is a visible wobble at the start of every zoom; frame captures showed it clearly and showed
+        // Edge tracking Chromium exactly once it was gone. Anything added here is seen by the user.
+        _hits.Result = ParagraphHit;
+
+        await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None);
+
+        var only = Assert.Single(_pinch.Calls);
+        Assert.True(only.Factor > 1, "the one gesture should be the zoom itself, not a pinch-out below 1.0");
     }
 
     [Fact]
@@ -134,7 +153,7 @@ public sealed class BrowserAdapterTests
 
         await Create(animate: false).ZoomInAsync(Brave, Cursor, CancellationToken.None);
 
-        Assert.Equal(TimeSpan.Zero, _pinch.Calls[1].Duration);
+        Assert.Equal(TimeSpan.Zero, Assert.Single(_pinch.Calls).Duration);
     }
 
     [Fact]
@@ -147,13 +166,13 @@ public sealed class BrowserAdapterTests
 
         var result = await Create().ZoomInAsync(Brave, new ScreenPoint(Viewport.Right - 150, 780), CancellationToken.None);
 
-        var call = _pinch.Calls[1];
+        var call = _pinch.Calls[0];
         Assert.Equal(Viewport.Right - 56, call.Bounds.Right);
         Assert.Equal(Viewport.Left + 24, call.Bounds.Left);
         Assert.True(call.Anchor.X > Viewport.Right - 200, "anchor should stay where the fit math puts it, near the right edge");
 
         await Create().ZoomOutAsync(Brave, result.RestoreState!, CancellationToken.None);
-        Assert.Equal(call.Bounds, _pinch.Calls[2].Bounds);
+        Assert.Equal(call.Bounds, _pinch.Calls[1].Bounds);
     }
 
     [Fact]

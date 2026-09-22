@@ -304,17 +304,30 @@ public sealed partial class MsaaContentHitTester(ChromiumAccessibilityWake wake,
         return (current, 0);
     }
 
+    /// <summary>
+    /// The path from the element under the cursor out to the page, with every nested document above the
+    /// leaf turned into an ordinary container.
+    /// </summary>
+    /// <remarks>
+    /// A page assembled from iframes — a news site with embedded cards and advertisements is the usual case —
+    /// has a document at every frame boundary. Stopping at the first one makes an advertisement's 656 px
+    /// frame "the page": the viewport becomes the frame, the real containers above it are never seen, and a
+    /// paragraph that fills its little frame is rejected for being wider than 90% of "the viewport". The
+    /// press then does nothing at all. Only the outermost document is the page; the rest are boxes on it.
+    /// </remarks>
     private static List<ContentNode> BuildChain((IAccessible Node, int Child) leaf)
     {
         var chain = new List<ContentNode>();
+        var documents = new List<int>();
         var (current, child) = leaf;
 
         for (var depth = 0; depth < MaxChainDepth && current is not null; depth++)
         {
             var role = GetRole(current, child);
-            chain.Add(new ContentNode(AccessibleRoles.Map(role), GetBounds(current, child)));
             if (role == AccessibleRoles.Document)
-                break;
+                documents.Add(chain.Count);
+
+            chain.Add(new ContentNode(AccessibleRoles.Map(role), GetBounds(current, child), role));
 
             child = 0;
             try
@@ -327,6 +340,18 @@ public sealed partial class MsaaContentHitTester(ChromiumAccessibilityWake wake,
             }
         }
 
+        if (documents.Count == 0)
+            return chain;
+
+        // Everything above the outermost document is browser chrome, and every document below it is a frame.
+        var page = documents[^1];
+        for (var i = 0; i < page; i++)
+        {
+            if (chain[i].Role == ContentRole.Document)
+                chain[i] = chain[i] with { Role = ContentRole.Group };
+        }
+
+        chain.RemoveRange(page + 1, chain.Count - page - 1);
         return chain;
     }
 

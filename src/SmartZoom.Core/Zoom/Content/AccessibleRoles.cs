@@ -13,6 +13,14 @@ public static class AccessibleRoles
     /// <summary><c>ROLE_SYSTEM_DOCUMENT</c>.</summary>
     public const int Document = 15;
 
+    /// <summary>
+    /// <c>ROLE_SYSTEM_PANE</c>. Inside a web document this is what Chromium reports for a generic block
+    /// container — the ordinary <c>div</c> that most of the web is built out of. Leaving it unmapped made
+    /// whole pages unzoomable: on a div-built news page every candidate on the path was "unknown" and the
+    /// press did nothing at all.
+    /// </summary>
+    public const int Pane = 16;
+
     /// <summary><c>ROLE_SYSTEM_GROUPING</c>.</summary>
     public const int Grouping = 20;
 
@@ -55,7 +63,7 @@ public static class AccessibleRoles
     public static ContentRole Map(int role) => role switch
     {
         Document => ContentRole.Document,
-        Grouping or Ia2Paragraph or Ia2Section or Ia2TextFrame => ContentRole.Group,
+        Pane or Grouping or Ia2Paragraph or Ia2Section or Ia2TextFrame => ContentRole.Group,
         StaticText or Text => ContentRole.Text,
         Link => ContentRole.Link,
         Graphic => ContentRole.Image,

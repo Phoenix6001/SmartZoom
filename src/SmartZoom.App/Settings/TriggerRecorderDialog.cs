@@ -14,7 +14,7 @@ namespace SmartZoom.App.Settings;
 /// </remarks>
 internal sealed class TriggerRecorderDialog : Form
 {
-    private readonly ITriggerSource _triggers;
+    private readonly ITriggerSource? _triggers;
     private readonly bool _triggersWereEnabled;
 
     private readonly Label _captured = new()
@@ -27,6 +27,7 @@ internal sealed class TriggerRecorderDialog : Form
         Text = "Press a button or key combination…",
     };
 
+    private readonly Label _presetsLabel = new() { Text = "Or pick a common one:", AutoSize = true };
     private readonly RadioButton _everyPress = new() { Text = "&Every press", AutoSize = true };
     private readonly RadioButton _doubleTap = new() { Text = "&Double-tap", AutoSize = true };
     private readonly NumericUpDown _window = new() { Minimum = 1, Maximum = 5000, Increment = 50, Width = 90 };
@@ -39,18 +40,41 @@ internal sealed class TriggerRecorderDialog : Form
     private MouseButton? _button;
     private KeyCombo? _combo;
 
+    /// <summary>
+    /// The handful of triggers most people settle on, as one click each. Pressing your own is still the point of
+    /// this dialog; these are here because a side button has no name anybody recognises, and on an unfamiliar
+    /// mouse "the forward side button" is easier to pick from a list than to find and press.
+    /// </summary>
+    /// <remarks>
+    /// Each preset carries its own tap and swallow policy, because they are not interchangeable. A dedicated side
+    /// button is best hidden from the application underneath, and with a single press there is no delay in doing
+    /// so. The wheel button already means "open in a new tab" and "autoscroll", so it needs the double-tap and
+    /// must NOT be swallowed — swallowing would hold every middle click back by the whole double-tap window.
+    /// </remarks>
+    private static readonly (string Label, TriggerSettings Trigger)[] Presets =
+    [
+        ("Forward side button", new TriggerSettings { Mouse = MouseButton.XButton2, TapCount = 1, SwallowClicks = true }),
+        ("Back side button", new TriggerSettings { Mouse = MouseButton.XButton1, TapCount = 1, SwallowClicks = true }),
+        ("Double-click the wheel", new TriggerSettings { Mouse = MouseButton.Middle, TapCount = 2, SwallowClicks = false }),
+        ("Ctrl+Alt+Z", new TriggerSettings { Keys = "Ctrl+Alt+Z", TapCount = 1, SwallowClicks = true }),
+    ];
+
     /// <summary>Opens the recorder, optionally on an existing trigger.</summary>
-    /// <param name="triggers">Silenced while the dialog is open.</param>
+    /// <param name="triggers">
+    /// Silenced while the dialog is open. Null when nothing is running to silence — the installer shows this
+    /// before SmartZoom has ever started.
+    /// </param>
     /// <param name="systemDoubleClickMs">The default double-tap window, when the trigger does not set one.</param>
     /// <param name="existing">The trigger being edited, or null to record a new one.</param>
-    public TriggerRecorderDialog(ITriggerSource triggers, uint systemDoubleClickMs, TriggerSettings? existing)
+    public TriggerRecorderDialog(ITriggerSource? triggers, uint systemDoubleClickMs, TriggerSettings? existing)
     {
         _triggers = triggers;
 
         // Silenced rather than stopped: stopping the hook would drop the user's other triggers too, and this
         // dialog is exactly where they are most likely to press the one that is already configured.
-        _triggersWereEnabled = triggers.Enabled;
-        triggers.Enabled = false;
+        _triggersWereEnabled = triggers?.Enabled ?? false;
+        if (triggers is not null)
+            triggers.Enabled = false;
 
         Text = existing is null ? "New trigger" : "Edit trigger";
         AutoScaleMode = AutoScaleMode.Dpi;
@@ -62,7 +86,9 @@ internal sealed class TriggerRecorderDialog : Form
         KeyPreview = true;
         AcceptButton = _ok;
         CancelButton = _cancel;
-        ClientSize = new Size(440, 260);
+        // Wide enough for the four presets to sit on one row at 100% scaling; they wrap rather than clip if a
+        // display, a font size or a translation makes them wider.
+        ClientSize = new Size(540, 330);
         Padding = new Padding(12);
 
         _window.Value = systemDoubleClickMs;
@@ -91,7 +117,7 @@ internal sealed class TriggerRecorderDialog : Form
     /// <inheritdoc />
     protected override void Dispose(bool disposing)
     {
-        if (disposing)
+        if (disposing && _triggers is not null)
             _triggers.Enabled = _triggersWereEnabled;
 
         base.Dispose(disposing);
@@ -104,12 +130,25 @@ internal sealed class TriggerRecorderDialog : Form
         foreach (Control control in taps.Controls)
             control.Margin = new Padding(0, 6, 8, 0);
 
+        var presets = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, WrapContents = true };
+        foreach (var (label, trigger) in Presets)
+        {
+            var preset = new Button { Text = label, AutoSize = true, Margin = new Padding(0, 0, 6, 0) };
+
+            // Captured in the closure rather than read back from a Tag: the preset is immutable and there is no
+            // reason for the click to go looking for it again.
+            preset.Click += (_, _) => Apply(trigger);
+            presets.Controls.Add(preset);
+        }
+
         var buttons = new FlowLayoutPanel { AutoSize = true, Dock = DockStyle.Fill, FlowDirection = FlowDirection.RightToLeft };
         buttons.Controls.AddRange([_cancel, _ok]);
 
-        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5 };
+        var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 7 };
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -123,10 +162,19 @@ internal sealed class TriggerRecorderDialog : Form
             Margin = new Padding(0, 0, 0, 8),
         });
         layout.Controls.Add(_captured);
+        layout.Controls.Add(_presetsLabel);
+        layout.Controls.Add(presets);
         layout.Controls.Add(taps);
         layout.Controls.Add(_swallow);
         layout.Controls.Add(buttons);
         return layout;
+    }
+
+    /// <summary>Fills the dialog in from a preset, exactly as if the user had pressed it.</summary>
+    private void Apply(TriggerSettings preset)
+    {
+        Restore(preset, (uint)_window.Value);
+        UpdateWindowEnabled();
     }
 
     private void Restore(TriggerSettings existing, uint systemDoubleClickMs)

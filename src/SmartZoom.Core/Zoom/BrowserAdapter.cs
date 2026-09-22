@@ -109,13 +109,18 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
                 LogNoBlock(target.ProcessName, hit?.Chain.Count ?? 0);
                 if (hit is not null && _logger.IsEnabled(LogLevel.Debug))
                 {
-                    var path = string.Join(" < ", hit.Chain.Select(n => $"{n.Role} {n.Bounds.Width}x{n.Bounds.Height}@({n.Bounds.Left},{n.Bounds.Top})"));
+                    var path = string.Join(" < ", hit.Chain.Select(n =>
+                        $"{Name(n)} {n.Bounds.Width}x{n.Bounds.Height}@({n.Bounds.Left},{n.Bounds.Top})"));
                     LogPath(path, hit.Viewport.Width, hit.Viewport.Height);
                 }
 
                 return ZoomInResult.Handled;
             }
         }
+
+        // Local so the diagnostic above reads as one expression; see ContentNode.RawRole for why it exists.
+        static string Name(ContentNode node) =>
+            node.Role == ContentRole.Other ? $"Other({node.RawRole})" : node.Role.ToString();
 
         var plan = _planner.Plan(block.Bounds, hit.Viewport, point, _insets);
         if (plan is not { } p)
@@ -129,10 +134,24 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
 
         var bounds = ContactBounds(hit.Viewport);
 
-        // Start from a known baseline: an instant pinch-out is invisible at 1.0 (the browser clamps there) but
-        // undoes any visual zoom left behind — e.g. when SmartZoom was restarted while a window was zoomed in.
-        await _pinch.PinchAsync(p.Anchor, RestoreOvershoot / _planner.MaxScale, TimeSpan.Zero, bounds, cancellationToken).ConfigureAwait(false);
-
+        // No baseline pinch-out here any more, and this is the one thing to know before adding one back.
+        //
+        // Every zoom-in used to begin with an instant pinch-out, on the theory that it is invisible at 1.0
+        // because the browser clamps there, while resetting a page left visually zoomed by a SmartZoom that
+        // was restarted. The first half of that is not true of every browser: Chromium swallows the clamped
+        // gesture, but Edge draws a transient shrink before clamping and then snaps back. Frame-by-frame
+        // capture put it at roughly a tenth of a second of the page visibly shrinking and rebounding, before
+        // the zoom the user asked for even started — "it wiggles", and it did so on every single press.
+        // Without it, Edge's trajectory is indistinguishable from Chromium's.
+        //
+        // The stuck-zoom case it guarded is still handled, where it actually shows up: a page that is
+        // visually zoomed reports accessibility rects that no longer agree with the screen, so no block
+        // qualifies, and the recovery above resets and looks again. What is given up is the narrower case
+        // where a stale zoom still leaves a plausible block. That one no longer resets in a single press:
+        // because zoom-out deliberately overshoots past 1.0, each press walks the page back toward the
+        // clamp, and a page left at x2 by something other than SmartZoom was measured returning to exactly
+        // its resting pixels after three presses. A few presses to converge, against a wiggle on every
+        // press, is the trade this makes.
         if (!await _pinch.PinchAsync(p.Anchor, p.Scale, _animation, bounds, cancellationToken).ConfigureAwait(false))
         {
             LogPinchRejected(target.ProcessName);

@@ -36,6 +36,49 @@ Nothing has been released yet, so everything so far lives under Unreleased.
   builds a new set instead, and the input hook takes a new trigger set in place.
 - `SettingsValidator` checks a settings file by running the real constructors, so a bad value is a message
   next to the control rather than an exception at startup.
+- **An installer**: `SmartZoom-<version>-setup.exe`, built by `install/build.ps1` and by CI. Per-user, so it
+  never asks for administrator rights; offers to start SmartZoom at sign-in; upgrades in place over a running
+  copy; and leaves your settings alone when you uninstall unless you ask it not to. It carries its own .NET
+  runtime, so there is no prerequisite to install and nothing to explain.
+- **The tray tooltip says when a press last reached SmartZoom** ("Zoomed in brave via Browser (2 min ago)",
+  or "no press seen yet"), and the log notes every quarter of an hour that it is listening and nothing has
+  arrived. A trigger that never gets here leaves no trace anywhere, so a working idle SmartZoom and one whose
+  button is being eaten by vendor mouse software looked exactly alike — including in the log.
+- **The wobble at the start of every browser zoom is gone.** Each zoom-in used to begin with an instant
+  pinch-out, on the theory that a browser clamps it at 1.0 and nobody sees it. Chromium does; Edge draws the
+  shrink first and rebounds, so every zoom began with the page visibly lurching for about a tenth of a second
+  before the zoom the user asked for started. Frame-by-frame capture showed Edge tracking Chromium exactly
+  once it was removed. The stuck-zoom case it guarded still recovers, through the reset that already runs
+  when a visually zoomed page stops offering a sensible block.
+- **Zoom gestures are paced to the display's refresh rate** instead of a fixed 8 ms. On a 59 Hz screen that
+  was two injected touch moves per refresh, and a third of them went out late — by up to 13.7 ms — because a
+  thread cannot reliably be woken that often. Uneven samples arriving twice a refresh leave it to the
+  browser's input sampling which one it sees, and browsers differ. One sample per refresh: every frame now
+  lands in its slot (0 late, measured), with the same total duration and pixel-exact restores.
+- The debug log reports gesture pacing — how many frames went out, how late the worst one was, and how many
+  missed their slot — so a stutter can be told apart from the browser rendering it badly.
+- `smartzoom-probe track <prefix>` reports the scale each frame of a captured zoom reached. Percentage-of-
+  differing-pixels saturates on text and template matching loses its lock once content triples in size, so
+  both made smooth zooms look ragged and ragged ones look smooth; ink spread does neither.
+- **Pages built out of plain `div`s can be zoomed.** Chromium reports a generic container as
+  `ROLE_SYSTEM_PANE`, which SmartZoom did not recognise, so it treated it as an unknown element and skipped
+  it. On a page whose layout is mostly `div`s — most news sites — every candidate under the cursor was
+  skipped and the press did nothing at all, with only a line in the debug log to say why. Panes are now
+  containers like any other block.
+- The debug log's "path under the cursor" line now names the accessibility role number behind any element
+  SmartZoom could not classify (`Other(16)`), which is what a "nothing happened" report needs.
+- The installer asks how you want to start a zoom, by opening SmartZoom's own recorder: press the button or
+  shortcut you want, or click one of the four common choices shown underneath it. It opens filled in with
+  your current trigger, so reinstalling is "confirm or change" — Cancel keeps exactly what you had, and OK
+  leaves your other triggers untouched. SmartZoom then works the moment it starts, rather than after a trip
+  into settings to find out what "XButton2" means. A setup script cannot see a mouse's side buttons — Inno
+  Setup only knows left, right and middle — so a list of presets on a wizard page could never have offered
+  "the button behind the wheel"; the recorder can. Silent installs never ask.
+- `SmartZoom.exe --record-trigger` asks for a trigger and writes what was pressed;
+  `SmartZoom.exe --trigger <button-or-keys> [--taps 1|2] [--swallow]` writes one without asking, for scripted
+  deployment. Both go through the same code that reads the file, so everything else in it is kept.
+- `SmartZoom.exe --quit` asks a running copy to close cleanly. The installer uses it before replacing the
+  executable, so an upgrade takes the tray icon down rather than leaving a ghost behind.
 
 ### Changed, breaking
 
@@ -82,6 +125,17 @@ Nothing has been released yet, so everything so far lives under Unreleased.
   `ReaderShortcutAdapter`, sharing a `ShortcutSender` for the foreground etiquette.
 - Word's unused touch-pinch path is gone. It was disabled by passing null and the reason was only in a
   comment; `docs/decisions.md` records what was measured.
+
+### Fixed
+
+- **Pages built out of iframes could not be zoomed at all.** The accessibility walk stopped at the first
+  document it met, which on a news site is an embedded card or an advertisement — so a 656 px frame became
+  "the page", every real container above it was invisible, and a paragraph filling its little frame was
+  rejected for being wider than 90% of "the viewport". A press did nothing, silently. Only the outermost
+  document is the page now; the frames below it are containers like any other. Found on an MSN article, in
+  both Edge and Brave.
+- **The Close button on the settings window did nothing.** It carried a `DialogResult`, which only closes a
+  form opened with `ShowDialog`; this one is modeless. Escape was dead for the same reason.
 
 ### Known gaps
 

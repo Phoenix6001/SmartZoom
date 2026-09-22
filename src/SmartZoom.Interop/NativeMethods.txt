@@ -51,3 +51,6 @@ GetWindow
 IsWindowVisible
 ChildWindowFromPointEx
 ScreenToClient
+EnumDisplaySettings
+DEVMODEW
+ENUM_DISPLAY_SETTINGS_MODE

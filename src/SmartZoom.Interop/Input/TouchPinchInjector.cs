@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 using Microsoft.Extensions.Logging;
 
@@ -10,6 +11,7 @@ using SmartZoom.Interop.Windows;
 
 using Windows.Win32;
 using Windows.Win32.Foundation;
+using Windows.Win32.Graphics.Gdi;
 using Windows.Win32.UI.Input.Pointer;
 using Windows.Win32.UI.WindowsAndMessaging;
 
@@ -23,8 +25,30 @@ namespace SmartZoom.Interop.Input;
 /// </remarks>
 public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<TouchPinchInjector> logger) : IPinchInjector
 {
-    // Target frame interval. 8 ms feeds 120 Hz displays and halves the step size on 60 Hz ones.
-    private const int FrameMs = 8;
+    // Fallback when the display refuses to say how fast it refreshes.
+    private const int DefaultFrameMs = 8;
+
+
+    // Injecting faster than the screen can show is not smoothness, it is waste — and measurably worse than
+    // waste here: at 8 ms on a 59 Hz panel (16.9 ms a refresh) a third of the frames went out late, by up to
+    // 13.7 ms, because the thread cannot reliably be woken that often. Two samples per refresh, arriving at
+    // uneven times, leave it to the browser's input sampling which one it happens to see, and browsers do
+    // that differently. One sample per refresh removes the beat entirely.
+    private static readonly int FrameMs = RefreshPeriodMs();
+
+    /// <summary>The display's refresh period in whole milliseconds, clamped to something sane.</summary>
+    private static int RefreshPeriodMs()
+    {
+        var mode = new DEVMODEW { dmSize = (ushort)Marshal.SizeOf<DEVMODEW>() };
+        if (!PInvoke.EnumDisplaySettings(null, ENUM_DISPLAY_SETTINGS_MODE.ENUM_CURRENT_SETTINGS, ref mode))
+            return DefaultFrameMs;
+
+        var hz = mode.dmDisplayFrequency;
+
+        // 0 and 1 are the documented "default/unknown" answers. The clamp keeps a 240 Hz panel from asking
+        // for a 4 ms cadence the thread cannot keep, and a misreported slow one from making the zoom stutter.
+        return hz <= 1 ? DefaultFrameMs : Math.Clamp((int)Math.Round(1000.0 / hz), 8, 20);
+    }
     private const int PanDurationMs = 140;
     private const int PanSettleMs = 60;
     private const uint TouchMaskContactAreaOrientationPressure = 0x1 | 0x2 | 0x4;
@@ -89,7 +113,8 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
 
     private bool PinchAround(PinchPlan plan, TimeSpan duration, GestureEngine engine, CancellationToken cancellationToken)
     {
-        var frames = Math.Max(2, (int)Math.Round(duration.TotalMilliseconds / FrameMs));
+        var interval = FrameMs;
+        var frames = Math.Max(2, (int)Math.Round(duration.TotalMilliseconds / interval));
         var contacts = NewContacts(2);
         var clock = Stopwatch.StartNew();
 
@@ -101,24 +126,41 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
         try
         {
             // Pre-roll: cross the recognizer's slop in one step before the visible animation starts.
-            WaitUntil(clock, FrameMs);
+            WaitUntil(clock, interval);
             PlacePair(contacts, plan, plan.PreRolledHalf);
             if (!devices.Inject(contacts, UpdateFlags, engine))
                 return false;
 
             var animationStart = clock.Elapsed.TotalMilliseconds;
             var travel = plan.EndHalf - plan.PreRolledHalf;
+
+            // How late each frame actually went out. A gesture is only as smooth as its pacing, and a thread
+            // that loses the CPU mid-pinch produces a visible stutter that no amount of easing can hide —
+            // which is indistinguishable, from the outside, from the browser rendering it badly.
+            var worstLate = 0.0;
+            var lateFrames = 0;
+
             for (var frame = 1; frame <= frames; frame++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
                 // Frames are scheduled against the clock, not chained sleeps, so timer jitter doesn't accumulate.
-                WaitUntil(clock, animationStart + (frame * FrameMs));
+                var due = animationStart + (frame * interval);
+                WaitUntil(clock, due);
+
+                var late = clock.Elapsed.TotalMilliseconds - due;
+                if (late > worstLate)
+                    worstLate = late;
+                if (late > interval)
+                    lateFrames++;
+
                 PlacePair(contacts, plan, plan.PreRolledHalf + (travel * Easing.SmoothStep(frame / (double)frames)));
 
                 if (!devices.Inject(contacts, UpdateFlags, engine))
                     return false;
             }
+
+            LogPacing(frames, interval, worstLate, lateFrames, clock.Elapsed.TotalMilliseconds - animationStart);
 
             completed = true;
             return true;
@@ -248,6 +290,11 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not lift the synthetic touch contacts after a completed gesture.")]
     private partial void LogLiftFailed();
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Gesture pacing: {Frames} frames at {TargetMs} ms took {ActualMs:F0} ms; " +
+            "worst frame was {WorstLateMs:F1} ms late, {LateFrames} frame(s) missed their slot.")]
+    private partial void LogPacing(int frames, int targetMs, double worstLateMs, int lateFrames, double actualMs);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Pinch around ({X}, {Y}) needs {HalfSpread} px of room but the content area offers {Room} px; the gesture was shrunk and will zoom less than planned.")]
     private partial void LogShrunk(int x, int y, int halfSpread, int room);

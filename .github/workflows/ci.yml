@@ -60,3 +60,20 @@ jobs:
           name: SmartZoom-win-x64
           path: publish/SmartZoom.exe
           if-no-files-found: error
+
+      # Chocolatey is already on the Windows runners; this is the same compiler version a contributor
+      # gets from winget.
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress --yes
+
+      # The installer carries its own runtime, so this publish is self-contained and much larger than the
+      # one above. Building it every run is what stops the .iss rotting against the app it packages.
+      - name: Build installer
+        run: pwsh install/build.ps1
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: SmartZoom-setup
+          path: install/output/*-setup.exe
+          if-no-files-found: error

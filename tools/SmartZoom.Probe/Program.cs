@@ -78,6 +78,9 @@ internal static class Program
                 Screen.Scale(args[1], args[2], Integer(args, 3, 0), Integer(args, 4, 4000), Number(args, 5, 0.5), Number(args, 6, 3.0));
                 return true;
 
+            case "track":
+                return Track(args[1]);
+
             default:
                 Console.Error.WriteLine($"unknown command \"{args[0]}\"");
                 Help();
@@ -86,6 +89,26 @@ internal static class Program
     }
 
     // ------------------------------------------------------------------ reading
+
+    /// <summary>Every <c>&lt;prefix&gt;*.png</c> in name order, which is capture order.</summary>
+    private static bool Track(string prefix)
+    {
+        var directory = Path.GetDirectoryName(prefix);
+        if (string.IsNullOrEmpty(directory))
+            directory = ".";
+
+        var frames = Directory.GetFiles(directory, Path.GetFileName(prefix) + "*.png");
+        Array.Sort(frames, StringComparer.Ordinal);
+
+        if (frames.Length == 0)
+        {
+            Console.Error.WriteLine($"no frames matching {prefix}*.png");
+            return false;
+        }
+
+        Screen.Track(frames);
+        return true;
+    }
 
     private static bool Windows(ScreenPoint point)
     {
@@ -300,6 +323,7 @@ internal static class Program
           shot <file.png> [x0 y0 x1 y1]         a screenshot; without a region, the window under (x0, y0)
           diff <a.png> <b.png> [x0 y0 x1 y1]    how much differs, and what a whole-image shift explains
           scale <a.png> <b.png> [y0 y1 lo hi]   the scale and offset that map one onto the other
+          track <prefix>                        the scale each frame of a captured zoom reached, in order
 
         docs/measurements.md says which command produced which constant.
         """);

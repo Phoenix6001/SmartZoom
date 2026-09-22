@@ -35,11 +35,23 @@ internal static class Program
     // Deliberately synchronous: WinForms needs an STA thread, and [STAThread] has no effect on async Main
     // (or top-level statements), whose continuations may resume on MTA thread-pool threads.
     [STAThread]
-    private static int Main()
+    private static int Main(string[] args)
     {
+        // Writes the trigger the installer's wizard asked for and exits. Before the mutex, because it is a
+        // job rather than an instance of the app, and the installer has already stopped any running copy.
+        if (TriggerCommand.TryRun(args, out var triggerExitCode))
+            return triggerExitCode;
+
+        // The installer asks a running copy to close this way before it replaces the executable, so that the
+        // tray icon comes down properly rather than being left behind by a killed process.
+        var quitting = args.Any(a => string.Equals(a, "--quit", StringComparison.OrdinalIgnoreCase));
+
         using var singleInstance = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out var isFirstInstance);
         if (!isFirstInstance)
         {
+            if (quitting)
+                return SecondInstanceListener.TryRequestQuit() ? 0 : 1;
+
             // Starting a tray app that is already running is somebody looking for its window, so the running
             // instance shows one instead of this one complaining and exiting.
             if (!SecondInstanceListener.TryRequestSettings())
@@ -47,6 +59,10 @@ internal static class Program
 
             return 0;
         }
+
+        // Nothing was running, so there was nothing to close.
+        if (quitting)
+            return 0;
 
         // Applies the csproj's ApplicationHighDpiMode (PerMonitorV2) before any window or hook thread exists.
         // Threads created afterwards inherit it, which keeps hook coordinates and WindowFromPoint consistent.
@@ -148,6 +164,7 @@ internal static class Program
         builder.Services.AddHostedService<TriggerCaptureService>();
         builder.Services.AddHostedService<SecondInstanceListener>();
         builder.Services.AddHostedService<TriggerDispatcher>();
+        builder.Services.AddHostedService<TriggerWatchdog>();
         builder.Services.AddSingleton<TrayApplicationContext>();
 
         return builder.Build();

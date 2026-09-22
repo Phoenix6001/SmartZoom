@@ -20,6 +20,16 @@ public sealed class AccessibleRolesTests
             Assert.Equal(expected, AccessibleRoles.Map(role));
     }
 
+    public sealed class A_chromium_pane
+    {
+        // Chromium reports a generic block container - the div most of the web is built out of - as
+        // ROLE_SYSTEM_PANE. While this mapped to Other, the selector rejected it outright and a div-built
+        // page could not be zoomed anywhere: every node on the path under the cursor was "unknown".
+        [Fact]
+        public void Is_a_container_like_any_other_block() =>
+            Assert.Equal(ContentRole.Group, AccessibleRoles.Map(16));
+    }
+
     public sealed class Gecko_ia2_roles
     {
         [Theory]

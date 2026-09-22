@@ -15,6 +15,21 @@ internal sealed class ZoomActivity
     /// <summary>The most recent outcome, or null before the first trigger.</summary>
     public ZoomOutcome? Last { get; private set; }
 
+    /// <summary>
+    /// When a trigger last reached SmartZoom at all, or null if none ever has.
+    /// </summary>
+    /// <remarks>
+    /// Recorded separately from <see cref="Last"/>, and before anything is zoomed, because the question this
+    /// answers is "did the press get here?" — which is exactly what cannot be told apart from "SmartZoom is
+    /// not running" when a trigger silently never arrives. Vendor mouse software that remaps a side button
+    /// per application is the usual cause, and it leaves no trace anywhere else.
+    /// </remarks>
+    public DateTimeOffset? LastTrigger { get; private set; }
+
+    /// <summary>Records that a trigger arrived, before anything has been done with it.</summary>
+    /// <param name="when">The time it arrived.</param>
+    public void Seen(DateTimeOffset when) => LastTrigger = when;
+
     /// <summary>Records an outcome and tells whoever is listening.</summary>
     /// <param name="outcome">What the trigger did.</param>
     public void Report(ZoomOutcome outcome)

@@ -13,6 +13,7 @@ internal sealed partial class TriggerDispatcher(
     IWindowInspector windowInspector,
     ZoomEngine engine,
     ZoomActivity activity,
+    TimeProvider time,
     ILogger<TriggerDispatcher> logger) : BackgroundService
 {
     // A trigger older than this was queued behind a slow zoom; acting on it now would surprise the user.
@@ -53,6 +54,7 @@ internal sealed partial class TriggerDispatcher(
         }
 
         LogTrigger(x, y, target.ProcessName ?? "<inaccessible>", target.ProcessId, target.RootWindow, target.RootClassName, target.HitClassName);
+        activity.Seen(time.GetUtcNow());
 
         try
         {

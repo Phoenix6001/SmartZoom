@@ -21,11 +21,32 @@ and routes it to a per-application zoom strategy:
 > Ctrl+wheel zoom with toggle-back works for the configured image apps. PowerPoint is not supported yet.
 > See [Roadmap](#roadmap).
 
+## Install
+
+Run `SmartZoom-<version>-setup.exe`. Near the end it asks how you would like to start a zoom: press the
+button or key combination you want, or click one of the four common choices — a side button, a double-click
+of the wheel, or Ctrl+Alt+Z — so it works as soon as it starts. It installs for you
+alone, into
+`%LOCALAPPDATA%\Programs\SmartZoom`, and never asks for administrator rights — SmartZoom does not need them,
+so neither does its installer. The wizard offers to start SmartZoom when you sign in, which is on by default
+because a zoom trigger that stops working at the next sign-out is not much use.
+
+The installer carries its own copy of .NET, so there is nothing to install first. That is why it is about
+50 MB for an application that is otherwise small.
+
+Uninstall from **Apps & Features** like anything else. Your settings and logs are kept unless you say
+otherwise, so reinstalling does not cost you your triggers.
+
+> The installer is not code-signed, so Windows SmartScreen will warn that the publisher is unknown. Choose
+> **More info → Run anyway**, or build it yourself: `pwsh install\build.ps1`.
+
 ## Requirements
 
-- Windows 10 1809+ or Windows 11
-- [.NET 10 SDK](https://dotnet.microsoft.com/download) to build; .NET 10 Desktop Runtime to run
+- Windows 10 1809+ or Windows 11, 64-bit
 - A mouse with a middle button or side (X) buttons. No vendor software is needed.
+- To build it yourself: the [.NET 10 SDK](https://dotnet.microsoft.com/download), and
+  [Inno Setup 6](https://jrsoftware.org/isinfo.php) for the installer. Running from source needs the .NET 10
+  Desktop Runtime; the installed build carries its own.
 
 ## Build and run
 
@@ -137,8 +158,6 @@ Settings → Bluetooth & devices → Touchpad → *Taps* → **Three-finger tap:
 `{ "Mouse": "Middle", "TapCount": 1 }` (or keep `2` if you also use middle-click). On Windows 11 the
 four-finger tap can instead be a *Custom shortcut*, which you point at one of your `Keys` triggers.
 
-Older files with a single `"Trigger"` object are upgraded to `"Triggers"` automatically on startup.
-
 Logs are written to `%LOCALAPPDATA%\SmartZoom\logs` (rolling daily, 14 days kept).
 
 ## Architecture
@@ -218,7 +237,7 @@ depending on which window is focused.
 2. ✅ **M2** Ctrl+wheel adapter with per-window toggle state
 2½. ✅ **M2.5** Keyboard hotkeys and multiple simultaneous triggers
 3. ✅ **M3** Native smart zoom in Chromium browsers (accessibility hit-test + touch pinch)
-4. 🔧 **M4** Firefox ✅, per-user installer
+4. ✅ **M4** Firefox ✅, per-user installer ✅
 5. 🔧 **M5** Office and PDF readers: Word ✅, Acrobat ✅, Excel ✅, PowerPoint (unclaimed — see
    [docs/adding-an-application.md](docs/adding-an-application.md))
 6. 🔧 **M6** Settings window ✅, live reload ✅, multi-monitor and mixed-DPI polish
