@@ -11,22 +11,38 @@ public class DiagnosticReportTests
 
     public sealed class Whatever_it_is_given
     {
-        // The contract in docs/diagnostics-design.md, as a test. A comment promising this is worth little
-        // to somebody reviewing from outside; a failing build when a field is added in a year is worth much.
+        // The privacy contract lives at the PRODUCER: DiagnosticKey and DiagnosticSample have no title,
+        // page-text, URL or coordinate field by construction (Task 2), so nothing of that shape can ever
+        // reach the renderer. What the renderer itself can get wrong is failing to redact the free text it
+        // *is* given, so that is what these tests exercise.
         [Fact]
-        public void A_report_never_contains_a_window_title()
+        public void Every_free_text_field_is_redacted_before_it_is_rendered()
         {
+            const string SettingsSentinel = "SETTINGS-SENTINEL";
+            const string DetailSentinel = "DETAIL-SENTINEL";
+            const string ExceptionSentinel = "EXCEPTION-SENTINEL";
+            const string LogSentinel = "LOG-SENTINEL";
+
             var record = new DiagnosticRecord("0.1.0");
             record.Sample(new DiagnosticSample(
                 new DiagnosticKey(DiagnosticKind.ZoomedNothing, "msedge", "Browser", "NoBlock"),
                 Noon,
-                Detail: "Group 949x79 < Document 3832x2074",
-                Exception: null));
+                Detail: DetailSentinel,
+                Exception: ExceptionSentinel));
 
-            var report = Render(record);
+            static string Redact(string text) => text
+                .Replace(SettingsSentinel, "[REDACTED]", StringComparison.Ordinal)
+                .Replace(DetailSentinel, "[REDACTED]", StringComparison.Ordinal)
+                .Replace(ExceptionSentinel, "[REDACTED]", StringComparison.Ordinal)
+                .Replace(LogSentinel, "[REDACTED]", StringComparison.Ordinal);
 
-            Assert.DoesNotContain("Quarterly results - Microsoft Edge", report, StringComparison.Ordinal);
-            Assert.Contains("Group 949x79", report, StringComparison.Ordinal);
+            var report = DiagnosticReport.Render(record, new FakeMachineFacts(), SettingsSentinel, LogSentinel, Redact);
+
+            Assert.DoesNotContain(SettingsSentinel, report, StringComparison.Ordinal);
+            Assert.DoesNotContain(DetailSentinel, report, StringComparison.Ordinal);
+            Assert.DoesNotContain(ExceptionSentinel, report, StringComparison.Ordinal);
+            Assert.DoesNotContain(LogSentinel, report, StringComparison.Ordinal);
+            Assert.Contains("[REDACTED]", report, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -42,8 +58,27 @@ public class DiagnosticReportTests
                 logTail: null,
                 redact: t => Redaction.Paths(t, @"C:\Users\ada", @"C:\Users\ada\AppData\Local", @"C:\Users\ada\AppData\Roaming"));
 
-            Assert.DoesNotContain(@"C:\Users\ada", report, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("ada", report, StringComparison.OrdinalIgnoreCase);
             Assert.Contains("%LOCALAPPDATA%", report, StringComparison.Ordinal);
+        }
+    }
+
+    public sealed class A_section_that_throws
+    {
+        // The type's own <remarks> promise this: "A section that throws degrades to 'unavailable' rather
+        // than costing the reader the rest of the report."
+        [Fact]
+        public void Renders_unavailable_without_losing_the_rest_of_the_report()
+        {
+            var record = new DiagnosticRecord("0.1.0");
+            record.Note(new DiagnosticKey(DiagnosticKind.ZoomedNothing, "common", "Browser", "NoBlock"), Noon);
+
+            var facts = new FakeMachineFacts { ThrowOnDisplays = true };
+
+            var report = DiagnosticReport.Render(record, facts, "{}", null, t => t);
+
+            Assert.Contains("unavailable", report, StringComparison.Ordinal);
+            Assert.Contains("common", report, StringComparison.Ordinal);
         }
     }
 
