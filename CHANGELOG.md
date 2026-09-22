@@ -84,13 +84,14 @@ Nothing has been released yet, so everything so far lives under Unreleased.
   SmartZoom does not support. Settings → Diagnostics now keeps a bounded local tally — presses that zoomed
   nothing, adapters that threw, crashes, and how well injected touch gestures were delivered — at
   `%LOCALAPPDATA%\SmartZoom\diagnostics.json` (200 counter keys, 20 detail samples, a 256 KB ceiling, reset
-  whenever the SmartZoom version changes), and renders it on demand as a markdown report with **Copy**,
-  **Save…**, **Clear recorded data**, a record on/off switch (on by default), and an opt-in "Include recent
-  log lines" checkbox. The tray gained **Diagnostic report…**, which opens that page rather than copying
+  whenever the SmartZoom version changes), and renders it on demand as a markdown report with **Refresh**,
+  **Copy**, **Save…**, **Clear recorded data**, a record on/off switch (on by default, saved as
+  `Diagnostics.Enabled` in `settings.json`), and an opt-in "Include recent log lines" checkbox. The tray gained **Diagnostic report…**, which opens that page rather than copying
   anything silently — reading the report is the consent mechanism. It records process names, adapter names,
   coarse reasons, the *shape* of the accessibility path under the cursor (roles and sizes, e.g. `Group
   949x79`, never coordinates or text), display characteristics and exception stacks; it never records window
-  titles, page text, URLs, screen coordinates, keystrokes, usernames or any identifier. **No network
+  titles, page text, URLs, screen coordinates, keystrokes, usernames or any identifier — exception messages
+  have the profile path rewritten before they are written to the file, not only before they are displayed. **No network
   connection is made** — nothing here changes `SECURITY.md`'s "SmartZoom makes no network connections and
   sends nothing anywhere"; the report leaves the machine only when a person reads it and pastes it themselves.
 
