@@ -86,7 +86,7 @@ A **tally, not a journal**. A journal of every event grows without limit and say
 
 | Kind | Raised when |
 |---|---|
-| `ZoomedNothing` | A press resolved to a window and produced no zoom. `Reason` distinguishes `NoContent`, `NoBlock`, `AlreadyFits`, `GestureRefused`, `NoAdapter`. `NoAdapter` and `AlreadyFits` are correct behaviour rather than defects, and are counted because "people keep pressing in an application that is routed to nothing" is exactly question 2 |
+| `ZoomedNothing` | A press resolved to a window and produced no zoom. `Reason` distinguishes `NoContent`, `NoBlock`, `AlreadyFits`, `GestureRefused`, `AutomationFailed`, `NoAdapter` and `AdapterCouldNotAct` (the strategy could not act and the Ctrl+wheel fallback did not either). It is always set for a press that zoomed nothing. `NoAdapter` and `AlreadyFits` are correct behaviour rather than defects, and are counted because "people keep pressing in an application that is routed to nothing" is exactly question 2 |
 | `AdapterThrew` | An adapter raised an exception the dispatcher caught |
 | `NoWindow` | A trigger resolved to no window at all |
 | `Crashed` | An unhandled exception reached the top of the process |

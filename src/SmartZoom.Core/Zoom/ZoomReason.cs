@@ -20,4 +20,15 @@ public enum ZoomReason
 
     /// <summary>No adapter is configured for this application.</summary>
     NoAdapter,
+
+    /// <summary>
+    /// The strategy could not act on the application in the state it was in, and the Ctrl+wheel fallback did
+    /// not act either (or was turned off).
+    /// </summary>
+    /// <remarks>
+    /// Only the browser and the two Office adapters ever report a reason of their own. Without this value
+    /// every no-op press in the Reader and Ctrl+wheel paths had no reason at all, which is precisely the
+    /// "where does a press do nothing?" question the diagnostics record exists to answer.
+    /// </remarks>
+    AdapterCouldNotAct,
 }

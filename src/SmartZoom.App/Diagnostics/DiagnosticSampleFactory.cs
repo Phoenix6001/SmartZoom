@@ -29,7 +29,7 @@ internal static class DiagnosticSampleFactory
             DiagnosticKind.ZoomedNothing,
             outcome.Process,
             outcome.Adapter?.ToString(),
-            outcome.Reason?.ToString() ?? outcome.Action.ToString());
+            outcome.Reason?.ToString());
 
         var sample = outcome.Detail is null ? null : new DiagnosticSample(key, when, outcome.Detail, Exception: null);
         return (key, sample);

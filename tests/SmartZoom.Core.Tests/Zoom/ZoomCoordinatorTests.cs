@@ -136,6 +136,39 @@ public sealed class ZoomCoordinatorTests
     }
 
     [Fact]
+    public async Task An_adapter_that_could_not_act_says_so_rather_than_leaving_the_reason_empty()
+    {
+        _browser.Result = ZoomInResult.Unhandled;
+
+        var outcome = await Create(fallback: false).HandleTriggerAsync(Browser, Point, CancellationToken.None);
+
+        // The reason is what the diagnostics record counts under. Only the browser and the Office adapters
+        // ever supply one of their own, so without this every no-op press in the Reader and Ctrl+wheel paths
+        // would be counted with no reason at all.
+        Assert.Equal(ZoomAction.Unhandled, outcome.Action);
+        Assert.Equal(ZoomReason.AdapterCouldNotAct, outcome.Reason);
+    }
+
+    [Fact]
+    public async Task Every_outcome_that_zoomed_nothing_carries_a_reason()
+    {
+        _ctrlWheel.Result = ZoomInResult.Unhandled;
+        var coordinator = Create();
+
+        ZoomOutcome[] outcomes =
+        [
+            await coordinator.HandleTriggerAsync(Pdf, Point, CancellationToken.None),
+            await coordinator.HandleTriggerAsync(Unknown, Point, CancellationToken.None),
+        ];
+
+        Assert.All(outcomes, outcome =>
+        {
+            Assert.True(outcome.Action is ZoomAction.Unhandled or ZoomAction.Ignored or ZoomAction.Handled);
+            Assert.NotNull(outcome.Reason);
+        });
+    }
+
+    [Fact]
     public async Task Closed_window_state_is_pruned_so_the_next_trigger_zooms_in()
     {
         var coordinator = Create();

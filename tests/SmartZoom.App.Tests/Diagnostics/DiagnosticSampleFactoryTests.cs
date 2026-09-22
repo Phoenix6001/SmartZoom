@@ -85,6 +85,19 @@ public sealed class DiagnosticSampleFactoryTests
         Assert.DoesNotContain("Quarterly results", detail, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void An_adapter_that_could_not_act_is_reported_as_a_reason_not_as_an_action()
+    {
+        var outcome = new ZoomOutcome(ZoomAction.Unhandled, "AcroRd32", new AdapterId("Reader"), ZoomReason.AdapterCouldNotAct);
+
+        var (key, sample) = DiagnosticSampleFactory.ForZoomedNothing(outcome, DateTimeOffset.UnixEpoch);
+
+        // The "What happened" column used to mix a ZoomReason with a ZoomAction, so every Reader and
+        // Ctrl+wheel no-op read "ZoomedNothing/Unhandled" - the least informative label available.
+        Assert.Equal("AdapterCouldNotAct", key.Reason);
+        Assert.Null(sample);
+    }
+
     private sealed class FakeHitTester : IContentHitTester
     {
         public ContentHit? Result { get; set; }

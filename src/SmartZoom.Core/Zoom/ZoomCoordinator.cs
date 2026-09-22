@@ -124,7 +124,7 @@ public sealed partial class ZoomCoordinator
 
             default:
                 LogUnhandled(target.ProcessName, id);
-                return new ZoomOutcome(ZoomAction.Unhandled, target.ProcessName, id);
+                return new ZoomOutcome(ZoomAction.Unhandled, target.ProcessName, id, ZoomReason.AdapterCouldNotAct);
         }
     }
 
