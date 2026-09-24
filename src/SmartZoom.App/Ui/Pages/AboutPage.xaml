@@ -1,0 +1,112 @@
+<UserControl x:Class="SmartZoom.App.Ui.Pages.AboutPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:ClassModifier="internal">
+    <UserControl.Resources>
+        <Style x:Key="About.Link" TargetType="Button" BasedOn="{StaticResource Button.Link}">
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+            <Setter Property="FontSize" Value="13.5" />
+        </Style>
+    </UserControl.Resources>
+
+    <StackPanel Margin="40,34,40,34" MaxWidth="640" HorizontalAlignment="Left">
+
+        <!-- 1. What this is -->
+        <StackPanel Orientation="Horizontal">
+            <Border Width="64"
+                    Height="64"
+                    VerticalAlignment="Top"
+                    Background="{DynamicResource Brush.Accent}"
+                    CornerRadius="16">
+                <TextBlock Style="{StaticResource Glyph}"
+                           FontSize="30"
+                           Foreground="White"
+                           Text="&#xE71E;" />
+            </Border>
+            <StackPanel Margin="18,0,0,0" VerticalAlignment="Center">
+                <TextBlock Style="{StaticResource Text.Hero}" FontSize="30" Text="SmartZoom" />
+                <TextBlock Style="{StaticResource Text.Muted}" Margin="1,4,0,0" Text="{Binding Tagline}" />
+            </StackPanel>
+        </StackPanel>
+
+        <!-- 2. Which build -->
+        <Border Style="{StaticResource Card}" Margin="0,26,0,0" Padding="20,18,20,18">
+            <StackPanel>
+                <TextBlock Style="{StaticResource Text.Label}" Text="THIS BUILD" />
+                <TextBlock Style="{StaticResource Text.Base}"
+                           Margin="0,8,0,0"
+                           FontFamily="{StaticResource Font.Display}"
+                           FontSize="20"
+                           FontWeight="SemiBold"
+                           Text="{Binding Version}" />
+                <TextBlock Style="{StaticResource Text.Muted}" Margin="0,4,0,0" Text="{Binding OperatingSystem}" />
+                <Button Style="{StaticResource About.Link}"
+                        Margin="0,12,0,0"
+                        Command="{Binding GoToAdvanced}"
+                        Content="A full report of what SmartZoom sees is on the Advanced page" />
+            </StackPanel>
+        </Border>
+
+        <!-- 3. Links -->
+        <Border Style="{StaticResource Card}" Margin="0,16,0,0" Padding="20,18,20,18">
+            <StackPanel>
+                <TextBlock Style="{StaticResource Text.Label}" Margin="0,0,0,12" Text="LINKS" />
+                <Button Style="{StaticResource About.Link}" Command="{Binding OpenProject}" Content="Project page" />
+                <Button Style="{StaticResource About.Link}" Command="{Binding ReportProblem}" Content="Report a problem" />
+                <Button Style="{StaticResource About.Link}" Margin="0" Command="{Binding OpenReleases}" Content="Releases" />
+            </StackPanel>
+        </Border>
+
+        <!-- 4. What it records -->
+        <Border Style="{StaticResource Card}" Margin="0,16,0,0" Padding="20,18,20,18">
+            <StackPanel>
+                <TextBlock Style="{StaticResource Text.Label}" Text="WHAT IT RECORDS" />
+                <TextBlock Style="{StaticResource Text.Muted}" Margin="0,8,0,0">
+                    <Run Text="SmartZoom keeps a local record of presses that zoomed nothing and of adapters that failed, so a problem can be described without reading a log file. It is kept at" />
+                    <Run FontWeight="SemiBold" Text="{Binding DiagnosticsFile, Mode=OneWay}" /><Run Text="." />
+                </TextBlock>
+                <TextBlock Style="{StaticResource Text.Muted}"
+                           Margin="0,8,0,0"
+                           Text="Nothing is ever sent anywhere. SmartZoom makes no network connections of any kind, and this page does not check for updates." />
+                <Button Style="{StaticResource About.Link}"
+                        Margin="0,12,0,0"
+                        Command="{Binding GoToAdvanced}"
+                        Content="Read or clear the record on the Advanced page" />
+            </StackPanel>
+        </Border>
+
+        <!-- 5. Licence -->
+        <Border Style="{StaticResource Card}" Margin="0,16,0,0" Padding="20,18,20,18">
+            <StackPanel>
+                <TextBlock Style="{StaticResource Text.Label}" Text="LICENCE" />
+                <TextBlock Style="{StaticResource Text.Base}"
+                           Margin="0,8,0,0"
+                           FontSize="15"
+                           FontWeight="SemiBold"
+                           Text="{Binding Licence}" />
+                <TextBlock Style="{StaticResource Text.Muted}"
+                           Margin="0,14,0,0"
+                           Text="Ships with these libraries, under their own licences:" />
+                <ItemsControl Margin="0,8,0,0" ItemsSource="{Binding Dependencies}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,0,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Style="{StaticResource Text.Muted}" Text="{Binding Name}" />
+                                <TextBlock Grid.Column="1"
+                                           Style="{StaticResource Text.Muted}"
+                                           Margin="16,0,0,0"
+                                           FontWeight="SemiBold"
+                                           Text="{Binding Licence}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+    </StackPanel>
+</UserControl>

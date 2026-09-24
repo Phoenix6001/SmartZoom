@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using SmartZoom.App.Diagnostics;
 using SmartZoom.App.Hosting;
 using SmartZoom.App.Settings;
+using SmartZoom.App.Ui.Shell;
 using SmartZoom.Core.Diagnostics;
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Settings;
@@ -30,6 +31,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
     private readonly AppPaths _paths;
     private readonly DiagnosticRecorder _recorder;
     private readonly IMachineFacts _facts;
+    private readonly SettingsShell _shell;
     private SettingsForm? _settingsWindow;
     private readonly ZoomActivity _activity;
     private readonly ILogger<TrayApplicationContext> _logger;
@@ -37,6 +39,10 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
     private readonly NotifyIcon _notifyIcon;
     private readonly ContextMenuStrip _menu;
     private readonly ToolStripMenuItem _enabledItem;
+    private readonly ToolStripMenuItem _zoomAmountItem;
+    private readonly ToolStripMenuItem[] _zoomAmountChoices;
+    private readonly ToolStripMenuItem _lastAppItem;
+    private string? _lastProcess;
     private readonly CancellationTokenRegistration _hostStoppingRegistration;
     private readonly SynchronizationContext _uiContext;
     private readonly System.Windows.Forms.Timer _tooltipClock = new() { Interval = 30_000 };
@@ -52,6 +58,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
         DiagnosticRecorder recorder,
         IMachineFacts facts,
         ZoomActivity activity,
+        SettingsShell shell,
         IHostApplicationLifetime lifetime,
         ILogger<TrayApplicationContext> logger)
     {
@@ -64,6 +71,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
         _recorder = recorder;
         _facts = facts;
         _activity = activity;
+        _shell = shell;
         _logger = logger;
 
         // The trigger source is the truth about whether zooming is on; the item only shows it. Settings applied
@@ -71,12 +79,27 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
         _enabledItem = new ToolStripMenuItem("&Enabled") { Checked = triggerSource.Enabled };
         _enabledItem.Click += (_, _) => ToggleEnabled();
 
+        // The three things people actually change live here rather than behind a window: for an app whose whole
+        // job is one gesture, opening a settings window to change that gesture is a detour.
+        _zoomAmountChoices = [.. TrayQuickSettings.ZoomAmounts.Select(CreateZoomAmountItem)];
+        _zoomAmountItem = new ToolStripMenuItem("&Zoom amount");
+        _zoomAmountItem.DropDownItems.AddRange(_zoomAmountChoices);
+
+        // Named after the application of the last zoom, so "stop doing that here" is one click instead of a
+        // routing table. Hidden until there has been one.
+        _lastAppItem = new ToolStripMenuItem(string.Empty, image: null, (_, _) => ToggleLastApp()) { Visible = false };
+
         _menu = new ContextMenuStrip();
         _menu.Items.AddRange(
         [
             _enabledItem,
+            new ToolStripMenuItem("&Change trigger…", image: null, (_, _) => ChangeTrigger()),
+            _zoomAmountItem,
+            _lastAppItem,
             new ToolStripSeparator(),
-            new ToolStripMenuItem("&Settings…", image: null, (_, _) => OpenSettings()) { Font = _menuBold },
+            new ToolStripMenuItem("&Settings…", image: null, (_, _) => OpenShell()) { Font = _menuBold },
+            // The old window, kept until the new one has every page. Both read the same live state.
+            new ToolStripMenuItem("Settings (&old)…", image: null, (_, _) => OpenSettings()),
             new ToolStripMenuItem("Open &settings file", image: null, (_, _) => OpenWithShell(_paths.SettingsFile)),
             new ToolStripMenuItem("&Reload settings file", image: null, (_, _) => ReloadSettings()),
             new ToolStripMenuItem("Open &log folder", image: null, (_, _) => OpenWithShell(_paths.LogDirectory)),
@@ -85,9 +108,15 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
             // defeat the point of showing the report at all.
             new ToolStripMenuItem("&Diagnostic report…", image: null, (_, _) => OpenSettings(SettingsTab.Diagnostics)),
             new ToolStripSeparator(),
+            new ToolStripMenuItem("&About SmartZoom", image: null, (_, _) => ShowAbout()),
             new ToolStripMenuItem("E&xit", image: null, (_, _) => ExitThread()),
         ]);
-        _menu.Opening += (_, _) => UpdateTooltip();
+        // Everything the menu shows is read here rather than kept in step with every change behind its back.
+        _menu.Opening += (_, _) =>
+        {
+            UpdateTooltip();
+            UpdateQuickItems();
+        };
 
         _notifyIcon = new NotifyIcon
         {
@@ -95,7 +124,10 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
             ContextMenuStrip = _menu,
             Visible = true,
         };
-        _notifyIcon.DoubleClick += (_, _) => OpenSettings();
+        // Left click drops the panel out of the tray, the way Krisp and Windows' own flyouts do; a double
+        // click opens the full window for the things the panel deliberately leaves out.
+        _notifyIcon.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) TogglePanel(); };
+        _notifyIcon.DoubleClick += (_, _) => OpenShell();
         UpdateTooltip();
 
         // If the host stops on its own (e.g. a hosted service faulted), don't leave a tray icon with no hook
@@ -124,6 +156,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
             _activity.Happened -= OnZoomHappened;
             _tooltipClock.Dispose();
             _hostStoppingRegistration.Dispose();
+            _shell.Dispose();
             _notifyIcon.Dispose();
             _menu.Dispose();
             _menuBold.Dispose();
@@ -155,6 +188,142 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
 
             _uiContext.Post(_ => UpdateTooltip(), null);
         });
+    }
+
+    /// <summary>One zoom amount, as a radio-checked item that applies it.</summary>
+    private ToolStripMenuItem CreateZoomAmountItem(double amount) =>
+        new(
+            $"{amount:0.#}×",
+            image: null,
+            (_, _) => Apply(TrayQuickSettings.WithZoomAmount(_holder.Current, amount), $"Zoom amount is now {amount:0.#}×."))
+        {
+            // Radio marks rather than ticks: these three are one choice, not three switches.
+            CheckOnClick = false,
+            Tag = amount,
+        };
+
+    /// <summary>Re-reads the settings the menu shows, so it is right however they were last changed.</summary>
+    private void UpdateQuickItems()
+    {
+        var settings = _holder.Current;
+
+        foreach (var item in _zoomAmountChoices)
+            item.Checked = TrayQuickSettings.IsZoomAmount(settings, (double)item.Tag!);
+
+        // Only offer this for an application that was actually zoomed: routing one SmartZoom never saw would
+        // be guesswork, and the name in the item is the evidence that it is the right one.
+        if (_lastProcess is not { Length: > 0 } process)
+        {
+            _lastAppItem.Visible = false;
+            return;
+        }
+
+        _lastAppItem.Visible = true;
+        _lastAppItem.Text = TrayQuickSettings.IsIgnored(settings, process)
+            ? $"Zoom in {process} again"
+            : $"Don't zoom in {process}";
+    }
+
+    /// <summary>
+    /// Records the trigger again, starting from the one in force, and applies whatever was pressed. The dialog
+    /// is modal on the UI thread; only the change that follows it goes to the applier off-thread.
+    /// </summary>
+    private void ChangeTrigger()
+    {
+        var settings = _holder.Current;
+        TriggerSettings captured;
+
+        // The recorder listens for the very input that would otherwise zoom whatever is behind it.
+        var wasEnabled = _triggerSource.Enabled;
+        try
+        {
+            _triggerSource.Enabled = false;
+            using var recorder = new TriggerRecorderDialog(
+                _triggerSource, _systemInput.DoubleClickTimeMs, TrayQuickSettings.FirstTrigger(settings));
+
+            if (recorder.ShowDialog() != DialogResult.OK)
+                return;
+
+            captured = recorder.Result;
+        }
+        finally
+        {
+            _triggerSource.Enabled = wasEnabled;
+        }
+
+        Apply(
+            TrayQuickSettings.WithFirstTrigger(settings, captured),
+            $"The trigger is now {captured.ToDefinition(_systemInput.DoubleClickTimeMs).DisplayName}.");
+    }
+
+    /// <summary>Switches SmartZoom off for the application of the last zoom, or hands it back to its strategy.</summary>
+    private void ToggleLastApp()
+    {
+        if (_lastProcess is not { Length: > 0 } process)
+            return;
+
+        var settings = _holder.Current;
+        var ignore = !TrayQuickSettings.IsIgnored(settings, process);
+        Apply(
+            TrayQuickSettings.WithIgnored(settings, process, ignore),
+            ignore ? $"SmartZoom now leaves {process} alone." : $"SmartZoom zooms {process} again.");
+    }
+
+    /// <summary>
+    /// Puts a changed copy of the settings into force. Off the UI thread, because the applier's gate may be
+    /// held by a zoom in flight, and the user hears the outcome either way.
+    /// </summary>
+    /// <param name="settings">The changed copy.</param>
+    /// <param name="done">What to say when it worked.</param>
+    private void Apply(SmartZoomSettings settings, string done) => _ = Task.Run(async () =>
+    {
+        string summary;
+        var good = false;
+        try
+        {
+            var result = await _applier.ApplyAsync(settings).ConfigureAwait(false);
+            good = result.InForce;
+            summary = good
+                ? done
+                : "That change was not applied:" + Environment.NewLine + Environment.NewLine
+                    + string.Join(Environment.NewLine, result.Problems.Select(p => p.ToString()));
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            LogChangeFailed(ex);
+            summary = "That change was not applied: " + ex.Message;
+        }
+
+        _uiContext.Post(
+            _ =>
+            {
+                Notify(summary, good);
+                UpdateTooltip();
+            },
+            null);
+    });
+
+    /// <summary>Shows the panel, or hides it when it is already showing.</summary>
+    private void TogglePanel() => Shell(_shell.TogglePanel);
+
+    /// <summary>Opens the About page of the settings window.</summary>
+    private void ShowAbout() => Shell(_shell.ShowAbout);
+
+    /// <summary>Opens the settings window, or brings it to the front when it is already open.</summary>
+    private void OpenShell() => Shell(_shell.ShowSettings);
+
+    /// <summary>Runs one of the window's entry points; a UI that will not open must not take the tray with it.</summary>
+    private void Shell(Action show)
+    {
+        try
+        {
+            show();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            LogShellFailed(ex);
+            Notify("The settings window could not be opened. The old one is still there under \"Settings…\".", good: false);
+        }
     }
 
     /// <summary>Opens the settings window on the given tab, or brings it to the front if it is already open.</summary>
@@ -236,10 +405,15 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
         _uiContext.Post(
             state =>
             {
-                _lastAction = (string)state!;
+                var (action, process) = ((string, string?))state!;
+                _lastAction = action;
+
+                // Kept here rather than on ZoomActivity: the tray is the only thing that needs it, and it is
+                // already being told. Null when the process could not be identified, which hides the item.
+                _lastProcess = process;
                 UpdateTooltip();
             },
-            outcome.ToString());
+            (outcome.ToString(), outcome.Process));
 
     private void UpdateTooltip()
     {
@@ -264,6 +438,9 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
             LogOpenFailed(ex, path);
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "The new settings window could not be opened.")]
+    private partial void LogShellFailed(Exception exception);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to open {Path}.")]
     private partial void LogOpenFailed(Exception exception, string path);

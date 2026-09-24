@@ -88,3 +88,7 @@ OBJECT_IDENTIFIER
 // Refresh rate of the monitor under a point
 GetMonitorInfo
 MONITORINFOEXW
+
+// Title-bar theme for the settings window
+DwmSetWindowAttribute
+DWMWINDOWATTRIBUTE

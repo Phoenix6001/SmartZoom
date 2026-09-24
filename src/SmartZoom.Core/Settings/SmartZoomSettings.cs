@@ -24,4 +24,7 @@ public sealed class SmartZoomSettings
 
     /// <summary>The local record of what SmartZoom failed to do.</summary>
     public DiagnosticsSettings Diagnostics { get; set; } = new();
+
+    /// <summary>Which palette the settings window paints itself in; by default whichever Windows is using.</summary>
+    public AppearanceMode Appearance { get; set; } = AppearanceMode.System;
 }

@@ -96,6 +96,31 @@ internal sealed partial class SettingsApplier(
         }
     }
 
+    /// <summary>
+    /// Records which palette the settings window wears. Kept apart from <see cref="ApplyAsync"/> for the same
+    /// reason <see cref="SetEnabledAsync"/> is: nothing has to be rebuilt, and rebuilding the whole zoom
+    /// pipeline to remember a colour would put a zoom in flight in the way of a click on a theme button.
+    /// </summary>
+    /// <param name="appearance">The appearance to remember.</param>
+    /// <returns>Applied, or applied but not saved when the file could not be written.</returns>
+    public async Task<SettingsApplyResult> SetAppearanceAsync(AppearanceMode appearance)
+    {
+        await _changing.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            // A copy, so the settings already published are never edited underneath whoever is reading them.
+            var settings = SettingsStore.Clone(holder.Current);
+            settings.Appearance = appearance;
+            holder.Replace(settings);
+
+            return Save(settings, []);
+        }
+        finally
+        {
+            _changing.Release();
+        }
+    }
+
     /// <inheritdoc />
     public void Dispose() => _changing.Dispose();
 

@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 
+using SmartZoom.App.Ui.Recorder;
+using SmartZoom.App.Ui.Theming;
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Settings;
 using SmartZoom.Interop;
@@ -68,8 +70,17 @@ internal static class TriggerCommand
         // is no host either, so the Interop implementation is constructed directly.
         var store = DefaultStore();
         var doubleClickMs = new SystemInput().DoubleClickTimeMs;
-        using var recorder = new TriggerRecorderDialog(triggers: null, doubleClickMs, Existing(store));
-        if (recorder.ShowDialog() != DialogResult.OK)
+
+        // The recorder is a WPF window, so it needs an Application to resolve its styles against and a palette
+        // in it. Both are made here rather than taken from the container, because on this path there is none;
+        // ShowDialog runs its own message loop, so nothing has to be started or stopped around it.
+        var appearance = store.TryLoad(out var settings, out _) ? settings.Appearance : AppearanceMode.System;
+        var application = System.Windows.Application.Current
+            ?? new System.Windows.Application { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown };
+        new ThemeManager(NullLogger<ThemeManager>.Instance).Install(application, appearance);
+
+        var recorder = new TriggerRecorderWindow(triggers: null, doubleClickMs, Existing(store));
+        if (recorder.ShowDialog() != true)
             return 1;
 
         return Persist(recorder.Result, store, doubleClickMs);

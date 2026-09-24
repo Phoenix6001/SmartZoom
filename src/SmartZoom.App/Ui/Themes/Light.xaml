@@ -1,0 +1,26 @@
+<!--
+    The light palette, sampled from the design. Dark.xaml declares exactly the same keys, which is what lets
+    ThemeManager swap one dictionary for the other while the window is open: everything in the UI reaches these
+    through DynamicResource, so a swap repaints rather than rebuilds.
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <SolidColorBrush x:Key="Brush.Ground" Color="#F5F8FC" />
+    <SolidColorBrush x:Key="Brush.Rail" Color="#ECF1F9" />
+    <SolidColorBrush x:Key="Brush.Card" Color="#FCFCFD" />
+    <SolidColorBrush x:Key="Brush.TitleBar" Color="#F4F8FD" />
+    <SolidColorBrush x:Key="Brush.RailSelection" Color="#D9E8FD" />
+    <SolidColorBrush x:Key="Brush.RailHover" Color="#E1EBF8" />
+    <SolidColorBrush x:Key="Brush.CardBorder" Color="#E4EAF2" />
+    <SolidColorBrush x:Key="Brush.Ink" Color="#101828" />
+    <SolidColorBrush x:Key="Brush.Muted" Color="#5A6472" />
+    <SolidColorBrush x:Key="Brush.Accent" Color="#1B6BF0" />
+    <SolidColorBrush x:Key="Brush.AccentTint" Color="#E8F0FE" />
+    <SolidColorBrush x:Key="Brush.Good" Color="#16A34A" />
+    <SolidColorBrush x:Key="Brush.Warn" Color="#B45309" />
+
+    <!-- Cards are lifted off a light ground with a shadow; in the dark palette the border does that job. -->
+    <DropShadowEffect x:Key="Effect.Card" BlurRadius="18" ShadowDepth="2" Direction="270" Opacity="0.08" Color="#0B1B33" />
+
+</ResourceDictionary>

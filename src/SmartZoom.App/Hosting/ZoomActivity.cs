@@ -23,11 +23,26 @@ internal sealed class ZoomActivity
     /// </remarks>
     public DateTimeOffset? LastTrigger { get; private set; }
 
+    /// <summary>What the last trigger did, or null if none ever reached an application.</summary>
+    /// <remarks>
+    /// Kept here rather than only in the event, because the tray panel is built after the fact: it opens long
+    /// after the zoom happened and still has to name the application it was in.
+    /// </remarks>
+    public ZoomOutcome? LastOutcome { get; private set; }
+
+    /// <summary>When <see cref="LastOutcome"/> happened.</summary>
+    public DateTimeOffset? LastOutcomeAt { get; private set; }
+
     /// <summary>Records that a trigger arrived, before anything has been done with it.</summary>
     /// <param name="when">The time it arrived.</param>
     public void Seen(DateTimeOffset when) => LastTrigger = when;
 
-    /// <summary>Tells whoever is listening what the trigger did.</summary>
+    /// <summary>Tells whoever is listening what the trigger did, and remembers it for whoever asks later.</summary>
     /// <param name="outcome">What the trigger did.</param>
-    public void Report(ZoomOutcome outcome) => Happened?.Invoke(this, outcome);
+    public void Report(ZoomOutcome outcome)
+    {
+        LastOutcome = outcome;
+        LastOutcomeAt = DateTimeOffset.UtcNow;
+        Happened?.Invoke(this, outcome);
+    }
 }

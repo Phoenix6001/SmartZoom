@@ -1,0 +1,391 @@
+<UserControl x:Class="SmartZoom.App.Ui.Pages.OverviewPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:ClassModifier="internal">
+    <UserControl.Resources>
+
+        <!-- The chevron that sits on the right of every card that navigates somewhere. -->
+        <Style x:Key="Chevron" TargetType="TextBlock" BasedOn="{StaticResource Glyph}">
+            <Setter Property="Text" Value="&#xE76C;" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Foreground" Value="{DynamicResource Brush.Muted}" />
+            <Setter Property="VerticalAlignment" Value="Top" />
+        </Style>
+
+        <!-- One "Quick settings" card. -->
+        <DataTemplate x:Key="QuickSettingTemplate">
+            <Button Style="{StaticResource Card.Button}"
+                    Margin="0,0,14,0"
+                    Padding="18,16,16,16"
+                    Command="{Binding DataContext.Navigate, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                    CommandParameter="{Binding Target}">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="0"
+                                Width="34"
+                                Height="34"
+                                Background="{DynamicResource Brush.AccentTint}"
+                                CornerRadius="17">
+                            <TextBlock Style="{StaticResource Glyph}"
+                                       FontSize="15"
+                                       Foreground="{DynamicResource Brush.Accent}"
+                                       Text="{Binding Glyph}" />
+                        </Border>
+                        <TextBlock Grid.Column="1"
+                                   Style="{StaticResource Text.CardTitle}"
+                                   Margin="12,0,8,0"
+                                   VerticalAlignment="Center"
+                                   TextWrapping="Wrap"
+                                   Text="{Binding Title}" />
+                        <TextBlock Grid.Column="2" Style="{StaticResource Chevron}" VerticalAlignment="Center" />
+                    </Grid>
+                    <TextBlock Style="{StaticResource Text.Base}"
+                               Margin="0,16,0,0"
+                               FontFamily="{StaticResource Font.Display}"
+                               FontSize="21"
+                               FontWeight="SemiBold"
+                               TextWrapping="Wrap"
+                               Text="{Binding Value}" />
+                    <TextBlock Style="{StaticResource Text.Muted}"
+                               Margin="0,6,0,0"
+                               MinHeight="36"
+                               FontSize="12.5"
+                               Text="{Binding Description}" />
+                </StackPanel>
+            </Button>
+        </DataTemplate>
+
+        <!-- One "Supported applications" tile. -->
+        <DataTemplate x:Key="ApplicationGroupTemplate">
+            <Button Style="{StaticResource Card.Button}"
+                    Margin="0,0,14,0"
+                    Padding="18,16,16,16"
+                    Command="{Binding DataContext.Navigate, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                    CommandParameter="{Binding Target}">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Grid Grid.Column="0" Width="34" Height="34">
+                            <!-- The Fluent glyph stands in until an installed application's own icon arrives. -->
+                            <Border Background="{DynamicResource Brush.AccentTint}" CornerRadius="9">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasIcon}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <TextBlock Style="{StaticResource Glyph}"
+                                           FontSize="16"
+                                           Foreground="{DynamicResource Brush.Accent}"
+                                           Text="{Binding Glyph}" />
+                            </Border>
+                            <Image Width="28"
+                                   Height="28"
+                                   RenderOptions.BitmapScalingMode="HighQuality"
+                                   Source="{Binding Icon}" />
+                        </Grid>
+                        <TextBlock Grid.Column="1"
+                                   Style="{StaticResource Text.CardTitle}"
+                                   Margin="12,0,8,0"
+                                   VerticalAlignment="Center"
+                                   TextWrapping="Wrap"
+                                   Text="{Binding Title}" />
+                        <TextBlock Grid.Column="2" Style="{StaticResource Chevron}" VerticalAlignment="Center" />
+                    </Grid>
+                    <TextBlock Style="{StaticResource Text.Muted}"
+                               Margin="0,14,0,0"
+                               MinHeight="52"
+                               FontSize="12.5"
+                               Text="{Binding Applications}" />
+                </StackPanel>
+            </Button>
+        </DataTemplate>
+
+    </UserControl.Resources>
+
+    <Grid Margin="40,30,34,30">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- 1. Hero -->
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0"
+                    Width="96"
+                    Height="96"
+                    VerticalAlignment="Top"
+                    Background="{DynamicResource Brush.Accent}"
+                    CornerRadius="24">
+                <TextBlock Style="{StaticResource Glyph}"
+                           FontSize="46"
+                           Foreground="White"
+                           Text="&#xE71E;" />
+            </Border>
+
+            <StackPanel Grid.Column="1" Margin="24,6,0,0" VerticalAlignment="Center">
+                <TextBlock Style="{StaticResource Text.Hero}" Text="SmartZoom" />
+                <TextBlock Style="{StaticResource Text.Muted}"
+                           Margin="2,6,0,0"
+                           FontSize="15"
+                           Text="{Binding Tagline}" />
+            </StackPanel>
+
+            <!--
+                The design lets a faint preview graphic bleed off the right edge: a card being magnified out of
+                a tinted ground. It carries no information, so nothing is lost when a narrow window squeezes it
+                away, and at half opacity it does not compete with the heading beside it.
+            -->
+            <Grid Grid.Column="2"
+                  Width="250"
+                  Height="126"
+                  Margin="24,0,-34,0"
+                  IsHitTestVisible="False"
+                  Opacity="0.5">
+                <Border Margin="0,10,-70,10"
+                        Background="{DynamicResource Brush.AccentTint}"
+                        CornerRadius="14" />
+                <Border Margin="34,24,-46,24"
+                        Padding="14,12,0,0"
+                        Background="{DynamicResource Brush.Card}"
+                        BorderBrush="{DynamicResource Brush.Accent}"
+                        BorderThickness="1.5"
+                        CornerRadius="10">
+                    <StackPanel>
+                        <Rectangle Height="8" Margin="0,0,40,0" Fill="{DynamicResource Brush.Accent}" Opacity="0.55" RadiusX="4" RadiusY="4" />
+                        <Rectangle Height="8" Margin="0,8,16,0" Fill="{DynamicResource Brush.Muted}" Opacity="0.4" RadiusX="4" RadiusY="4" />
+                        <Rectangle Height="8" Margin="0,8,64,0" Fill="{DynamicResource Brush.Muted}" Opacity="0.4" RadiusX="4" RadiusY="4" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Grid>
+
+        <!-- 2. Status and live preview -->
+        <Grid Grid.Row="1" Margin="0,30,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{StaticResource Card}" Margin="0,0,10,0" Padding="26,24,26,24">
+                <StackPanel>
+                    <Border Width="66"
+                            Height="66"
+                            HorizontalAlignment="Left"
+                            Background="{DynamicResource Brush.AccentTint}"
+                            CornerRadius="33">
+                        <TextBlock Style="{StaticResource Glyph}"
+                                   FontSize="30"
+                                   Foreground="{DynamicResource Brush.Accent}"
+                                   Text="&#xE71E;" />
+                    </Border>
+                    <TextBlock Style="{StaticResource Text.Label}" Margin="0,18,0,0" Text="SMARTZOOM" />
+                    <TextBlock Style="{StaticResource Text.Value}" Margin="0,4,0,0" Text="{Binding StatusHeadline}" />
+                    <TextBlock Style="{StaticResource Text.Muted}"
+                               Margin="0,10,0,0"
+                               MinHeight="40"
+                               Text="{Binding StatusDescription}" />
+                    <Button Style="{StaticResource Button.Pill}"
+                            Margin="0,20,0,0"
+                            HorizontalAlignment="Left"
+                            Command="{Binding ToggleEnabled}"
+                            Content="{Binding ToggleLabel}" />
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="1" Style="{StaticResource Card}" Margin="10,0,0,0" Padding="26,24,26,24">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="0"
+                                Width="34"
+                                Height="34"
+                                Background="{DynamicResource Brush.AccentTint}"
+                                CornerRadius="17">
+                            <TextBlock Style="{StaticResource Glyph}"
+                                       FontSize="15"
+                                       Foreground="{DynamicResource Brush.Accent}"
+                                       Text="&#xE7B3;" />
+                        </Border>
+                        <StackPanel Grid.Column="1" Margin="12,0,8,0" VerticalAlignment="Center">
+                            <TextBlock Style="{StaticResource Text.CardTitle}" FontSize="15" Text="Live preview" />
+                            <TextBlock Style="{StaticResource Text.Muted}"
+                                       Margin="0,3,0,0"
+                                       FontSize="12.5"
+                                       Text="This is how SmartZoom looks when triggered." />
+                        </StackPanel>
+                        <Border Grid.Column="2"
+                                Height="26"
+                                Padding="12,0,12,0"
+                                VerticalAlignment="Top"
+                                Background="{DynamicResource Brush.AccentTint}"
+                                CornerRadius="13">
+                            <TextBlock Style="{StaticResource Text.Base}"
+                                       VerticalAlignment="Center"
+                                       FontSize="12"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource Brush.Accent}"
+                                       Text="{Binding ZoomPill}" />
+                        </Border>
+                    </Grid>
+
+                    <!--
+                        The mock document from the design, drawn with shapes: a window with a title strip, a
+                        few lines of "text", and the block under the cursor lifted out into an accent-bordered
+                        card at a larger size. No animation in this wave.
+                    -->
+                    <Border Margin="0,20,0,0"
+                            Padding="14"
+                            Background="{DynamicResource Brush.Ground}"
+                            BorderBrush="{DynamicResource Brush.CardBorder}"
+                            BorderThickness="1"
+                            CornerRadius="10">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal">
+                                <Ellipse Width="7" Height="7" Fill="{DynamicResource Brush.Muted}" Opacity="0.45" />
+                                <Ellipse Width="7" Height="7" Margin="5,0,0,0" Fill="{DynamicResource Brush.Muted}" Opacity="0.45" />
+                                <Ellipse Width="7" Height="7" Margin="5,0,0,0" Fill="{DynamicResource Brush.Muted}" Opacity="0.45" />
+                                <Rectangle Width="64"
+                                           Height="6"
+                                           Margin="12,0,0,0"
+                                           VerticalAlignment="Center"
+                                           Fill="{DynamicResource Brush.Muted}"
+                                           Opacity="0.3"
+                                           RadiusX="3"
+                                           RadiusY="3" />
+                            </StackPanel>
+
+                            <Rectangle Height="6" Margin="0,14,40,0" Fill="{DynamicResource Brush.Muted}" Opacity="0.3" RadiusX="3" RadiusY="3" />
+                            <Rectangle Height="6" Margin="0,7,86,0" Fill="{DynamicResource Brush.Muted}" Opacity="0.3" RadiusX="3" RadiusY="3" />
+
+                            <Border Margin="0,13,0,0"
+                                    Padding="12,11,12,12"
+                                    Background="{DynamicResource Brush.Card}"
+                                    BorderBrush="{DynamicResource Brush.Accent}"
+                                    BorderThickness="2"
+                                    CornerRadius="8">
+                                <StackPanel>
+                                    <Rectangle Height="11" Margin="0,0,24,0" Fill="{DynamicResource Brush.Ink}" Opacity="0.72" RadiusX="5" RadiusY="5" />
+                                    <Rectangle Height="11" Margin="0,8,64,0" Fill="{DynamicResource Brush.Ink}" Opacity="0.72" RadiusX="5" RadiusY="5" />
+                                    <Rectangle Height="11" Margin="0,8,120,0" Fill="{DynamicResource Brush.Accent}" Opacity="0.55" RadiusX="5" RadiusY="5" />
+                                </StackPanel>
+                            </Border>
+
+                            <Rectangle Height="6" Margin="0,13,30,0" Fill="{DynamicResource Brush.Muted}" Opacity="0.3" RadiusX="3" RadiusY="3" />
+                            <Rectangle Height="6" Margin="0,7,110,0" Fill="{DynamicResource Brush.Muted}" Opacity="0.3" RadiusX="3" RadiusY="3" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- 3. Quick settings -->
+        <StackPanel Grid.Row="2" Margin="0,34,0,0">
+            <StackPanel Orientation="Horizontal">
+                <Border Width="28" Height="28" Background="{DynamicResource Brush.AccentTint}" CornerRadius="8">
+                    <TextBlock Style="{StaticResource Glyph}"
+                               FontSize="14"
+                               Foreground="{DynamicResource Brush.Accent}"
+                               Text="&#xE945;" />
+                </Border>
+                <TextBlock Style="{StaticResource Text.Section}"
+                           Margin="10,0,0,0"
+                           VerticalAlignment="Center"
+                           Text="Quick settings" />
+            </StackPanel>
+
+            <ItemsControl Margin="0,16,-14,0"
+                          ItemTemplate="{StaticResource QuickSettingTemplate}"
+                          ItemsSource="{Binding QuickSettings}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <UniformGrid Columns="4" Rows="1" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+            </ItemsControl>
+        </StackPanel>
+
+        <!-- 4. Supported applications -->
+        <StackPanel Grid.Row="3" Margin="0,34,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Border Grid.Column="0"
+                        Width="28"
+                        Height="28"
+                        VerticalAlignment="Top"
+                        Background="{DynamicResource Brush.AccentTint}"
+                        CornerRadius="8">
+                    <TextBlock Style="{StaticResource Glyph}"
+                               FontSize="14"
+                               Foreground="{DynamicResource Brush.Accent}"
+                               Text="&#xE8A9;" />
+                </Border>
+                <StackPanel Grid.Column="1" Margin="10,0,16,0">
+                    <TextBlock Style="{StaticResource Text.Section}" Text="Supported applications" />
+                    <TextBlock Style="{StaticResource Text.Muted}"
+                               Margin="0,4,0,0"
+                               Text="SmartZoom works with the following types of applications." />
+                </StackPanel>
+                <Button Grid.Column="2"
+                        Style="{StaticResource Button.Quiet}"
+                        Margin="0,0,14,0"
+                        VerticalAlignment="Top"
+                        Command="{Binding Navigate}"
+                        CommandParameter="Applications"
+                        Content="Manage apps" />
+            </Grid>
+
+            <ItemsControl Margin="0,16,-14,0"
+                          ItemTemplate="{StaticResource ApplicationGroupTemplate}"
+                          ItemsSource="{Binding Groups}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <UniformGrid Columns="4" Rows="1" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+            </ItemsControl>
+        </StackPanel>
+
+        <!-- 5. Footer -->
+        <StackPanel Grid.Row="4"
+                    Margin="0,22,14,0"
+                    HorizontalAlignment="Right"
+                    Orientation="Horizontal">
+            <TextBlock Style="{StaticResource Text.Muted}" FontSize="13" Text="Measured tuning lives in the settings file." />
+            <Button Style="{StaticResource Button.Link}"
+                    Margin="6,0,0,0"
+                    VerticalAlignment="Center"
+                    Command="{Binding OpenSettingsFile}"
+                    Content="Open it" />
+        </StackPanel>
+    </Grid>
+</UserControl>

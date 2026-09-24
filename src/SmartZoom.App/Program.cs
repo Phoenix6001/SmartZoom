@@ -12,6 +12,10 @@ using SmartZoom.App.Diagnostics;
 using SmartZoom.App.Hosting;
 using SmartZoom.App.Settings;
 using SmartZoom.App.Tray;
+using SmartZoom.App.Ui.Pages;
+using SmartZoom.App.Ui.Panel;
+using SmartZoom.App.Ui.Shell;
+using SmartZoom.App.Ui.Theming;
 using SmartZoom.Core.Diagnostics;
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
@@ -205,6 +209,30 @@ internal static class Program
         builder.Services.AddHostedService<SecondInstanceListener>();
         builder.Services.AddHostedService<TriggerDispatcher>();
         builder.Services.AddHostedService<TriggerWatchdog>();
+        // The tray panel and the settings window. Everything under them is built on the UI thread, at the
+        // moment the tray asks for it: the view models capture the dispatcher they are created on, and the
+        // pages are WPF controls.
+        builder.Services.AddSingleton<ThemeManager>();
+        builder.Services.AddSingleton<PanelViewModel>();
+        builder.Services.AddSingleton<OverviewViewModel>();
+        builder.Services.AddSingleton<AboutViewModel>();
+        builder.Services.AddSingleton(sp => new ShellViewModel(
+            ShellPages.Build(sp.GetRequiredService<OverviewViewModel>(), sp.GetRequiredService<AboutViewModel>()),
+            sp.GetRequiredService<OverviewViewModel>(),
+            sp.GetRequiredService<AboutViewModel>(),
+            sp.GetRequiredService<ITriggerSource>(),
+            sp.GetRequiredService<DiagnosticRecorder>(),
+            sp.GetRequiredService<ZoomActivity>(),
+            sp.GetRequiredService<SettingsApplier>(),
+            sp.GetRequiredService<ThemeManager>(),
+            sp.GetRequiredService<ILogger<ShellViewModel>>()));
+
+        // Resolved through factories rather than injected, because the WPF application object has to exist
+        // before the first of those view models constructs a control, and only SettingsShell knows when.
+        builder.Services.AddSingleton<Func<PanelViewModel>>(sp => sp.GetRequiredService<PanelViewModel>);
+        builder.Services.AddSingleton<Func<ShellViewModel>>(sp => sp.GetRequiredService<ShellViewModel>);
+        builder.Services.AddSingleton<SettingsShell>();
+
         builder.Services.AddSingleton<TrayApplicationContext>();
         builder.Services.AddSingleton<ISettingsWindowOpener>(sp => sp.GetRequiredService<TrayApplicationContext>());
 

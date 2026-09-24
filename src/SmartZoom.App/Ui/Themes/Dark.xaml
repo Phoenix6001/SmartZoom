@@ -1,0 +1,25 @@
+<!--
+    The dark palette. Every key in Light.xaml appears here under the same name and nowhere else does a colour
+    get named, so swapping this dictionary for that one re-themes the whole window without touching a control.
+-->
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <SolidColorBrush x:Key="Brush.Ground" Color="#050D18" />
+    <SolidColorBrush x:Key="Brush.Rail" Color="#0D1827" />
+    <SolidColorBrush x:Key="Brush.Card" Color="#0D192D" />
+    <SolidColorBrush x:Key="Brush.TitleBar" Color="#0A1421" />
+    <SolidColorBrush x:Key="Brush.RailSelection" Color="#0C2859" />
+    <SolidColorBrush x:Key="Brush.RailHover" Color="#122238" />
+    <SolidColorBrush x:Key="Brush.CardBorder" Color="#17263E" />
+    <SolidColorBrush x:Key="Brush.Ink" Color="#EAF0F8" />
+    <SolidColorBrush x:Key="Brush.Muted" Color="#93A1B5" />
+    <SolidColorBrush x:Key="Brush.Accent" Color="#4D8DF5" />
+    <SolidColorBrush x:Key="Brush.AccentTint" Color="#12203A" />
+    <SolidColorBrush x:Key="Brush.Good" Color="#22C55E" />
+    <SolidColorBrush x:Key="Brush.Warn" Color="#F59E0B" />
+
+    <!-- No shadow on a dark ground: it would read as grime. The 1 px border separates the card instead. -->
+    <x:Null x:Key="Effect.Card" />
+
+</ResourceDictionary>

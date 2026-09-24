@@ -4,6 +4,7 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0-windows10.0.17763.0</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
     <RootNamespace>SmartZoom.App</RootNamespace>
     <AssemblyName>SmartZoom</AssemblyName>
 
@@ -16,6 +17,15 @@
 
     <ApplicationIcon>Resources\SmartZoom.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <!--
+    Turning on WPF drops System.IO from the SDK's implicit usings, because System.Windows.Shapes.Path would
+    then be ambiguous with System.IO.Path. No file here imports Shapes, so the namespace goes back in rather
+    than 40 files gaining a using directive.
+  -->
+  <ItemGroup>
+    <Using Include="System.IO" />
+  </ItemGroup>
 
   <!-- The same icon for the notification area, so the tray picks the size the display scaling wants. -->
   <ItemGroup>
