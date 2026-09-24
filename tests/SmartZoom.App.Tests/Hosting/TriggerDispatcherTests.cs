@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 using SmartZoom.App.Diagnostics;
 using SmartZoom.App.Hosting;
+using SmartZoom.App.Tests.Diagnostics;
 using SmartZoom.Core.Diagnostics;
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
@@ -29,7 +30,7 @@ public sealed class TriggerDispatcherTests
     {
         var windows = new FakeWindowInspector { Target = null };
         using var temp = new TempDirectory();
-        var recorder = CreateRecorder(temp.Path);
+        var recorder = DiagnosticFixtures.CreateRecorder(temp.Path);
 
         await RunOneTriggerAsync(windows, ScriptedEngine(), recorder);
 
@@ -38,12 +39,35 @@ public sealed class TriggerDispatcherTests
     }
 
     [Fact]
+    public async Task A_trigger_older_than_the_stale_limit_is_dropped_before_the_window_is_even_resolved()
+    {
+        // A press that sat in the queue behind a slow zoom is not what the user wants acted on now: it
+        // is dropped without touching the window under the cursor, the engine or the record.
+        var windows = new FakeWindowInspector { Target = new TargetInfo(0x2, 0x2, 2, "notepad", "R", "H") };
+        using var temp = new TempDirectory();
+        var recorder = DiagnosticFixtures.CreateRecorder(temp.Path);
+
+        var dispatcher = new TriggerDispatcher(
+            _source, windows, ScriptedEngine(), _activity, recorder, TimeProvider.System, NullLogger<TriggerDispatcher>.Instance);
+
+        await dispatcher.StartAsync(CancellationToken.None);
+        var stale = unchecked((uint)Environment.TickCount - 5_000);
+        _source.Writer.TryWrite(new TriggerEvent(Point, stale));
+        _source.Writer.Complete();
+        await dispatcher.ExecuteTask!;
+
+        Assert.Equal(0, windows.Calls);
+        Assert.Null(_activity.LastTrigger);
+        Assert.Empty(recorder.Snapshot().Counters);
+    }
+
+    [Fact]
     public async Task An_adapter_that_throws_is_recorded_with_a_redacted_exception_and_no_detail()
     {
         var target = new TargetInfo(0x1, 0x1, 1, "boom", "R", "H");
         var windows = new FakeWindowInspector { Target = target };
         using var temp = new TempDirectory();
-        var recorder = CreateRecorder(temp.Path);
+        var recorder = DiagnosticFixtures.CreateRecorder(temp.Path);
 
         var thrown = new InvalidOperationException("something the adapter choked on");
         await RunOneTriggerAsync(windows, ThrowingEngine(thrown), recorder);
@@ -66,12 +90,7 @@ public sealed class TriggerDispatcherTests
         // through the actual production code path rather than asserting against a stand-in.
         var windows = new FakeWindowInspector { Target = null };
         using var temp = new TempDirectory();
-        var recorder = new DiagnosticRecorder(
-            new DiagnosticStore(
-                new AppPaths(SettingsDirectory: temp.Path, LogDirectory: Path.Combine(temp.Path, "logs")),
-                NullLogger<DiagnosticStore>.Instance),
-            new ThrowingTimeProvider(),
-            version: "0.1.0-test");
+        var recorder = DiagnosticFixtures.CreateRecorder(temp.Path, new ThrowingTimeProvider());
 
         var dispatcher = new TriggerDispatcher(
             _source, windows, ScriptedEngine(), _activity, recorder, TimeProvider.System, NullLogger<TriggerDispatcher>.Instance);
@@ -100,12 +119,7 @@ public sealed class TriggerDispatcherTests
         var target = new TargetInfo(0x1, 0x1, 1, "boom", "R", "H");
         var windows = new FakeWindowInspector { Target = target };
         using var temp = new TempDirectory();
-        var recorder = new DiagnosticRecorder(
-            new DiagnosticStore(
-                new AppPaths(SettingsDirectory: temp.Path, LogDirectory: Path.Combine(temp.Path, "logs")),
-                NullLogger<DiagnosticStore>.Instance),
-            new ThrowingTimeProvider(),
-            version: "0.1.0-test");
+        var recorder = DiagnosticFixtures.CreateRecorder(temp.Path, new ThrowingTimeProvider());
 
         var dispatcher = new TriggerDispatcher(
             _source, windows, ThrowingEngine(new InvalidOperationException("adapter boom")), _activity, recorder,
@@ -131,7 +145,7 @@ public sealed class TriggerDispatcherTests
         var target = new TargetInfo(0x2, 0x2, 2, "notepad", "R", "H");
         var windows = new FakeWindowInspector { Target = target };
         using var temp = new TempDirectory();
-        var recorder = CreateRecorder(temp.Path);
+        var recorder = DiagnosticFixtures.CreateRecorder(temp.Path);
 
         await RunOneTriggerAsync(windows, ScriptedEngine(), recorder);
 
@@ -182,37 +196,6 @@ public sealed class TriggerDispatcherTests
         return new ZoomEngine(pipeline, new WindowZoomStateStore(), NullLogger<ZoomEngine>.Instance);
     }
 
-    private static DiagnosticRecorder CreateRecorder(string directory) =>
-        new(
-            new DiagnosticStore(
-                new AppPaths(SettingsDirectory: directory, LogDirectory: Path.Combine(directory, "logs")),
-                NullLogger<DiagnosticStore>.Instance),
-            TimeProvider.System,
-            version: "0.1.0-test");
-
-    private sealed class FakeTriggerSource : ITriggerSource
-    {
-        private readonly Channel<TriggerEvent> _channel = Channel.CreateUnbounded<TriggerEvent>();
-
-        public ChannelWriter<TriggerEvent> Writer => _channel.Writer;
-
-        public ChannelReader<TriggerEvent> Triggers => _channel.Reader;
-
-        public bool Enabled { get; set; } = true;
-
-        public void SetTriggers(IEnumerable<TriggerDefinition> triggers)
-        {
-        }
-
-        public void StartCapture()
-        {
-        }
-
-        public void StopCapture()
-        {
-        }
-    }
-
     private sealed class FakeWindowInspector : IWindowInspector
     {
         public TargetInfo? Target { get; set; }
@@ -257,22 +240,5 @@ public sealed class TriggerDispatcherTests
 
         public Task ZoomOutAsync(TargetInfo target, object restoreState, CancellationToken cancellationToken) =>
             throw exception;
-    }
-
-    private sealed class TempDirectory : IDisposable
-    {
-        public string Path { get; } = Directory.CreateTempSubdirectory("smartzoom-dispatcher-test-").FullName;
-
-        public void Dispose()
-        {
-            try
-            {
-                Directory.Delete(Path, recursive: true);
-            }
-            catch (IOException)
-            {
-                // Best effort; the OS temp folder gets cleaned up eventually regardless.
-            }
-        }
     }
 }

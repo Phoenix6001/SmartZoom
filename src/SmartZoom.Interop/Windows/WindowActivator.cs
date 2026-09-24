@@ -26,10 +26,13 @@ public sealed class WindowActivator : IWindowActivator
     /// <summary>Extra time after the foreground switch for the target's own focus handling.</summary>
     private static readonly TimeSpan FocusSettle = TimeSpan.FromMilliseconds(60);
 
+    /// <summary>How often the foreground window is re-read while waiting for the switch. Chosen, not measured.</summary>
+    private const int ForegroundPollMs = 10;
+
     /// <inheritdoc />
     /// <remarks>Reports 0 when the foreground belongs to this process (the tray's hidden menu window after the
     /// tray menu was used): there is nothing worth bringing back in front of the target then.</remarks>
-    public unsafe nint ForegroundWindow
+    public nint ForegroundWindow
     {
         get
         {
@@ -38,7 +41,7 @@ public sealed class WindowActivator : IWindowActivator
                 return 0;
 
             PInvoke.GetWindowThreadProcessId(window, out var processId);
-            return processId == (uint)Environment.ProcessId ? 0 : (nint)window.Value;
+            return processId == (uint)Environment.ProcessId ? 0 : (nint)window;
         }
     }
 
@@ -100,7 +103,7 @@ public sealed class WindowActivator : IWindowActivator
         {
             if (Environment.TickCount64 >= deadline)
                 return false;
-            Thread.Sleep(10);
+            Thread.Sleep(ForegroundPollMs);
         }
 
         return true;

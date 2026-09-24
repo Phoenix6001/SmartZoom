@@ -11,16 +11,16 @@ namespace SmartZoom.Interop.Windows;
 
 /// <summary>Reads the machine's displays and Windows version.</summary>
 /// <remarks>
-/// Refresh rate is the reason this exists: the gesture frame interval follows the display, and a constant
-/// measured on one panel was wrong on another for months with nothing in a bug report to show it.
+/// Refresh rate is the reason this exists: the gesture frame interval follows the display, so a bug report
+/// must say what the displays are or a pacing problem cannot be told from a browser one.
 /// </remarks>
 public sealed class MachineFacts : IMachineFacts
 {
     /// <inheritdoc />
     /// <remarks>
-    /// The application's version, not this assembly's. It version-scopes the whole diagnostics record - a
-    /// record from another version is discarded on load - and reading it from SmartZoom.Interop was only
-    /// correct because every project in the repository shares one version today.
+    /// The application's version, not this assembly's: it version-scopes the whole diagnostics record (a
+    /// record from another version is discarded on load), so it must follow the executable even though every
+    /// project in the repository shares one version.
     /// </remarks>
     public string AppVersion { get; } =
         (Assembly.GetEntryAssembly() ?? typeof(MachineFacts).Assembly).GetName().Version?.ToString() ?? "unknown";
@@ -29,9 +29,9 @@ public sealed class MachineFacts : IMachineFacts
     public string OperatingSystem { get; } = RuntimeInformation.OSDescription;
 
     /// <inheritdoc />
-    public IReadOnlyList<DisplayFacts> Displays => Enumerate();
-
-    private static List<DisplayFacts> Enumerate()
+    /// <remarks>Enumerated on every call, so a report written after a dock or undock describes the displays
+    /// as they are, not as they were at start-up.</remarks>
+    public IReadOnlyList<DisplayFacts> GetDisplays()
     {
         var displays = new List<DisplayFacts>();
 

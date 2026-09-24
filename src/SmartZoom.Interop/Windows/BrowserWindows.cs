@@ -24,7 +24,7 @@ internal static class BrowserWindows
     /// <summary>Whether the window under a screen point renders web content with Chromium.</summary>
     public static bool IsChromiumWindowAt(ScreenPoint point)
     {
-        var window = WindowInspector.WindowAt(point);
+        var window = WindowInspector.WindowUnder(point);
         return !window.IsNull && string.Equals(WindowInspector.GetClassName(window), ChromiumRenderWindowClass, StringComparison.Ordinal);
     }
 
@@ -33,7 +33,7 @@ internal static class BrowserWindows
     // wrong recognizer.
     private static string RootClassAt(ScreenPoint point)
     {
-        var window = WindowInspector.WindowAt(point);
+        var window = WindowInspector.WindowUnder(point);
         if (window.IsNull)
             return string.Empty;
 

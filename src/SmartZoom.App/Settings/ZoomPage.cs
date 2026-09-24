@@ -10,10 +10,13 @@ namespace SmartZoom.App.Settings;
 /// </summary>
 internal sealed class ZoomPage : UserControl
 {
+    // One per page type rather than one per heading: a control does not dispose a Font it was handed.
+    private static readonly Font HeadingFont = new(SystemFonts.MessageBoxFont!, FontStyle.Bold);
+
     private readonly SmartZoomSettings _model;
     private readonly Action _openSettingsFile;
 
-    private readonly CheckBox _enabled = new() { Text = "SmartZoom is &on", AutoSize = true, Name = "Enabled" };
+    private readonly CheckBox _enabled = new() { Text = "&Enabled", AutoSize = true, Name = "Enabled" };
     private readonly NumericUpDown _minScale = new() { DecimalPlaces = 2, Increment = 0.1m, Minimum = 1.01m, Maximum = 10m, Width = 90, Name = "MinScale" };
     private readonly NumericUpDown _maxScale = new() { DecimalPlaces = 2, Increment = 0.5m, Minimum = 1.01m, Maximum = 20m, Width = 90, Name = "MaxScale" };
     private readonly CheckBox _animate = new() { Text = "&Animate the zoom", AutoSize = true, Name = "Animate" };
@@ -22,6 +25,12 @@ internal sealed class ZoomPage : UserControl
     private readonly NumericUpDown _magnification = new() { DecimalPlaces = 2, Increment = 0.25m, Minimum = 1.01m, Maximum = 10m, Width = 90, Name = "Magnification" };
     private readonly ComboBox _logLevel = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 160, Name = "LogLevel" };
     private readonly Button _openFile = new() { Text = "Open settings &file…", AutoSize = true, Name = "OpenSettingsFile" };
+
+    // What each spinner showed when the page was filled in. A spinner clamps a value the file holds that it
+    // cannot show, and an untouched spinner must not write that clamped value back over the file's.
+    private decimal _shownMinScale;
+    private decimal _shownMaxScale;
+    private decimal _shownMagnification;
 
     /// <summary>Creates the page over the working copy.</summary>
     /// <param name="model">The settings being edited; read back by <see cref="Harvest"/>.</param>
@@ -37,7 +46,7 @@ internal sealed class ZoomPage : UserControl
         AutoScroll = true;
 
         _readerMode.Items.AddRange(["Pinch around the cursor", "The reader's own fit-width and fit-page"]);
-        foreach (var level in new[] { LogLevel.Debug, LogLevel.Information, LogLevel.Warning, LogLevel.Error })
+        foreach (var level in Enum.GetValues<LogLevel>())
             _logLevel.Items.Add(level.ToString());
 
         _openFile.Click += (_, _) => _openSettingsFile();
@@ -61,7 +70,7 @@ internal sealed class ZoomPage : UserControl
         Separator(layout, "PDF readers");
         Row(layout, "Zoomed by", _readerMode);
         Row(layout, "Pinch magnifies by", _magnification);
-        Separator(layout, "Diagnostics");
+        Separator(layout, "Logging");
         Row(layout, "Write to the log", _logLevel);
         Row(layout, null, _openFile);
 
@@ -88,7 +97,7 @@ internal sealed class ZoomPage : UserControl
         {
             Text = heading,
             AutoSize = true,
-            Font = new Font(SystemFonts.MessageBoxFont!, FontStyle.Bold),
+            Font = HeadingFont,
             Margin = new Padding(0, 16, 0, 4),
         });
     }
@@ -97,27 +106,28 @@ internal sealed class ZoomPage : UserControl
     private void ShowSettings()
     {
         _enabled.Checked = _model.Enabled;
-        _minScale.Value = Clamp(_minScale, (decimal)_model.Zoom.MinScale);
-        _maxScale.Value = Clamp(_maxScale, (decimal)_model.Zoom.MaxScale);
+        _shownMinScale = _minScale.Value = Clamp(_minScale, (decimal)_model.Zoom.MinScale);
+        _shownMaxScale = _maxScale.Value = Clamp(_maxScale, (decimal)_model.Zoom.MaxScale);
         _animate.Checked = _model.Zoom.Animate;
         _fallback.Checked = _model.Zoom.FallbackToCtrlWheel;
         _readerMode.SelectedIndex = _model.Zoom.Reader.Mode == ReaderZoomMode.Shortcuts ? 1 : 0;
-        _magnification.Value = Clamp(_magnification, (decimal)_model.Zoom.Reader.Magnification);
+        _shownMagnification = _magnification.Value = Clamp(_magnification, (decimal)_model.Zoom.Reader.Magnification);
         _logLevel.SelectedItem = _model.Logging.Level.ToString();
-        if (_logLevel.SelectedIndex < 0)
-            _logLevel.SelectedIndex = 0;
     }
 
     /// <summary>Reads the controls back into the settings.</summary>
     public void Harvest()
     {
         _model.Enabled = _enabled.Checked;
-        _model.Zoom.MinScale = (double)_minScale.Value;
-        _model.Zoom.MaxScale = (double)_maxScale.Value;
+        if (_minScale.Value != _shownMinScale)
+            _model.Zoom.MinScale = (double)_minScale.Value;
+        if (_maxScale.Value != _shownMaxScale)
+            _model.Zoom.MaxScale = (double)_maxScale.Value;
         _model.Zoom.Animate = _animate.Checked;
         _model.Zoom.FallbackToCtrlWheel = _fallback.Checked;
         _model.Zoom.Reader.Mode = _readerMode.SelectedIndex == 1 ? ReaderZoomMode.Shortcuts : ReaderZoomMode.Pinch;
-        _model.Zoom.Reader.Magnification = (double)_magnification.Value;
+        if (_magnification.Value != _shownMagnification)
+            _model.Zoom.Reader.Magnification = (double)_magnification.Value;
 
         if (Enum.TryParse<LogLevel>(_logLevel.SelectedItem as string, out var level))
             _model.Logging.Level = level;

@@ -61,12 +61,13 @@ Watch for these specifically:
 
 ## Checking what the app decided
 
-The log answers most questions. A healthy press looks like:
+The log answers most questions. A healthy press looks like this (one line each from the dispatcher, the
+adapter and the coordinator):
 
 ```
-[INF] Trigger at (2500, 900) px -> brave (pid 24484, hwnd 0x401F4, class Chrome_WidgetWin_1, hit Chrome_RenderWidgetHostHWND)
-[INF] Smart zoom: "Group" 948x183 px in 1793 px viewport -> x1.83 around (2488, 608).
-[INF] Zoomed in brave via "Browser".
+2026-09-21 14:29:15.587 +03:00 [INF] SmartZoom.App.Hosting.TriggerDispatcher: Trigger at (2500, 900) px -> brave (pid 24484, hwnd 0x401F4, class Chrome_WidgetWin_1, hit Chrome_RenderWidgetHostHWND)
+2026-09-21 14:29:15.658 +03:00 [INF] SmartZoom.Core.Zoom.BrowserAdapter: Smart zoom: Group 948x183 px in 1793 px viewport -> x1.83 around (2488, 608).
+2026-09-21 14:29:16.024 +03:00 [INF] SmartZoom.Core.Zoom.ZoomCoordinator: Zoomed in brave via Browser.
 ```
 
 If a press does nothing, look for these in order:

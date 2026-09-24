@@ -143,7 +143,6 @@ public sealed partial class LowLevelInputHook : ITriggerSource, IDisposable
 
         var built = Build(triggers);
 
-        string names;
         lock (_gate)
         {
             // Anything held for a possible second tap belongs to the detector that swallowed it, and that
@@ -155,14 +154,14 @@ public sealed partial class LowLevelInputHook : ITriggerSource, IDisposable
             // The old set may have left the timer armed for a deadline no detector is waiting on any more.
             _timeoutTimer.Change(Timeout.Infinite, Timeout.Infinite);
             ArmTimeoutLocked();
-
-            names = string.Join(", ", _triggers.Select(t => t.Definition.DisplayName));
         }
 
         // Re-sampled here as well as at StartCapture, so turning the log level up brings the per-press
         // diagnostics back without restarting.
         _observe = _logger.IsEnabled(LogLevel.Debug);
 
+        // Built outside the lock: the callbacks contend for it, and a string join is not hook-callback work.
+        var names = string.Join(", ", built.All.Select(t => t.Definition.DisplayName));
         LogTriggersChanged(names);
     }
 
@@ -228,7 +227,7 @@ public sealed partial class LowLevelInputHook : ITriggerSource, IDisposable
         if (Interlocked.CompareExchange(ref _state, StateStopped, StateRunning) != StateRunning)
             return;
 
-        if (!PInvoke.PostThreadMessage(_hookThreadId, MouseMessages.WmQuit, default, default))
+        if (!PInvoke.PostThreadMessage(_hookThreadId, PInvoke.WM_QUIT, default, default))
             LogStopFailed(Marshal.GetLastPInvokeError());
 
         _hookThread?.Join(TimeSpan.FromSeconds(2));
@@ -295,24 +294,24 @@ public sealed partial class LowLevelInputHook : ITriggerSource, IDisposable
         }
         finally
         {
-            if (!keyboardHook.IsNull)
-                PInvoke.UnhookWindowsHookEx(keyboardHook);
+            PInvoke.UnhookWindowsHookEx(keyboardHook);
             PInvoke.UnhookWindowsHookEx(mouseHook);
         }
     }
 
     private unsafe LRESULT MouseCallback(int code, WPARAM wParam, LPARAM lParam)
     {
-        if (code == MouseMessages.HcAction)
+        // The hook may only act when the code is HC_ACTION; anything else must be passed straight on.
+        if (code == PInvoke.HC_ACTION)
         {
             try
             {
                 var info = (MSLLHOOKSTRUCT*)lParam.Value;
-                if (MouseMessages.TryMapButton((uint)wParam.Value, info->mouseData, out var button, out var isDown)
+                if (HookMessages.TryMapButton((uint)wParam.Value, info->mouseData, out var button, out var isDown)
                     && TryFindMouseTrigger(button, out var trigger))
                 {
                     if (_observe)
-                        _observations.Writer.TryWrite(new InputObservation(trigger.Definition.DisplayName, isDown, info->time, (info->flags & MouseMessages.MouseInjectedMask) != 0, Ours: info->dwExtraInfo == InputInjection.Tag));
+                        _observations.Writer.TryWrite(new InputObservation(trigger.Definition.DisplayName, isDown, info->time, (info->flags & HookMessages.MouseInjectedMask) != 0, Ours: info->dwExtraInfo == InputInjection.Tag));
 
                     if (info->dwExtraInfo != InputInjection.Tag
                         && Process(trigger, isDown, info->time, new ScreenPoint(info->pt.X, info->pt.Y)))
@@ -332,13 +331,13 @@ public sealed partial class LowLevelInputHook : ITriggerSource, IDisposable
 
     private unsafe LRESULT KeyboardCallback(int code, WPARAM wParam, LPARAM lParam)
     {
-        if (code == MouseMessages.HcAction)
+        if (code == PInvoke.HC_ACTION)
         {
             try
             {
                 var info = (KBDLLHOOKSTRUCT*)lParam.Value;
                 var message = (uint)wParam.Value;
-                if (MouseMessages.IsKeyTransition(message, out var isDown) && ProcessKey((ushort)info->vkCode, isDown, info))
+                if (HookMessages.IsKeyTransition(message, out var isDown) && ProcessKey((ushort)info->vkCode, isDown, info))
                     return new LRESULT(1);
             }
             catch (Exception ex) when (ReportCallbackFault(ex))
@@ -353,6 +352,10 @@ public sealed partial class LowLevelInputHook : ITriggerSource, IDisposable
     {
         var swallow = false;
         var ours = info->dwExtraInfo == InputInjection.Tag;
+        var time = info->time;
+
+        // Decided under the lock, raised after it, as Process does: raising asks Win32 where the cursor is.
+        var triggered = 0;
 
         lock (_gate)
         {
@@ -368,7 +371,7 @@ public sealed partial class LowLevelInputHook : ITriggerSource, IDisposable
                     continue;
 
                 if (_observe)
-                    _observations.Writer.TryWrite(new InputObservation(trigger.Definition.DisplayName, isDown, info->time, ((uint)info->flags & MouseMessages.KeyboardInjectedMask) != 0, Ours: false));
+                    _observations.Writer.TryWrite(new InputObservation(trigger.Definition.DisplayName, isDown, info->time, (info->flags & HookMessages.KeyboardInjectedMask) != 0, Ours: false));
 
                 if (!_enabled)
                     continue;
@@ -380,10 +383,10 @@ public sealed partial class LowLevelInputHook : ITriggerSource, IDisposable
                         break;
 
                     case KeyMatch.Press or KeyMatch.Release:
-                        var decision = trigger.Detector.OnInput(match == KeyMatch.Press, info->time);
+                        var decision = trigger.Detector.OnInput(match == KeyMatch.Press, time);
                         EnqueueReplayLocked(trigger, decision.Replay);
                         if (decision.Triggered)
-                            RaiseTrigger(info->time, position: null);
+                            triggered++;
                         swallow |= decision.Swallow;
                         break;
                 }
@@ -391,6 +394,9 @@ public sealed partial class LowLevelInputHook : ITriggerSource, IDisposable
 
             ArmTimeoutLocked();
         }
+
+        for (; triggered > 0; triggered--)
+            RaiseTrigger(time, position: null);
 
         return swallow;
     }

@@ -7,7 +7,6 @@ using SmartZoom.Core.Routing;
 using SmartZoom.Core.Zoom.Content;
 using SmartZoom.Interop.Windows;
 
-using Windows.Win32;
 using Windows.Win32.Foundation;
 
 using IAccessible = Accessibility.IAccessible;
@@ -65,78 +64,34 @@ public sealed partial class MsaaContentHitTester(ChromiumAccessibilityWake wake,
             // Where to ask the tree about; differs from the cursor only while the tree reports a stale page zoom.
             var query = point;
 
+            // The policy: what each outcome of one attempt means for the next.
             for (var attempt = 1; ; attempt++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
                 try
                 {
-                    // accHitTest sometimes stops at the document even when the tree is awake (points between
-                    // elements, some layouts); walking the children by rectangle finds the enclosing block then.
-                    var chain = BuildChain(DeepenByBounds(Descend(root, query), query));
-                    var document = chain.FirstOrDefault(n => n.Role == ContentRole.Document);
-
-                    // A Chromium tree left at the scale of an earlier pinch answers in its own, zoomed coordinates
-                    // (see StalePageZoom): ask again where it believes the cursor is, then translate its answer back.
-                    var stale = document is null || gecko ? null : StalePageZoom.Detect(document.Bounds, WindowRect(render, document.Bounds));
-                    var expectedQuery = stale?.ToReported(point) ?? point;
-                    if (expectedQuery != query && attempt < MaxHitTestAttempts)
+                    var result = Attempt(root, render, target, point, query, attempt, gecko);
+                    switch (result.Outcome)
                     {
-                        query = expectedQuery;
-                        continue;
+                        case AttemptOutcome.Hit:
+                        case AttemptOutcome.GiveUp:
+                            return result.Hit;
+
+                        case AttemptOutcome.RetryWithQuery:
+                            query = result.Query;
+                            continue;
+
+                        default:
+                            Thread.Sleep(HitTestRetryDelayMs);
+                            continue;
                     }
-
-                    if (stale is { } zoom)
-                    {
-                        LogStaleZoom(target.ProcessName, zoom.Scale);
-                        chain = [.. chain.Select(n => n with { Bounds = zoom.ToActual(n.Bounds) })];
-                        document = chain.First(n => n.Role == ContentRole.Document);
-                    }
-
-                    // Anything narrower than the document means we're inside real content. Right after the
-                    // wake-up the path may instead end above the document or stop at a page-wide placeholder,
-                    // because the renderer serializes the tree asynchronously; give it a few frames.
-                    if (document is not null && chain.Any(n => n.Bounds.Width < document.Bounds.Width))
-                    {
-                        // The hit-test itself is fresh, but reported rectangles lag behind scrolling. A leaf whose
-                        // rectangle doesn't contain the point is stale: keep asking until the tree has caught up.
-                        if (chain[0].Bounds.Contains(point))
-                            return new ContentHit(chain, Viewport(document.Bounds, render));
-
-                        if (attempt == MaxHitTestAttempts)
-                        {
-                            LogStaleBounds(target.ProcessName, chain[0].Bounds.Left, chain[0].Bounds.Top, point.X, point.Y);
-                            return null;
-                        }
-
-                        Thread.Sleep(HitTestRetryDelayMs);
-                        continue;
-                    }
-
-                    if (attempt == MaxHitTestAttempts)
-                    {
-                        // Nothing usable after ~600 ms: forget this root so the next trigger re-acquires and re-wakes it.
-                        wake.Forget(render);
-                        if (document is null)
-                        {
-                            LogNoDocument(target.ProcessName);
-                            return null;
-                        }
-
-                        return new ContentHit(chain, Viewport(document.Bounds, render));
-                    }
-
-                    // A single handshake right after the window appeared can be too early; nudging again is cheap.
-                    if (!gecko)
-                        wake.Nudge(root, point);
-
-                    Thread.Sleep(HitTestRetryDelayMs);
                 }
                 catch (COMException ex) when (attempt < MaxHitTestAttempts)
                 {
                     // A browser whose accessibility tree is still being built answers with an error rather than
-                    // an empty tree, and the user's very first press paid for it. Forget the root, take another
-                    // handshake and keep trying; only the last attempt gives up.
+                    // an empty tree. Forget the root, take another handshake and keep trying; only the last
+                    // attempt gives up.
                     LogComRetry(ex, target.ProcessName);
                     wake.Forget(render);
                     Thread.Sleep(HitTestRetryDelayMs);
@@ -159,6 +114,81 @@ public sealed partial class MsaaContentHitTester(ChromiumAccessibilityWake wake,
         }
     }
 
+    /// <summary>One pass over the tree: asks it about the query point and judges what came back.</summary>
+    /// <param name="root">The accessible root.</param>
+    /// <param name="render">The render window.</param>
+    /// <param name="target">The target, for the logs.</param>
+    /// <param name="point">Where the cursor is.</param>
+    /// <param name="query">Where the tree is asked about; the cursor, unless the tree reports a stale page zoom.</param>
+    /// <param name="attempt">Which attempt this is, 1-based; the last one gives up rather than retrying.</param>
+    /// <param name="gecko">Whether the browser is Gecko, which needs no handshake and reports no stale zoom.</param>
+    private HitTestAttempt Attempt(IAccessible root, HWND render, TargetInfo target, ScreenPoint point, ScreenPoint query, int attempt, bool gecko)
+    {
+        // accHitTest sometimes stops at the document even when the tree is awake (points between
+        // elements, some layouts); walking the children by rectangle finds the enclosing block then.
+        var chain = BuildChain(DeepenByBounds(Descend(root, query), query));
+        var document = chain.FirstOrDefault(n => n.Role == ContentRole.Document);
+
+        // A Chromium tree left at the scale of an earlier pinch answers in its own, zoomed coordinates
+        // (see StalePageZoom): ask again where it believes the cursor is, then translate its answer back.
+        var stale = document is null || gecko ? null : StalePageZoom.Detect(document.Bounds, WindowRect(render, document.Bounds));
+        var expectedQuery = stale?.ToReported(point) ?? point;
+        if (expectedQuery != query && attempt < MaxHitTestAttempts)
+            return HitTestAttempt.RetryWith(expectedQuery);
+
+        if (stale is { } zoom)
+        {
+            chain = TranslateStaleZoom(chain, zoom, target.ProcessName);
+            document = chain.First(n => n.Role == ContentRole.Document);
+        }
+
+        // Anything narrower than the document means we're inside real content. Right after the
+        // wake-up the path may instead end above the document or stop at a page-wide placeholder,
+        // because the renderer serializes the tree asynchronously; give it a few frames.
+        if (document is not null && chain.Any(n => n.Bounds.Width < document.Bounds.Width))
+        {
+            // The hit-test itself is fresh, but reported rectangles lag behind scrolling. A leaf whose
+            // rectangle doesn't contain the point is stale: keep asking until the tree has caught up.
+            if (chain[0].Bounds.Contains(point))
+                return HitTestAttempt.Found(new ContentHit(chain, Viewport(document.Bounds, render)));
+
+            if (attempt == MaxHitTestAttempts)
+            {
+                LogStaleBounds(target.ProcessName, chain[0].Bounds.Left, chain[0].Bounds.Top, point.X, point.Y);
+                return HitTestAttempt.Nothing;
+            }
+
+            return HitTestAttempt.Again;
+        }
+
+        if (attempt == MaxHitTestAttempts)
+        {
+            // Nothing usable after ~600 ms: forget this root so the next trigger re-acquires and re-wakes it.
+            wake.Forget(render);
+            if (document is null)
+            {
+                LogNoDocument(target.ProcessName);
+                return HitTestAttempt.Nothing;
+            }
+
+            return HitTestAttempt.Found(new ContentHit(chain, Viewport(document.Bounds, render)));
+        }
+
+        // A single handshake right after the window appeared can be too early; nudging again is cheap.
+        if (!gecko)
+            wake.Nudge(root, point);
+
+        return HitTestAttempt.Again;
+    }
+
+    // The tree answered in the coordinates of a page zoom it still believes in; bring every rectangle on the
+    // path back to the screen's.
+    private List<ContentNode> TranslateStaleZoom(List<ContentNode> chain, StalePageZoom zoom, string? process)
+    {
+        LogStaleZoom(process, zoom.Scale);
+        return [.. chain.Select(n => n with { Bounds = zoom.ToActual(n.Bounds) })];
+    }
+
     // The document's reported bounds are normally the visible page area, but some Chromium documents (sidebar
     // WebUI, background frames) report absurd rectangles. The render window's own rectangle is always right,
     // so the viewport is their intersection, or the window rectangle alone when the two don't overlap.
@@ -174,8 +204,7 @@ public sealed partial class MsaaContentHitTester(ChromiumAccessibilityWake wake,
         return intersection.IsEmpty ? window : intersection;
     }
 
-    private static PixelRect WindowRect(HWND window, PixelRect fallback) =>
-        PInvoke.GetWindowRect(window, out var rect) ? new PixelRect(rect.left, rect.top, rect.right, rect.bottom) : fallback;
+    private static PixelRect WindowRect(HWND window, PixelRect fallback) => WindowInspector.Bounds(window) ?? fallback;
 
     // The window whose accessible root exposes the page: Chromium's render widget, or Gecko's top-level window
     // (its content is drawn by a disabled child window that has no accessible tree of its own).
@@ -187,19 +216,7 @@ public sealed partial class MsaaContentHitTester(ChromiumAccessibilityWake wake,
         if (target.HitClassName == BrowserWindows.ChromiumRenderWindowClass)
             return new HWND(target.HitWindow);
 
-        var found = HWND.Null;
-        PInvoke.EnumChildWindows(new HWND(target.RootWindow), (child, _) =>
-        {
-            if (WindowInspector.GetClassName(child) == BrowserWindows.ChromiumRenderWindowClass)
-            {
-                found = child;
-                return false;
-            }
-
-            return true;
-        }, default);
-
-        return found;
+        return WindowInspector.FindChildByClass(new HWND(target.RootWindow), BrowserWindows.ChromiumRenderWindowClass);
     }
 
     // Descends from a node into whichever child's rectangle contains the point, as far as that goes.
@@ -388,4 +405,30 @@ public sealed partial class MsaaContentHitTester(ChromiumAccessibilityWake wake,
     [LoggerMessage(Level = LogLevel.Debug, Message = "Accessibility call failed in {Process}; dropping the cached root.")]
     private partial void LogComFailure(Exception exception, string? process);
 
+    private enum AttemptOutcome
+    {
+        /// <summary>Content was found; <see cref="HitTestAttempt.Hit"/> carries it.</summary>
+        Hit,
+
+        /// <summary>The tree answered in stale-zoom coordinates; ask again at <see cref="HitTestAttempt.Query"/> at once.</summary>
+        RetryWithQuery,
+
+        /// <summary>The tree is not ready; wait a moment and ask again.</summary>
+        Retry,
+
+        /// <summary>The last attempt found nothing usable.</summary>
+        GiveUp,
+    }
+
+    /// <summary>What one attempt concluded, for the retry loop to act on.</summary>
+    private readonly record struct HitTestAttempt(AttemptOutcome Outcome, ContentHit? Hit = null, ScreenPoint Query = default)
+    {
+        public static HitTestAttempt Again { get; } = new(AttemptOutcome.Retry);
+
+        public static HitTestAttempt Nothing { get; } = new(AttemptOutcome.GiveUp);
+
+        public static HitTestAttempt Found(ContentHit hit) => new(AttemptOutcome.Hit, hit);
+
+        public static HitTestAttempt RetryWith(ScreenPoint query) => new(AttemptOutcome.RetryWithQuery, Query: query);
+    }
 }

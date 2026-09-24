@@ -4,29 +4,29 @@ SmartZoom fails quietly. A press that finds nothing to zoom does nothing at all,
 from a press that never arrived, which is indistinguishable from an application SmartZoom does not support.
 Three separate defects with one symptom, and none of them produce anything a user can hand over.
 
-This design adds a local record of what did not work, and a report that turns it into something a bug
-report can carry.
+SmartZoom therefore keeps a local record of what did not work, and renders a report that turns it into
+something a bug report can carry.
 
 ## What it is for
 
 Three questions, each of which has cost real debugging time:
 
-1. **Are the measured constants wrong on hardware that is not the author's?** Every number in
-   [measurements.md](measurements.md) was taken on one machine at 200 % scaling. The gesture frame interval
-   was 8 ms against a 59 Hz display for months, so a third of the injected frames went out late, and nothing
-   in a bug report would have revealed it.
-2. **Where does a press do nothing?** Pages built out of `div`s could not be zoomed anywhere, silently, for
-   weeks, because Chromium reports a generic container as `ROLE_SYSTEM_PANE` and that role was unmapped. A
-   count of no-op presses by application would have put it at the top of a list the first time anyone looked.
+1. **Are the measured constants wrong on hardware that is not the author's?** Most numbers in
+   [measurements.md](measurements.md) were taken on one machine at 200 % scaling. A gesture frame interval
+   that does not match the display's refresh rate sends a share of the injected frames late, and nothing in a
+   bug report says so unless the display is described.
+2. **Where does a press do nothing?** An unmapped accessibility role — Chromium reports a generic container
+   as `ROLE_SYSTEM_PANE` — makes every press on a page built out of `div`s do nothing, silently. A count of
+   no-op presses by application puts that at the top of the list the first time anyone looks.
 3. **What is throwing?** Adapter exceptions are caught so that one failed zoom cannot take the dispatcher
    down with it. That is correct, and it means they are invisible.
 
 ## What it is not
 
-**No network code exists anywhere in SmartZoom, and none is added here.** No telemetry, no endpoint, no
+**No network code exists anywhere in SmartZoom, and diagnostics adds none.** No telemetry, no endpoint, no
 upload, no background reporting. `SECURITY.md`'s statement — *"SmartZoom makes no network connections and
-sends nothing anywhere"* — remains literally true after this change, and that is a requirement of the design
-rather than a happy accident.
+sends nothing anywhere"* — is literally true with diagnostics in place, and that is a requirement of the
+design rather than a happy accident.
 
 **No identifier of any kind.** No install ID, no session ID, no hardware or user-derived value. Nothing
 written here can be correlated across machines or across restarts of the same machine.
@@ -57,7 +57,7 @@ gap between what it *can* see and what it *keeps* being obvious and enforced.
 - **Window titles.** They carry document names, email subjects and URLs. The zoom pipeline reads them; this
   record must not.
 - **Page text or URLs.** The path shape says `Group 949x79`, never the words inside it. This is the rule that
-  makes the `PANE` class of defect diagnosable without recording what was being read.
+  makes the `ROLE_SYSTEM_PANE` class of defect diagnosable without recording what was being read.
 - **Screen coordinates.** The existing debug log includes them; the record keeps sizes only. Absolute
   positions describe a monitor layout and add nothing to any of the three questions.
 - **Keystrokes.** Unchanged from the existing hook rule: the hook observes modifiers and the keys named in
@@ -91,7 +91,7 @@ A **tally, not a journal**. A journal of every event grows without limit and say
 | `ZoomedNothing` | A press resolved to a window and produced no zoom. `Reason` distinguishes `NoContent`, `NoBlock`, `AlreadyFits`, `GestureRefused`, `AutomationFailed`, `NoAdapter` and `AdapterCouldNotAct` (the strategy could not act and the Ctrl+wheel fallback did not either). It is always set for a press that zoomed nothing. `NoAdapter` and `AlreadyFits` are correct behaviour rather than defects, and are counted because "people keep pressing in an application that is routed to nothing" is exactly question 2 |
 | `AdapterThrew` | An adapter raised an exception the dispatcher caught |
 | `NoWindow` | A trigger resolved to no window at all |
-| `Crashed` | An unhandled exception reached the top of the process |
+| `Crashed` | An unhandled exception reached the top of the process, or the top of the UI thread's message loop. The process survives the second kind (`Application.SetUnhandledExceptionMode(CatchException)`), so the key's adapter slot tells them apart: `UiThread` for those, null for a crash that took the process down |
 
 **Detail ring**: the most recent **20** samples, each carrying the path shape (truncated to 12 nodes) and, for
 exceptions, type, redacted message and a stack trace truncated to 4 000 characters. Counts establish
@@ -108,12 +108,13 @@ their slot, worst lateness — kept as running totals rather than per-gesture ro
 means the counters are discarded and started fresh. "43 no-op presses in `msedge`" is misleading if 40 of
 them predate the fix; the question is always *is this build broken for you*.
 
-**Written:** held in memory, flushed on a 30-second timer when dirty and once on clean shutdown. A crash is
-the exception — an unhandled exception is written **synchronously in the handler**, because a crash record
-that dies with the crash is precisely the failure this is meant to eliminate.
+**Written:** held in memory, flushed on a 30-second timer when dirty and once on clean shutdown. Flushes
+are serialised, so two that overlap cannot lose a record between them. A crash is the exception — an
+unhandled exception is written **synchronously in the handler**, because a crash record that dies with the
+crash is precisely the failure this is meant to eliminate.
 
-**Bounded:** 200 keys, 20 samples, and a hard 256 KB ceiling on the file. A record that exceeds the ceiling
-is truncated from the detail ring first, counters last.
+**Bounded:** 200 keys, 20 samples, and a hard 256 KB ceiling on the file, measured in bytes of the encoded
+JSON. A record that exceeds the ceiling is truncated from the detail ring first, counters last.
 
 **On by default**, with a switch to turn it off and a button to clear it. Justified because it holds strictly
 less than the debug log that is already written, and never leaves the machine.
@@ -125,17 +126,19 @@ Diagnostics must never change whether or how a zoom happens.
 - Recording is an in-memory append under a light lock. No I/O on the zoom path.
 - Nothing inside the hook callback. The existing rule — allocation-free, no logging, no blocking — stands
   unchanged, and diagnostics has no presence there.
-- Every I/O failure (disk full, file locked, unwritable directory) is swallowed and disables diagnostics for
-  the remainder of the session rather than propagating. A corrupt or unparseable file on load is discarded and
-  started fresh. This is the posture `SettingsStore` already takes.
+- Every I/O failure (disk full, file locked, unwritable directory) is swallowed rather than propagated. A
+  failed write leaves the record pending, so the next flush tries again and a transient failure costs the
+  session nothing. A corrupt or unparseable file on load is discarded and started fresh. (The settings file
+  is treated more carefully: `SettingsStore.Load` leaves a malformed file untouched and uses defaults for the
+  session, because that file holds the user's own choices; the diagnostics file holds nothing a person typed.)
 - If a report section throws while rendering — display enumeration is the likely candidate — that section
   renders as `unavailable` and the rest of the report is still produced.
 
 ## The report
 
-Built on demand, when the page is opened or the report is refreshed — never held in memory between
-viewings, and never written to disk unless the user chooses **Save…**. Markdown, built to be pasted into a
-GitHub issue:
+Built on demand, when the page is opened or the report is refreshed — off the UI thread, never held in
+memory between viewings, and never written to disk unless the user chooses **Save…**. Markdown, built to be
+pasted into a GitHub issue:
 
 1. **Header** — SmartZoom version, Windows build, architecture.
 2. **Displays** — per monitor: resolution, scale factor, refresh rate. The section that exists because of
@@ -162,8 +165,9 @@ Following the existing split, and adding no new plumbing through the zoom pipeli
 
 **Hook points**, both of which already exist and already see what is needed:
 
-- `ZoomActivity` is where outcomes are reported, and already receives `ZoomOutcome` (action, process,
-  adapter). `ZoomedNothing` is derived there.
+- `TriggerDispatcher` is where every trigger's `ZoomOutcome` (action, process, adapter, reason) comes back
+  from the engine. `ZoomedNothing` is derived there, through `DiagnosticSampleFactory`, which is the one
+  place a live outcome is turned into a key and a sample.
 - `TriggerDispatcher` already catches adapter exceptions so a failed zoom cannot end the dispatcher.
   `AdapterThrew` is raised from that catch.
 
@@ -194,14 +198,13 @@ Everything that matters is pure and deterministic, tested with a fake `IMachineF
 
 **The privacy contract gets its own tests, at the two places it can actually break.**
 
-An earlier version of this section showed a renderer test asserting a report never contained a literal window
-title — `A_report_never_contains_a_window_title`, fed a tally seeded with one. It was removed during
-implementation: `DiagnosticKey` and `DiagnosticSample` have no title field, no URL field and no coordinate
-field by construction, so that assertion could not fail against any implementation that compiled. A comment
-promising "we never record titles" is worth little to somebody reviewing this from outside, but neither is a
-test that passes for the same reason the comment would be believed.
+There is deliberately no renderer test asserting that a report never contains a literal window title.
+`DiagnosticKey` and `DiagnosticSample` have no title field, no URL field and no coordinate field by
+construction, so such an assertion cannot fail against any implementation that compiles. A comment promising
+"we never record titles" is worth little to somebody reviewing this from outside, but neither is a test that
+passes for the same reason the comment would be believed.
 
-What replaced it, in `tests/SmartZoom.Core.Tests/Diagnostics/DiagnosticReportTests.cs`:
+What is tested instead, in `tests/SmartZoom.Core.Tests/Diagnostics/DiagnosticReportTests.cs`:
 
 - `Every_free_text_field_is_redacted_before_it_is_rendered` seeds a distinct sentinel into the settings JSON,
   a sample's `Detail`, its `Exception`, and the log tail, and asserts none of the four survives rendering.
@@ -214,8 +217,8 @@ What replaced it, in `tests/SmartZoom.Core.Tests/Diagnostics/DiagnosticReportTes
   of the report — via a `FakeMachineFacts` that can be told to throw.
 
 The guarantee that no *producer* ever hands the renderer a title, a URL, or a coordinate in the first place
-cannot be tested against `DiagnosticKey`/`DiagnosticSample` directly, for the same reason the original test
-could not fail: there is nowhere on those types to put one. It is tested instead in
+cannot be tested against `DiagnosticKey`/`DiagnosticSample` directly, for the same reason: there is nowhere
+on those types to put one. It is tested instead in
 `tests/SmartZoom.App.Tests/Diagnostics/DiagnosticSampleFactoryTests.cs`, where a real `BrowserAdapter` reads a
 real accessibility path carrying absolute screen coordinates, through a real `ZoomCoordinator`, into
 `DiagnosticSampleFactory` — the code that actually builds what gets recorded — and asserts the resulting
@@ -227,13 +230,13 @@ not to a Core type in isolation.
 Display enumeration itself stays untested, consistent with `SmartZoom.Interop` having no test project: it
 needs real monitors.
 
-## Documentation that changes with it
+## Where it is documented
 
-- **`SECURITY.md`** — the privacy section gains the record: where it lives, what it holds, what it refuses to
-  hold, and that it is local. The "no network connections" sentence is unchanged, and the new paragraph should
-  make clear that it is still true.
-- **`CONTRIBUTING.md`** — "Reporting a bug" currently asks for log lines; it should ask for the report.
-- **`README.md`** — one line under configuration for the switch.
+- **`SECURITY.md`** — the privacy section describes the record: where it lives, what it holds, what it
+  refuses to hold, and that it is local. The "no network connections" sentence stands unchanged.
+- **`CONTRIBUTING.md`** and the bug report template — "Reporting a bug" asks for the report, not for log
+  lines.
+- **`README.md`** — one paragraph under Configuration, covering the switch.
 - **`CHANGELOG.md`** — under Added.
 
 ## Deliberately not in scope

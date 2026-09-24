@@ -21,7 +21,7 @@ public readonly record struct PixelRect(int Left, int Top, int Right, int Bottom
     /// <summary>Vertical centre.</summary>
     public double CenterY => (Top + Bottom) / 2.0;
 
-    /// <summary>True when the rectangle has positive area.</summary>
+    /// <summary>True when the rectangle has no area: a zero or negative width or height.</summary>
     public bool IsEmpty => Width <= 0 || Height <= 0;
 
     /// <summary>Whether the point lies inside (edges: left/top inclusive, right/bottom exclusive).</summary>
@@ -29,4 +29,19 @@ public readonly record struct PixelRect(int Left, int Top, int Right, int Bottom
 
     /// <summary>Creates a rectangle from an origin and size.</summary>
     public static PixelRect FromSize(int left, int top, int width, int height) => new(left, top, left + width, top + height);
+
+    /// <summary>
+    /// Clamps a coordinate into <c>[min + inset, max - inset]</c>, rounded to a whole pixel. A range narrower than
+    /// two insets (a tiny viewport) has no such interval, and yields its middle instead.
+    /// </summary>
+    /// <param name="value">The coordinate to clamp.</param>
+    /// <param name="min">The lowest coordinate in the range, inclusive.</param>
+    /// <param name="max">The highest coordinate in the range, inclusive.</param>
+    /// <param name="inset">How far inside each end the result must stay.</param>
+    internal static int ClampWithInset(double value, int min, int max, double inset)
+    {
+        var low = min + inset;
+        var high = max - inset;
+        return (int)Math.Round(low > high ? (min + max) / 2.0 : Math.Clamp(value, low, high));
+    }
 }

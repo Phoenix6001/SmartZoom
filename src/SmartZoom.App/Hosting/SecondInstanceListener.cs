@@ -1,7 +1,5 @@
 using Microsoft.Extensions.Hosting;
 
-using SmartZoom.App.Tray;
-
 namespace SmartZoom.App.Hosting;
 
 /// <summary>
@@ -19,13 +17,10 @@ namespace SmartZoom.App.Hosting;
 /// icon that lingers until you hover over it is a poor first impression of an upgrade.
 /// </para>
 /// </remarks>
-internal sealed class SecondInstanceListener(TrayApplicationContext tray, IHostApplicationLifetime lifetime) : IHostedService, IDisposable
+internal sealed class SecondInstanceListener(ISettingsWindowOpener settingsWindow, IHostApplicationLifetime lifetime) : IHostedService, IDisposable
 {
-    /// <summary>Scoped to the logon session, like the single-instance mutex, so other users are unaffected.</summary>
-    private const string Prefix = @"Local\SmartZoom.App-9C7B1E52-3F0A-4C1F-8B7D-2E6A5D4C3B21-";
-
-    private const string SettingsEventName = Prefix + "settings";
-    private const string QuitEventName = Prefix + "quit";
+    private const string SettingsEventName = AppIdentity.InstanceName + "-settings";
+    private const string QuitEventName = AppIdentity.InstanceName + "-quit";
 
     private readonly EventWaitHandle _settingsRequested = new(false, EventResetMode.AutoReset, SettingsEventName);
     private readonly EventWaitHandle _quitRequested = new(false, EventResetMode.AutoReset, QuitEventName);
@@ -93,7 +88,7 @@ internal sealed class SecondInstanceListener(TrayApplicationContext tray, IHostA
                 return;
             }
 
-            tray.RequestSettings();
+            settingsWindow.RequestSettings();
         }
     }
 }

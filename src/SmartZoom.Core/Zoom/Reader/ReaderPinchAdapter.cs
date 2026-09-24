@@ -38,7 +38,7 @@ public sealed partial class ReaderPinchAdapter : ZoomAdapter<ReaderPinchAdapter.
     /// <exception cref="ArgumentOutOfRangeException"><see cref="ReaderZoomSettings.Magnification"/> is not above 1.</exception>
     /// <exception cref="FormatException"><see cref="ReaderZoomSettings.ZoomOutKeys"/> is not a valid combination.</exception>
     public ReaderPinchAdapter(IPinchInjector pinch, IReaderView view, ShortcutSender shortcuts, ReaderZoomSettings settings, TimeSpan animation, ILogger<ReaderPinchAdapter> logger)
-        : base(ReaderAdapter.Descriptor)
+        : base(ReaderStrategy.Descriptor)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(settings.Magnification, 1.0, "Zoom.Reader.Magnification");
@@ -84,9 +84,9 @@ public sealed partial class ReaderPinchAdapter : ZoomAdapter<ReaderPinchAdapter.
         var anchor = restoreState.Anchor;
         if (_view.Bounds(target) is { } bounds)
         {
-            var back = Math.Clamp(anchor.X, bounds.Left, bounds.Right - 1);
-            var down = Math.Clamp(anchor.Y, bounds.Top, bounds.Bottom - 1);
-            if (!await _pinch.PinchAsync(new ScreenPoint(back, down), 1 / _scale, _animation, bounds, cancellationToken).ConfigureAwait(false))
+            var x = Math.Clamp(anchor.X, bounds.Left, bounds.Right - 1);
+            var y = Math.Clamp(anchor.Y, bounds.Top, bounds.Bottom - 1);
+            if (!await _pinch.PinchAsync(new ScreenPoint(x, y), 1 / _scale, _animation, bounds, cancellationToken).ConfigureAwait(false))
                 LogGestureRejected(target.ProcessName);
         }
 

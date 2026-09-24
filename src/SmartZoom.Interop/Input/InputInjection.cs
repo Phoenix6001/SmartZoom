@@ -17,9 +17,6 @@ internal static class InputInjection
     /// </summary>
     public const nuint Tag = 0x535A_4D48;
 
-    private const uint XButton1 = 0x0001;
-    private const uint XButton2 = 0x0002;
-
     /// <summary>Injects mouse button transitions at the current cursor position.</summary>
     /// <param name="button">Button to press and/or release.</param>
     /// <param name="action">Transitions to inject, down before up.</param>
@@ -90,8 +87,8 @@ internal static class InputInjection
         var (flags, data) = button switch
         {
             MouseButton.Middle => (isDown ? MOUSE_EVENT_FLAGS.MOUSEEVENTF_MIDDLEDOWN : MOUSE_EVENT_FLAGS.MOUSEEVENTF_MIDDLEUP, 0u),
-            MouseButton.XButton1 => (isDown ? MOUSE_EVENT_FLAGS.MOUSEEVENTF_XDOWN : MOUSE_EVENT_FLAGS.MOUSEEVENTF_XUP, XButton1),
-            MouseButton.XButton2 => (isDown ? MOUSE_EVENT_FLAGS.MOUSEEVENTF_XDOWN : MOUSE_EVENT_FLAGS.MOUSEEVENTF_XUP, XButton2),
+            MouseButton.XButton1 => (isDown ? MOUSE_EVENT_FLAGS.MOUSEEVENTF_XDOWN : MOUSE_EVENT_FLAGS.MOUSEEVENTF_XUP, (uint)PInvoke.XBUTTON1),
+            MouseButton.XButton2 => (isDown ? MOUSE_EVENT_FLAGS.MOUSEEVENTF_XDOWN : MOUSE_EVENT_FLAGS.MOUSEEVENTF_XUP, (uint)PInvoke.XBUTTON2),
             _ => throw new ArgumentOutOfRangeException(nameof(button), button, "Not an injectable trigger button."),
         };
 

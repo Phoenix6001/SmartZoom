@@ -14,9 +14,29 @@ public sealed class DiagnosticCounter
         Count = 1;
     }
 
+    /// <summary>Puts a stored counter back at its stored count and timestamps, in one step.</summary>
+    /// <param name="key">What is being counted.</param>
+    /// <param name="count">How many times it has happened; at least one.</param>
+    /// <param name="firstSeen">When it first happened.</param>
+    /// <param name="lastSeen">When it last happened.</param>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="count"/> is below one.</exception>
+    /// <remarks>
+    /// Both timestamps are assigned whatever the count, so a counter restored with a count of one keeps the
+    /// last-seen time the file gave it rather than the first-seen one.
+    /// </remarks>
+    public DiagnosticCounter(DiagnosticKey key, int count, DateTimeOffset firstSeen, DateTimeOffset lastSeen)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(count, 1);
+
+        Key = key;
+        Count = count;
+        FirstSeen = firstSeen;
+        LastSeen = lastSeen;
+    }
+
     /// <summary>Creates an independent copy of <paramref name="source"/>.</summary>
     /// <param name="source">The counter to copy.</param>
-    /// <remarks>Used to build a point-in-time snapshot that cannot be affected by later mutation of the original.</remarks>
+    /// <remarks>Builds a point-in-time snapshot that cannot be affected by later mutation of the original.</remarks>
     public DiagnosticCounter(DiagnosticCounter source)
     {
         ArgumentNullException.ThrowIfNull(source);

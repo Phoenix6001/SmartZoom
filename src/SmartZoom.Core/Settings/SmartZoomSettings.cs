@@ -2,9 +2,8 @@ namespace SmartZoom.Core.Settings;
 
 /// <summary>Root of the user settings file (<c>%APPDATA%\SmartZoom\settings.json</c>).</summary>
 /// <remarks>
-/// There is deliberately no migration code here. Nothing has been released, so the only settings files in
-/// existence are the author's, and a model that the settings UI will bind to should not start life carrying
-/// shapes nobody has. Renames since the last build are listed in CHANGELOG.md under "breaking".
+/// There is deliberately no migration code here: a model that the settings UI binds to carries no shapes from
+/// files nobody has. Renamed settings are listed in CHANGELOG.md under "breaking".
 /// </remarks>
 public sealed class SmartZoomSettings
 {

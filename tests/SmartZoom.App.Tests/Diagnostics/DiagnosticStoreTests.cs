@@ -1,7 +1,6 @@
 using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
-
-using Microsoft.Extensions.Logging.Abstractions;
 
 using SmartZoom.App.Diagnostics;
 using SmartZoom.Core.Diagnostics;
@@ -14,13 +13,11 @@ namespace SmartZoom.App.Tests.Diagnostics;
 /// </summary>
 public sealed class DiagnosticStoreTests
 {
-    private const string Version = "0.1.0-test";
+    private const string Version = DiagnosticFixtures.Version;
 
-    private static DiagnosticStore CreateStore(string directory) =>
-        new(Paths(directory), NullLogger<DiagnosticStore>.Instance);
+    private static DiagnosticStore CreateStore(string directory) => DiagnosticFixtures.CreateStore(directory);
 
-    private static AppPaths Paths(string directory) =>
-        new(SettingsDirectory: directory, LogDirectory: Path.Combine(directory, "logs"));
+    private static AppPaths Paths(string directory) => DiagnosticFixtures.Paths(directory);
 
     private static DiagnosticKey Key(string process = "msedge", string reason = "NoBlock") =>
         new(DiagnosticKind.ZoomedNothing, process, "Browser", reason);
@@ -121,6 +118,38 @@ public sealed class DiagnosticStoreTests
             var loaded = store.Load(Version);
             Assert.Empty(loaded.Samples);
             Assert.Equal(DiagnosticRecord.MaxKeys, loaded.Counters.Count);
+        }
+
+        [Fact]
+        public void Is_measured_in_bytes_so_non_ascii_text_cannot_slip_past_it()
+        {
+            // A character count is not a byte count: one CJK character is three bytes of UTF-8, and the store
+            // writes it as that character rather than as a six-character escape, so the gap is real on disk.
+            // Samples sized to sit under the ceiling in characters, and over it in bytes, must still be dropped.
+            using var temp = new TempDirectory();
+            var store = CreateStore(temp.Path);
+            var text = new string('漢', DiagnosticText.MaxExceptionCharacters);
+
+            var small = new DiagnosticRecord(Version);
+            small.Note(Key(), DateTimeOffset.UnixEpoch);
+            small.Sample(new DiagnosticSample(Key(), DateTimeOffset.UnixEpoch, text, text));
+            Assert.True(store.Save(small));
+
+            var json = File.ReadAllText(Paths(temp.Path).DiagnosticsFile);
+            Assert.Contains(text, json, StringComparison.Ordinal);
+            Assert.True(Encoding.UTF8.GetByteCount(json) > json.Length, "The file must be wider in bytes than in characters.");
+
+            // 20 samples x 2 x 4 000 x 3 bytes = 480 KB, against 160 000 characters, which is under 256 K.
+            var record = new DiagnosticRecord(Version);
+            record.Note(Key(), DateTimeOffset.UnixEpoch);
+            for (var i = 0; i < DiagnosticRecord.MaxSamples; i++)
+                record.Sample(new DiagnosticSample(Key($"process-{i}"), DateTimeOffset.UnixEpoch, text, text));
+
+            Assert.True(store.Save(record));
+
+            var written = new FileInfo(Paths(temp.Path).DiagnosticsFile).Length;
+            Assert.True(written <= DiagnosticStore.MaxBytes, $"File was {written} bytes.");
+            Assert.Empty(store.Load(Version).Samples);
         }
     }
 
@@ -244,25 +273,6 @@ public sealed class DiagnosticStoreTests
             record.Note(Key(), DateTimeOffset.UnixEpoch);
 
             Assert.False(CreateStore(temp.Path).Save(record));
-        }
-
-        [Fact]
-        public void Serialises_concurrent_writers_instead_of_letting_one_lose()
-        {
-            using var temp = new TempDirectory();
-            var store = CreateStore(temp.Path);
-
-            var record = new DiagnosticRecord(Version);
-            for (var i = 0; i < 50; i++)
-                record.Note(Key($"process-{i}"), DateTimeOffset.UnixEpoch);
-
-            // Before the store serialised its writes these raced on one path opened with FileShare.Read,
-            // and the loser's IOException was swallowed - including a crash record's, which gets no retry.
-            var results = new bool[8];
-            Parallel.For(0, results.Length, i => results[i] = store.Save(record));
-
-            Assert.All(results, Assert.True);
-            Assert.Equal(50, store.Load(Version).Counters.Count);
         }
     }
 

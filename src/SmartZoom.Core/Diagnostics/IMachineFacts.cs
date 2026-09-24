@@ -9,6 +9,6 @@ public interface IMachineFacts
     /// <summary>A human-readable Windows version.</summary>
     string OperatingSystem { get; }
 
-    /// <summary>Every display attached, primary first.</summary>
-    IReadOnlyList<DisplayFacts> Displays { get; }
+    /// <summary>Every display attached, primary first. A method because it queries the hardware each time.</summary>
+    IReadOnlyList<DisplayFacts> GetDisplays();
 }

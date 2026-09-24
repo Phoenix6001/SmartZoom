@@ -2,19 +2,6 @@ using SmartZoom.Core.Input;
 
 namespace SmartZoom.Core.Zoom.Content;
 
-/// <summary>How to zoom: scale the view by <see cref="Scale"/> around <see cref="Anchor"/>, which stays fixed on screen.</summary>
-/// <param name="Scale">Zoom factor, greater than 1.</param>
-/// <param name="Anchor">Screen point that does not move during the zoom, in physical pixels.</param>
-public readonly record struct ZoomPlan(double Scale, ScreenPoint Anchor);
-
-/// <summary>
-/// Minimum distance from the anchor to the viewport edges, per axis. Kept for callers that need the anchor
-/// away from the very edge; the plan itself already keeps the zoomed view inside the viewport.
-/// </summary>
-/// <param name="X">Horizontal keep-out, pixels.</param>
-/// <param name="Y">Vertical keep-out, pixels.</param>
-public readonly record struct AnchorInsets(int X, int Y);
-
 /// <summary>
 /// Computes the scale and anchor that make a block fill the viewport width, the way a pinch
 /// gesture would: every point P maps to <c>A + (P - A) * scale</c> for anchor A.
@@ -68,17 +55,9 @@ public sealed record SmartZoomPlanner(double MinScale = 1.1, double MaxScale = 3
 
         // The anchor A that maps the region's top-left corner to the viewport's top-left: A + (R - A) * s = 0.
         var anchor = new ScreenPoint(
-            Clamp(viewport.Left + (regionLeft * scale / (scale - 1)), viewport.Left, viewport.Right - 1, insets.X),
-            Clamp(viewport.Top + (regionTop * scale / (scale - 1)), viewport.Top, viewport.Bottom - 1, insets.Y));
+            PixelRect.ClampWithInset(viewport.Left + (regionLeft * scale / (scale - 1)), viewport.Left, viewport.Right - 1, insets.X),
+            PixelRect.ClampWithInset(viewport.Top + (regionTop * scale / (scale - 1)), viewport.Top, viewport.Bottom - 1, insets.Y));
 
         return new ZoomPlan(scale, anchor);
-    }
-
-    // Clamp into [min + inset, max - inset]; if the inset is wider than the range, use the middle.
-    private static int Clamp(double value, int min, int max, int inset)
-    {
-        var low = min + inset;
-        var high = max - inset;
-        return (int)Math.Round(low > high ? (min + max) / 2.0 : Math.Clamp(value, low, high));
     }
 }

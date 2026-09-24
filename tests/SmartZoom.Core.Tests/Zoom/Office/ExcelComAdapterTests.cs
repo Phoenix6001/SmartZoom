@@ -89,7 +89,7 @@ public sealed class ExcelComAdapterTests
     }
 
     [Fact]
-    public async Task Nothing_under_the_cursor_is_self_managed()
+    public async Task Nothing_under_the_cursor_is_handled_with_nothing_to_undo()
     {
         _excel.Window.Block = null;
 

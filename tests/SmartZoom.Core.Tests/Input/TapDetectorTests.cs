@@ -13,7 +13,7 @@ public sealed class TapDetectorTests
 
     private static TapDetector Create(int tapCount, bool swallow) => new(new TapOptions(tapCount, Window, swallow));
 
-    public sealed class Construction
+    public sealed class A_new_detector
     {
         [Theory]
         [InlineData(0u)]
@@ -38,7 +38,7 @@ public sealed class TapDetectorTests
         }
     }
 
-    public sealed class SingleTap
+    public sealed class Single_tap
     {
         [Fact]
         public void Pass_through_triggers_on_every_press_and_never_swallows()
@@ -87,7 +87,7 @@ public sealed class TapDetectorTests
         }
     }
 
-    public sealed class DoubleTapPassThrough
+    public sealed class Double_tap_in_pass_through_mode
     {
         private readonly TapDetector _detector = Create(2, swallow: false);
 
@@ -145,7 +145,7 @@ public sealed class TapDetectorTests
         }
     }
 
-    public sealed class DoubleTapSwallow
+    public sealed class Double_tap_in_swallow_mode
     {
         private readonly TapDetector _detector = Create(2, swallow: true);
 
@@ -192,6 +192,19 @@ public sealed class TapDetectorTests
             Assert.False(_detector.TryGetDeadline(out _));
             Assert.Equal(PassedThrough, _detector.OnInput(false, 1500));
             Assert.Equal(Swallowed, _detector.OnInput(true, 2000));
+        }
+
+        [Fact]
+        public void A_press_arriving_while_the_replayed_downs_release_is_still_owed_replays_that_release_first()
+        {
+            _detector.OnInput(true, 1000);
+            Assert.Equal(ReplayAction.Down, _detector.OnTimeout(1000 + Window + 1)); // the app has seen a Down
+
+            var decision = _detector.OnInput(true, 2000); // its Up was lost; a new press arrives instead
+
+            Assert.Equal(new HookDecision(Swallow: true, Triggered: false, ReplayAction.Up), decision);
+            Assert.True(_detector.TryGetDeadline(out var deadline));
+            Assert.Equal(2000 + Window + 1, deadline);
         }
 
         [Fact]

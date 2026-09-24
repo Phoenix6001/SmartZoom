@@ -2,8 +2,8 @@ namespace SmartZoom.Core.Settings;
 
 /// <summary>Tuning shared by every element-aware zoom: browsers, Word and Excel alike.</summary>
 /// <remarks>
-/// These used to live under "Browser", which meant that tuning a browser silently retuned Word and Excel
-/// too, and that the Office adapters read a section named after something else.
+/// One section for all of them: a change here retunes browsers, Word and Excel alike and says so by its name,
+/// and no adapter reads a section named after a different application.
 /// </remarks>
 public sealed class SmartZoomTuning
 {

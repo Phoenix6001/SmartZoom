@@ -12,9 +12,9 @@ public class DiagnosticReportTests
     public sealed class Whatever_it_is_given
     {
         // The privacy contract lives at the PRODUCER: DiagnosticKey and DiagnosticSample have no title,
-        // page-text, URL or coordinate field by construction (Task 2), so nothing of that shape can ever
-        // reach the renderer. What the renderer itself can get wrong is failing to redact the free text it
-        // *is* given, so that is what these tests exercise.
+        // page-text, URL or coordinate field by construction, so nothing of that shape can ever reach the
+        // renderer. What the renderer itself can get wrong is failing to redact the free text it *is*
+        // given, so that is what these tests exercise.
         [Fact]
         public void Every_free_text_field_is_redacted_before_it_is_rendered()
         {

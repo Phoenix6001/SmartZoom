@@ -1,11 +1,11 @@
 # SmartZoom for Windows
 
-macOS-style **smart zoom** for Windows: press a mouse button and the application under the
+**Bringing macOS's smart zoom to Windows.** Press a mouse button and the application under the
 cursor zooms its *content* to fit the element you're pointing at. Press again to return to exactly
 where you were.
 
-Windows has no system gesture for this, so SmartZoom is a small tray app that captures a mouse trigger
-and routes it to a per-application zoom strategy:
+Windows has no system gesture for this, so SmartZoom is a small tray app that captures a mouse or keyboard
+trigger and routes it to a per-application zoom strategy:
 
 | Target | Strategy | Precision |
 |---|---|---|
@@ -14,36 +14,17 @@ and routes it to a per-application zoom strategy:
 | Word | Smart zoom through Word's object model: the paragraph, table or picture under the cursor is zoomed to fill the document pane; the previous zoom and scroll position are restored exactly | Element-aware, exact restore |
 | Excel | Smart zoom through Excel's object model: the block of data under the cursor — the surrounding island of filled cells, or the cells a chart or picture covers — is zoomed to fill the worksheet pane, and the view is scrolled to the row you pointed at | Element-aware, exact restore |
 | Acrobat, Acrobat Reader, SumatraPDF | An animated pinch around the cursor, the same gesture the browsers get: what you pointed at stays where it is and grows. The second press animates the magnification away and lands on the reader's own "fit page" | Animated, follows the cursor, never drifts |
-| Image viewers | Synthesized Ctrl+wheel centered on the cursor | Approximate |
+| IrfanView (and anything you route to `CtrlWheel`) | Synthesized Ctrl+wheel centered on the cursor | Approximate |
 | Everything else | Ignored | — |
 
 > **Status:** early development. Smart zoom works in Chromium browsers, Firefox, Word, Excel and PDF readers;
-> Ctrl+wheel zoom with toggle-back works for the configured image apps. PowerPoint is not supported yet.
-> See [Roadmap](#roadmap).
-
-## Install
-
-Run `SmartZoom-<version>-setup.exe`. Near the end it asks how you would like to start a zoom: press the
-button or key combination you want, or click one of the four common choices — a side button, a double-click
-of the wheel, or Ctrl+Alt+Z — so it works as soon as it starts. It installs for you
-alone, into
-`%LOCALAPPDATA%\Programs\SmartZoom`, and never asks for administrator rights — SmartZoom does not need them,
-so neither does its installer. The wizard offers to start SmartZoom when you sign in, which is on by default
-because a zoom trigger that stops working at the next sign-out is not much use.
-
-The installer carries its own copy of .NET, so there is nothing to install first. That is why it is about
-50 MB for an application that is otherwise small.
-
-Uninstall from **Apps & Features** like anything else. Your settings and logs are kept unless you say
-otherwise, so reinstalling does not cost you your triggers.
-
-> The installer is not code-signed, so Windows SmartScreen will warn that the publisher is unknown. Choose
-> **More info → Run anyway**, or build it yourself: `pwsh install\build.ps1`.
+> Ctrl+wheel zoom with toggle-back works for IrfanView and anything routed to `CtrlWheel`. PowerPoint is not
+> supported yet. See [Roadmap](#roadmap).
 
 ## Requirements
 
 - Windows 10 1809+ or Windows 11, 64-bit
-- A mouse with a middle button or side (X) buttons. No vendor software is needed.
+- A spare mouse button, or a keyboard shortcut. No vendor software is needed.
 - To build it yourself: the [.NET 10 SDK](https://dotnet.microsoft.com/download), and
   [Inno Setup 6](https://jrsoftware.org/isinfo.php) for the installer. Running from source needs the .NET 10
   Desktop Runtime; the installed build carries its own.
@@ -68,6 +49,32 @@ Publish a single-file executable:
 dotnet publish src/SmartZoom.App -c Release -r win-x64
 ```
 
+## Install
+
+Releases live on the repository's **Releases** page, each with `SmartZoom-<version>-setup.exe`, a
+`SmartZoom-<version>-win-x64-framework-dependent.exe` single executable that needs the
+[.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download) already installed, and a `SHA256SUMS.txt`
+to check a download against. Until the first one is published, build the installer yourself:
+`pwsh install\build.ps1` publishes SmartZoom and packages it as `install\output\SmartZoom-<version>-setup.exe`.
+CI builds the same two files on every push, and a version tag turns them into a release
+([docs/releasing.md](docs/releasing.md)).
+
+Run the installer. Near the end it asks how you would like to start a zoom: press the button or key
+combination you want, or click one of the four common choices — either side button, a double-click of the
+wheel, or Ctrl+Alt+Z — so it works as soon as it starts. It installs for you alone, into
+`%LOCALAPPDATA%\Programs\SmartZoom`, and never asks for administrator rights — SmartZoom does not need them,
+so neither does its installer. The wizard offers to start SmartZoom when you sign in, which is on by default
+because a zoom trigger that stops working at the next sign-out is not much use.
+
+The installer carries its own copy of .NET, so there is nothing to install first. That is why it is about
+50 MB for an application that is otherwise small.
+
+Uninstall from **Apps & Features** like anything else. Your settings and logs are kept unless you say
+otherwise, so reinstalling does not cost you your triggers.
+
+> The installer is not code-signed, so Windows SmartScreen will warn that the publisher is unknown. Choose
+> **More info → Run anyway**.
+
 ## Configuration
 
 Most of this is in the settings window. The file is still there for the tuning the window leaves out, and
@@ -89,7 +96,7 @@ restart, exactly as Save does.
   ],
   "Routing": {
     // Which application gets which strategy. Only the ones you want to change:
-    // every adapter already claims the applications it was written for.
+    // every strategy already claims the applications it was written for.
     "Apps": {
       "notepad": "CtrlWheel",    // an app SmartZoom doesn't know about
       "EXCEL": "None"            // ... and one you'd rather it left alone
@@ -99,7 +106,7 @@ restart, exactly as Save does.
     "MinScale": 1.1,
     "MaxScale": 3.0,
     "Animate": true,
-    "FallbackToCtrlWheel": true,   // use Ctrl+wheel when a richer adapter can't act
+    "FallbackToCtrlWheel": true,   // use Ctrl+wheel when a richer strategy can't act
     "CtrlWheel": { "Ticks": 6, "IntervalMs": 20 },
     "Smart": {                     // shared by browsers, Word and Excel
       "MarginPx": 16,              // space between the zoomed block and the window edge
@@ -119,7 +126,7 @@ restart, exactly as Save does.
     }
   },
   "Logging": {
-    "Level": "Debug"               // Debug, Information, Warning, Error: how much reaches the log file
+    "Level": "Debug"               // Trace, Debug, Information, Warning, Error, Critical or None: how much reaches the log file
   },
   "Diagnostics": {
     "Enabled": true                // keep the local record of what didn't work; nothing is ever sent
@@ -133,7 +140,9 @@ applications with it. `Routing.Apps` is only for overriding them.
 The strategies you can name are `Browser`, `Reader`, `WordCom`, `ExcelCom`, `CtrlWheel`, and `None` to
 switch SmartZoom off for an application. To try SmartZoom on an app that isn't listed but zooms with
 Ctrl+wheel (Windows 11 Notepad, for example), give it `"CtrlWheel"`. Naming a strategy that doesn't
-exist is reported in the log and falls back to Ctrl+wheel rather than doing nothing.
+exist is reported in the log and falls back to Ctrl+wheel rather than doing nothing. (A *strategy* is the
+id you name here; the class that implements one is an *adapter*, which is what the code and the contributor
+docs call it.)
 
 Each entry in `Triggers` is either a **mouse button** (`"Mouse"`) or a **key combination** (`"Keys"`).
 All of them are active at once, so a desktop mouse button and a laptop hotkey can live in one file.
@@ -186,6 +195,9 @@ returns whatever it needs to undo it.
 - [docs/decisions.md](docs/decisions.md) explains why it works this way, including the approaches that were
   tried and abandoned.
 - [docs/measurements.md](docs/measurements.md) records what every gesture constant was measured against.
+- [docs/diagnostics-design.md](docs/diagnostics-design.md) is the design of the local diagnostics record: what
+  it keeps, what it refuses to keep, and why.
+- [docs/releasing.md](docs/releasing.md) is how a version becomes a GitHub Release.
 - [docs/testing.md](docs/testing.md) is the manual acceptance run, because automated tests cannot tell you
   whether a zoom looked right.
 
@@ -226,31 +238,32 @@ depending on which window is focused.
   trigger there does nothing.
 - The pinch in a PDF reader magnifies by a fixed amount rather than fitting the page to the window:
   readers do not say how big the page is, and the gesture is aimed, not computed. Raise or lower
-  `Zoom.Reader.Scale` to taste.
-- The second press in a PDF reader ends on the reader's own "fit page", not on whatever zoom you had
-  before. Windows' gesture recognizer keeps back a share of a closing pinch, and how much depends on
-  the zoom it starts from, so an inverse gesture alone left the reader about 2 % smaller every time
-  and compounded (measured in Acrobat at the default x2: in x1.92, out x0.512). Naming a state
-  instead of reversing a change is what makes the second press exact however many times it is
-  pressed. The view comes back within about a line of text, and the first gesture also switches
-  Acrobat into its touch mode, which widens its toolbars once and shifts the page slightly.
+  `Zoom.Reader.Magnification` to taste.
+- The second press in a PDF reader lands on the reader's own fit-page zoom rather than your previous
+  zoom; see [docs/decisions.md](docs/decisions.md) for why. The view comes back within about a line of
+  text, and the first gesture also switches Acrobat into its touch mode, which widens its toolbars once
+  and shifts the page slightly.
 - A reader that ignores touch should have `Zoom.Reader.Mode` set to `"Shortcuts"`. SmartZoom then uses the
   reader's own fit-width and fit-page shortcuts, which are exact but jump rather than animate, and
   scrolls the block under the cursor to the top first. That scroll is measured from the screen,
   because readers expose no scroll position; on a page it cannot read — a blank area, or one whose
   lines are too even to tell apart — it assumes the scroll went as asked, and the return may then be
   out by the difference.
+- A crash while SmartZoom is still starting up — before the diagnostics recorder exists — is written to the
+  log and shown in a message box, but is not recorded in `diagnostics.json`. Every crash after that point
+  is.
 
 ## Roadmap
 
-1. ✅ **M1** Tray app, mouse hook, double-tap detection, target routing diagnostics
-2. ✅ **M2** Ctrl+wheel adapter with per-window toggle state
-2½. ✅ **M2.5** Keyboard hotkeys and multiple simultaneous triggers
-3. ✅ **M3** Native smart zoom in Chromium browsers (accessibility hit-test + touch pinch)
-4. ✅ **M4** Firefox ✅, per-user installer ✅
-5. 🔧 **M5** Office and PDF readers: Word ✅, Acrobat ✅, Excel ✅, PowerPoint (unclaimed — see
-   [docs/adding-an-application.md](docs/adding-an-application.md))
-6. 🔧 **M6** Settings window ✅, live reload ✅, multi-monitor and mixed-DPI polish
+1. **M1** — done: tray app, mouse hook, double-tap detection, target routing diagnostics
+2. **M2** — done: Ctrl+wheel strategy with per-window toggle state; keyboard hotkeys and multiple
+   simultaneous triggers
+3. **M3** — done: native smart zoom in Chromium browsers (accessibility hit-test + touch pinch)
+4. **M4** — done: Firefox, per-user installer
+5. **M5** — in progress: Office and PDF readers. Word, Acrobat and Excel are done; PowerPoint is unclaimed
+   (see [docs/adding-an-application.md](docs/adding-an-application.md))
+6. **M6** — in progress: settings window and live reload are done; multi-monitor and mixed-DPI polish
+   remains
 
 ## Contributing
 

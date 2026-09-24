@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
 using SmartZoom.Core.Zoom.Office;
+using SmartZoom.Interop.Accessibility;
 using SmartZoom.Interop.Windows;
 
 using Windows.Win32;
@@ -28,8 +29,6 @@ namespace SmartZoom.Interop.Office;
 public sealed partial class ExcelAutomation(ILogger<ExcelAutomation> logger) : IExcelAutomation, IDisposable
 {
     private const string GridClass = "EXCEL7";
-    private const uint ObjIdNativeOm = 0xFFFFFFF0;
-    private static readonly Guid IidIDispatch = new("00020400-0000-0000-C000-000000000046");
 
     private readonly StaThread _sta = new("SmartZoom Excel COM");
 
@@ -50,7 +49,7 @@ public sealed partial class ExcelAutomation(ILogger<ExcelAutomation> logger) : I
 
     private ExcelWindow? Attach(HWND grid)
     {
-        var hr = AccessibleObjectFromWindow(grid, ObjIdNativeOm, in IidIDispatch, out var native);
+        var hr = OleAcc.AccessibleObjectFromWindow(grid, OleAcc.ObjIdNativeOm, in OleAcc.IidIDispatch, out var native);
         if (hr != 0 || native is null)
         {
             LogNoObjectModel(hr);
@@ -60,27 +59,11 @@ public sealed partial class ExcelAutomation(ILogger<ExcelAutomation> logger) : I
         return new ExcelWindow(native, grid, _sta);
     }
 
-    private static HWND FindGrid(TargetInfo target)
-    {
-        if (target.HitClassName == GridClass)
-            return new HWND(target.HitWindow);
-
-        // EnumChildWindows walks the whole tree, which it needs to: EXCEL7 sits under XLDESK, not under the frame.
-        var found = HWND.Null;
-        PInvoke.EnumChildWindows(new HWND(target.RootWindow), (child, _) =>
-        {
-            if (WindowInspector.GetClassName(child) != GridClass)
-                return true;
-
-            found = child;
-            return false;
-        }, default);
-
-        return found;
-    }
-
-    [DllImport("oleacc.dll", ExactSpelling = true)]
-    private static extern int AccessibleObjectFromWindow(HWND hwnd, uint dwId, in Guid riid, [MarshalAs(UnmanagedType.IDispatch)] out object? ppvObject);
+    // The search walks the whole tree, which it needs to: EXCEL7 sits under XLDESK, not under the frame.
+    private static HWND FindGrid(TargetInfo target) =>
+        target.HitClassName == GridClass
+            ? new HWND(target.HitWindow)
+            : WindowInspector.FindChildByClass(new HWND(target.RootWindow), GridClass);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Excel did not hand out its object model (0x{HResult:X8}).")]
     private partial void LogNoObjectModel(int hresult);
@@ -111,7 +94,10 @@ public sealed partial class ExcelAutomation(ILogger<ExcelAutomation> logger) : I
             if (IsBlank(cells))
                 return (ExcelFit?)null;
 
-            PInvoke.GetWindowRect(grid, out var rect);
+            // No rectangle means the grid is gone; a fit for a pane of width 0 would be nonsense.
+            if (WindowInspector.Bounds(grid) is not { } pane)
+                return (ExcelFit?)null;
+
             var row = (int)cells.Row;
             var column = (int)cells.Column;
             var rows = (int)cells.Rows.Count;
@@ -135,7 +121,7 @@ public sealed partial class ExcelAutomation(ILogger<ExcelAutomation> logger) : I
                 Reselect(selection);
             }
 
-            return new ExcelFit(fit, rect.right - rect.left, row, column, rows, columns, cursorRow);
+            return new ExcelFit(fit, pane.Width, row, column, rows, columns, cursorRow);
         });
 
         public void SetZoom(int percent) => sta.Run(() =>

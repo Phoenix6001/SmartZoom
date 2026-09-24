@@ -8,8 +8,8 @@ namespace SmartZoom.App.Tests.Settings;
 
 /// <summary>
 /// The record switch is the only control the user has over a privacy feature, and both README.md and
-/// SECURITY.md advertise it. It used to be an in-memory property on the recorder, so a user who turned
-/// recording off had it back on at the next launch.
+/// SECURITY.md advertise it. It lives in the settings file, so a user who turns recording off finds it still
+/// off at the next launch.
 /// </summary>
 public sealed class DiagnosticsSettingsTests
 {
@@ -45,13 +45,13 @@ public sealed class DiagnosticsSettingsTests
     }
 
     [Fact]
-    public void The_settings_window_edits_a_copy_that_carries_the_switch()
+    public void Clone_is_independent_of_the_settings_in_force()
     {
         var inForce = new SmartZoomSettings();
         inForce.Diagnostics.Enabled = false;
 
-        // What SettingsForm hands the Diagnostics page. Editing it must not touch what the app is running,
-        // and saving it must carry the value - that is the Save/Cancel model the other pages live in.
+        // What SettingsForm hands the Diagnostics page. Editing the copy must not touch what the app is
+        // running, and the copy must carry the value - that is the Save/Cancel model every page lives in.
         var working = SettingsStore.Clone(inForce);
         Assert.False(working.Diagnostics.Enabled);
 

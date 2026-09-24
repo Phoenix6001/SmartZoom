@@ -11,6 +11,12 @@ internal sealed class ApplicationsPage : UserControl
 {
     private const string ProcessColumn = "Process";
     private const string StrategyColumn = "Strategy";
+    private const string SourceColumn = "Source";
+    private const string UserSource = "Yours";
+    private const string BuiltInSource = "Built in";
+
+    /// <summary>Shown instead of <see cref="AdapterId.None"/>.</summary>
+    private const string NotHandled = "Not handled";
 
     private readonly IDictionary<string, AdapterId> _model;
     private readonly IReadOnlyList<AdapterDescriptor> _adapters;
@@ -89,8 +95,8 @@ internal sealed class ApplicationsPage : UserControl
 
         _grid.Columns.Add(new DataGridViewTextBoxColumn
         {
-            Name = "Source",
-            HeaderText = "",
+            Name = SourceColumn,
+            HeaderText = "Source",
             ReadOnly = true,
             FillWeight = 30,
         });
@@ -121,12 +127,9 @@ internal sealed class ApplicationsPage : UserControl
         return layout;
     }
 
-    /// <summary>"None" reads better than the id in a list of things that handle an application.</summary>
-    private static string NotHandled => "Not handled";
-
     private void Add()
     {
-        var row = _grid.Rows[_grid.Rows.Add("", _adapters[0].DisplayName, "yours")];
+        var row = _grid.Rows[_grid.Rows.Add("", _adapters[0].DisplayName, UserSource)];
         row.Cells[ProcessColumn].Selected = true;
         _grid.BeginEdit(selectAll: true);
     }
@@ -176,7 +179,7 @@ internal sealed class ApplicationsPage : UserControl
             var name = _adapters.FirstOrDefault(a => a.Id == id)?.DisplayName
                 ?? (id == AdapterId.None ? NotHandled : id.Value);
 
-            _grid.Rows.Add(process, name, "yours");
+            _grid.Rows.Add(process, name, UserSource);
         }
 
         // Then what the adapters claim on their own, so the defaults are visible without being editable: an
@@ -188,7 +191,7 @@ internal sealed class ApplicationsPage : UserControl
                 if (_model.ContainsKey(process))
                     continue;
 
-                var row = _grid.Rows[_grid.Rows.Add(process, adapter.DisplayName, "built in")];
+                var row = _grid.Rows[_grid.Rows.Add(process, adapter.DisplayName, BuiltInSource)];
                 row.ReadOnly = true;
                 row.DefaultCellStyle.ForeColor = SystemColors.GrayText;
 

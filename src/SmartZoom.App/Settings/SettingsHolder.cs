@@ -4,8 +4,7 @@ namespace SmartZoom.App.Settings;
 
 /// <summary>
 /// The settings the app is currently running on. One object, one owner, so nothing can hold a stale copy and
-/// write it back over the file — which is exactly what the tray used to do the moment anything else changed
-/// the settings.
+/// write it back over the file.
 /// </summary>
 /// <remarks>
 /// Everything that needs settings either takes a snapshot when it is built (adapters, the router) or reads

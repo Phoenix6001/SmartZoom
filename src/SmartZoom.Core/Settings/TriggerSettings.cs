@@ -50,8 +50,4 @@ public sealed class TriggerSettings
             _ => throw new InvalidOperationException("A trigger can't have both \"Mouse\" and \"Keys\"; use two triggers."),
         };
     }
-
-    /// <summary>Whether nothing here has been changed from its default.</summary>
-    internal bool IsDefault() =>
-        Mouse == MouseButton.XButton2 && Keys is null && TapCount == 2 && DoubleTapWindowMs is null && !SwallowClicks;
 }

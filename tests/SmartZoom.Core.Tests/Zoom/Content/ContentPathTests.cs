@@ -13,7 +13,7 @@ public sealed class ContentPathTests
         new ContentNode(ContentRole.Document, PixelRect.FromSize(0, 0, 3832, 2074)),
     ];
 
-    public sealed class Shape
+    public sealed class The_shape
     {
         [Fact]
         public void Never_contains_a_coordinate()
@@ -67,7 +67,7 @@ public sealed class ContentPathTests
         }
     }
 
-    public sealed class Describe
+    public sealed class The_description
     {
         // Contrast with Shape: this form is for the log file only, and IS allowed to carry a position.
         // Recorded here so a change that quietly made Shape and Describe identical (removing the privacy

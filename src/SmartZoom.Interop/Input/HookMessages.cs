@@ -1,38 +1,25 @@
 using SmartZoom.Core.Input;
 
+using Windows.Win32;
+using Windows.Win32.UI.WindowsAndMessaging;
+
 namespace SmartZoom.Interop.Input;
 
 /// <summary>
-/// The Win32 vocabulary of the low-level hooks: the messages they receive, the flags that mark injected
-/// input, and the one translation between a message and a <see cref="MouseButton"/>.
+/// The two translations the low-level hooks make — a keyboard message into a key transition, a mouse message
+/// into the <see cref="MouseButton"/> it concerns — and the flag masks that mark injected input.
 /// </summary>
 /// <remarks>
 /// Kept apart from the hook itself so that what is left there is the concurrency design — the hook thread,
 /// its callbacks, the channels and the timer — with nothing in between.
 /// </remarks>
-internal static class MouseMessages
+internal static class HookMessages
 {
-    /// <summary>The hook may only act when the code is this; anything else must be passed straight on.</summary>
-    public const int HcAction = 0;
+    /// <summary>Set on a mouse event that was injected, at this integrity level or a lower one.</summary>
+    public const uint MouseInjectedMask = PInvoke.LLMHF_INJECTED | PInvoke.LLMHF_LOWER_IL_INJECTED;
 
-    public const uint WmQuit = 0x0012;
-    public const uint WmKeyDown = 0x0100;
-    public const uint WmKeyUp = 0x0101;
-    public const uint WmSysKeyDown = 0x0104;
-    public const uint WmSysKeyUp = 0x0105;
-    public const uint WmMButtonDown = 0x0207;
-    public const uint WmMButtonUp = 0x0208;
-    public const uint WmXButtonDown = 0x020B;
-    public const uint WmXButtonUp = 0x020C;
-
-    /// <summary>LLMHF_INJECTED | LLMHF_LOWER_IL_INJECTED.</summary>
-    public const uint MouseInjectedMask = 0x3;
-
-    /// <summary>LLKHF_INJECTED | LLKHF_LOWER_IL_INJECTED.</summary>
-    public const uint KeyboardInjectedMask = 0x12;
-
-    private const ushort XButton1 = 0x0001;
-    private const ushort XButton2 = 0x0002;
+    /// <summary>Set on a keyboard event that was injected, at this integrity level or a lower one.</summary>
+    public const KBDLLHOOKSTRUCT_FLAGS KeyboardInjectedMask = KBDLLHOOKSTRUCT_FLAGS.LLKHF_INJECTED | KBDLLHOOKSTRUCT_FLAGS.LLKHF_LOWER_IL_INJECTED;
 
     /// <summary>Whether a message is a key press or release, and which.</summary>
     /// <param name="message">The hook's wParam.</param>
@@ -40,8 +27,8 @@ internal static class MouseMessages
     /// <returns>False for anything that is not a key transition.</returns>
     public static bool IsKeyTransition(uint message, out bool isDown)
     {
-        isDown = message is WmKeyDown or WmSysKeyDown;
-        return isDown || message is WmKeyUp or WmSysKeyUp;
+        isDown = message is PInvoke.WM_KEYDOWN or PInvoke.WM_SYSKEYDOWN;
+        return isDown || message is PInvoke.WM_KEYUP or PInvoke.WM_SYSKEYUP;
     }
 
     /// <summary>Translates a mouse message into the button it concerns.</summary>
@@ -54,20 +41,20 @@ internal static class MouseMessages
     {
         switch (message)
         {
-            case WmMButtonDown or WmMButtonUp:
+            case PInvoke.WM_MBUTTONDOWN or PInvoke.WM_MBUTTONUP:
                 button = MouseButton.Middle;
-                isDown = message == WmMButtonDown;
+                isDown = message == PInvoke.WM_MBUTTONDOWN;
                 return true;
 
-            case WmXButtonDown or WmXButtonUp:
+            case PInvoke.WM_XBUTTONDOWN or PInvoke.WM_XBUTTONUP:
                 // For X buttons the high word of mouseData identifies which one.
                 button = (ushort)(mouseData >> 16) switch
                 {
-                    XButton1 => MouseButton.XButton1,
-                    XButton2 => MouseButton.XButton2,
+                    PInvoke.XBUTTON1 => MouseButton.XButton1,
+                    PInvoke.XBUTTON2 => MouseButton.XButton2,
                     _ => MouseButton.None,
                 };
-                isDown = message == WmXButtonDown;
+                isDown = message == PInvoke.WM_XBUTTONDOWN;
                 return button != MouseButton.None;
 
             default:

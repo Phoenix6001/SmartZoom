@@ -1,14 +1,12 @@
-using Microsoft.Extensions.Logging.Abstractions;
-
 using SmartZoom.App.Diagnostics;
 
 namespace SmartZoom.App.Tests.Diagnostics;
 
 /// <summary>
 /// SECURITY.md promises that <c>diagnostics.json</c> itself — not merely the report rendered from it —
-/// holds no username. Redacting only at render time satisfied every earlier test while leaving the file on
-/// disk carrying the profile path out of an <see cref="IOException"/>, which is exactly the file users are
-/// invited to attach to an issue. These tests assert against the bytes that reach the disk.
+/// holds no username. Redaction at render time alone would leave the file on disk carrying the profile
+/// path out of an <see cref="IOException"/>, which is exactly the file users are invited to attach to an
+/// issue. These tests assert against the bytes that reach the disk.
 /// </summary>
 public sealed class RecordTimeRedactionTests
 {
@@ -46,11 +44,8 @@ public sealed class RecordTimeRedactionTests
         public void Does_not_contain_the_user_profile_path()
         {
             using var temp = new TempDirectory();
-            var paths = new AppPaths(SettingsDirectory: temp.Path, LogDirectory: Path.Combine(temp.Path, "logs"));
-            var recorder = new DiagnosticRecorder(
-                new DiagnosticStore(paths, NullLogger<DiagnosticStore>.Instance),
-                TimeProvider.System,
-                version: "0.1.0-test");
+            var paths = DiagnosticFixtures.Paths(temp.Path);
+            var recorder = DiagnosticFixtures.CreateRecorder(temp.Path);
 
             var failing = Path.Combine(RoamingAppData, "SmartZoom", "settings.json");
             Crash.Record(recorder, new IOException($"Could not write '{failing}'."));

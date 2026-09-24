@@ -44,9 +44,36 @@ touches the tree through UI Automation.
 offset into every rectangle when it serializes the tree, and keeps them until the page next scrolls. SmartZoom
 detects a document rectangle that is a uniformly enlarged copy of the window and translates back.
 
+**The zoom is the first gesture; nothing precedes it.** A pinch-out below 1.0 is clamped by every browser, but
+Edge draws it first: frame capture of the same block, scale and anchor put Edge's trajectory at 1.000 → 0.968 and
+then a rebound before the requested zoom began, on every press, where Brave showed no dip at all. With no
+preparatory gesture Edge's curve matches Brave's frame for frame. What that gives up is resetting a page left
+visually zoomed by something else while a block still qualifies; because every zoom-out overshoots past 1.0,
+such a page walks back to its resting pixels within about three presses, and a page whose accessibility
+rectangles no longer agree with the screen (so that no block qualifies) is reset on the first, by the
+no-block path.
+
 **Firefox needs a different injection device.** Gecko converts two-finger input from the ordinary touch
 injection device into a touchpad pan gesture, so a symmetric pinch does nothing at all. Injecting through a
 synthetic pointer device registers under a different name and reaches the zoom engine normally.
+
+**Only the outermost document is the page.** A page built out of iframes — a news site's embedded cards and
+advertisements — has a document at every frame. Stopping at the first one met walking outward makes a 656 px
+frame "the viewport", hides every real container above it, and rejects a paragraph that fills its little frame
+for being wider than 90 % of the page. The walk climbs to the outermost document and treats the frames below
+it as containers like any other.
+
+**A generic container is a block.** Chromium reports a plain `div` as `ROLE_SYSTEM_PANE`. Left unmapped, every
+node under the cursor on a page laid out with `div`s is "unknown", the selector rejects them all, and the
+press does nothing. Panes map to the same block role as groupings; the selector still prefers the nearest
+qualifying node leaf-first, so a paragraph wins over its parent.
+
+**One gesture frame per display refresh.** A fixed 8 ms frame on a 59 Hz panel is two touch updates per
+refresh, a third of them late, because a thread cannot reliably be woken that often; which of the two samples
+a browser consumes then varies by browser, and one of them judders. The frame period is the refresh period of
+the monitor under the anchor, clamped to 8–20 ms, and every frame lands in its slot. Pacing an instant gesture
+faster than the display was measured and rejected: the browser coalesces closely spaced events into one
+larger visible jump.
 
 ## Documents
 
@@ -58,7 +85,7 @@ documents the cursor is over.
 **Excel computes its own fit.** Asking Excel to zoom to a selection and reading the percentage back is more
 reliable than computing it: its point-to-pixel conversion ignores the zoom level, and its reported pane width
 includes the row headers, so a hand-rolled fit clipped the last column. The measurement applies the zoom as a
-side effect, which the method name and return type now admit.
+side effect, which the method name and return type admit.
 
 **Word is zoomed in steps, not by gesture.** Driving Word's zoom with a touch pinch looks smoother, because
 Word renders a live preview, but Word commits the result asynchronously and overwrites the exact value set
@@ -86,6 +113,17 @@ rather than let the fallback run.
 SmartZoom waits up to a second and a half for the user to let go of the trigger's modifiers. If the foreground
 moves during that wait the press is abandoned, because these shortcuts are destructive elsewhere — Ctrl+0
 hides the selected column in Excel.
+
+**The installer asks for the trigger through SmartZoom's own recorder.** A setup script cannot see a mouse's
+side buttons — Inno Setup knows only left, right and middle — so a list of presets on a wizard page could never
+offer "the button behind the wheel". The recorder can, and it offers the common choices as buttons too. It
+opens pre-filled with the current trigger, so reinstalling is "confirm or change", and Cancel writes nothing.
+
+**Smoothness is judged by ink spread, not pixel difference.** The percentage of differing pixels saturates
+on text once a frame moves more than a character width, and template matching loses its lock once content
+triples in size; both make a smooth zoom look ragged and a ragged one look smooth. The mean distance of dark
+pixels from their centroid scales linearly with magnification and never saturates, which is what
+`smartzoom-probe track` measures.
 
 **Quality gates are part of the work, not a cleanup pass.** Warnings are errors, analyzers run at
 `latest-recommended`, public members carry XML documentation, package versions are central, and CI builds,

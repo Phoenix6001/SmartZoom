@@ -15,17 +15,38 @@ namespace SmartZoom.App.Hosting;
 /// consistent, and cancelling it would be worse than waiting — a reader zoom that is abandoned mid-way leaves
 /// the reader in the foreground, on top of everything the user was looking at.
 /// </remarks>
-internal sealed partial class ZoomEngine(ZoomPipeline initial, WindowZoomStateStore state, ILogger<ZoomEngine> logger) : IDisposable
+internal sealed partial class ZoomEngine : IDisposable
 {
     /// <summary>
     /// How long a replacement waits for a zoom in flight. A gesture is about 330 ms and a reader shortcut can
     /// wait up to 1.5 s for the user to let go of a hotkey's modifiers, so three seconds is a zoom that is not
     /// coming back.
     /// </summary>
-    private static readonly TimeSpan ReplaceTimeout = TimeSpan.FromSeconds(3);
+    internal static readonly TimeSpan ReplaceTimeout = TimeSpan.FromSeconds(3);
 
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private ZoomPipeline _current = initial;
+    private readonly WindowZoomStateStore _state;
+    private readonly TimeSpan _replaceTimeout;
+    private readonly ILogger<ZoomEngine> _logger;
+    private ZoomPipeline _current;
+
+    /// <summary>Creates the engine over the first pipeline.</summary>
+    /// <param name="initial">The pipeline in force until the first replacement.</param>
+    /// <param name="state">The remembered zooms, shared by every pipeline.</param>
+    /// <param name="logger">Logger.</param>
+    public ZoomEngine(ZoomPipeline initial, WindowZoomStateStore state, ILogger<ZoomEngine> logger)
+        : this(initial, state, logger, ReplaceTimeout)
+    {
+    }
+
+    /// <summary>Lets a test shorten how long a replacement waits for a zoom in flight.</summary>
+    internal ZoomEngine(ZoomPipeline initial, WindowZoomStateStore state, ILogger<ZoomEngine> logger, TimeSpan replaceTimeout)
+    {
+        _current = initial ?? throw new ArgumentNullException(nameof(initial));
+        _state = state ?? throw new ArgumentNullException(nameof(state));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _replaceTimeout = replaceTimeout;
+    }
 
     /// <summary>The pipeline in force. Its router is also where the UI gets the list of strategies.</summary>
     public ZoomPipeline Current => Volatile.Read(ref _current);
@@ -59,7 +80,7 @@ internal sealed partial class ZoomEngine(ZoomPipeline initial, WindowZoomStateSt
 
         // Taking the gate matters for the invalidation below, not the swap: a zoom finishing afterwards would
         // otherwise save its restore state back in after the entries had been cleared.
-        var held = await _gate.WaitAsync(ReplaceTimeout).ConfigureAwait(false);
+        var held = await _gate.WaitAsync(_replaceTimeout).ConfigureAwait(false);
         try
         {
             var previous = Current;
@@ -76,7 +97,7 @@ internal sealed partial class ZoomEngine(ZoomPipeline initial, WindowZoomStateSt
 
             foreach (var obsolete in pipeline.ObsoletedBy(previous))
             {
-                var forgotten = state.RemoveAll(obsolete);
+                var forgotten = _state.RemoveAll(obsolete);
                 if (forgotten > 0)
                     LogForgot(forgotten, obsolete);
             }
@@ -96,6 +117,6 @@ internal sealed partial class ZoomEngine(ZoomPipeline initial, WindowZoomStateSt
     [LoggerMessage(Level = LogLevel.Warning, Message = "Settings were applied while a zoom was still running; windows zoomed by a strategy that has changed will zoom in again rather than come back.")]
     private partial void LogReplacedWhileBusy();
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "{Count} window(s) zoomed by \"{Adapter}\" were forgotten: the new settings changed what that strategy is, so those zooms can no longer be undone from here.")]
+    [LoggerMessage(Level = LogLevel.Information, Message = "{Count} window(s) zoomed by \"{Adapter}\" were forgotten: the new settings changed what that strategy is, so those zooms cannot be undone from here.")]
     private partial void LogForgot(int count, AdapterId adapter);
 }

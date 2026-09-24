@@ -28,7 +28,7 @@ internal sealed class SettingsForm : Form
         Dock = DockStyle.Fill,
         AutoSize = false,
         Height = 44,
-        ForeColor = Color.FromArgb(0xB0, 0x30, 0x20),
+        ForeColor = Palette.ErrorText,
         Name = "Problems",
     };
 
@@ -40,6 +40,7 @@ internal sealed class SettingsForm : Form
     /// <param name="holder">Where the settings in force live; only read.</param>
     /// <param name="engine">Supplies the strategies the applications page offers.</param>
     /// <param name="triggers">Silenced while a trigger is being recorded.</param>
+    /// <param name="systemInput">Supplies the system double-click time the triggers page shows as the default window.</param>
     /// <param name="paths">For the "open the file" escape hatch.</param>
     /// <param name="recorder">What has gone wrong so far, shown on the Diagnostics tab.</param>
     /// <param name="facts">What this machine is, shown on the Diagnostics tab.</param>
@@ -49,6 +50,7 @@ internal sealed class SettingsForm : Form
         SettingsHolder holder,
         ZoomEngine engine,
         ITriggerSource triggers,
+        ISystemInput systemInput,
         AppPaths paths,
         DiagnosticRecorder recorder,
         IMachineFacts facts,
@@ -56,6 +58,7 @@ internal sealed class SettingsForm : Form
     {
         ArgumentNullException.ThrowIfNull(holder);
         ArgumentNullException.ThrowIfNull(engine);
+        ArgumentNullException.ThrowIfNull(systemInput);
 
         _applier = applier;
         _paths = paths;
@@ -73,7 +76,7 @@ internal sealed class SettingsForm : Form
         _zoom = new ZoomPage(_working, OpenSettingsFile);
         _diagnostics = new DiagnosticsPage(recorder, _working.Diagnostics, facts, paths);
 
-        _tabs.TabPages.Add(Page("Triggers", new TriggersPage(_working.Triggers, triggers, SystemInput.DoubleClickTimeMs)));
+        _tabs.TabPages.Add(Page("Triggers", new TriggersPage(_working.Triggers, triggers, systemInput.DoubleClickTimeMs)));
         _tabs.TabPages.Add(Page("Applications", new ApplicationsPage(_working.Routing.Apps, engine.Current.Router.Adapters)));
         _tabs.TabPages.Add(Page("Zoom", _zoom));
         _tabs.TabPages.Add(Page("Diagnostics", _diagnostics));
@@ -91,10 +94,8 @@ internal sealed class SettingsForm : Form
     /// <summary>Brings one tab to the front of an already-open window.</summary>
     /// <param name="tab">The tab to show.</param>
     /// <remarks>
-    /// The Diagnostics tab is re-rendered on the way in. Its report is a snapshot built when the page was
-    /// created, so the press the user is asking about - the one they made a moment ago, which did nothing -
-    /// would not be in it otherwise. That is the exact sequence the tray's "Diagnostic report…" item is used
-    /// in, and before this the item did nothing at all when the window was already open.
+    /// The Diagnostics tab is re-rendered on the way in: its report is a snapshot, and the press the user is
+    /// asking about is the one they made a moment ago.
     /// </remarks>
     public void ShowTab(SettingsTab tab)
     {
@@ -166,7 +167,7 @@ internal sealed class SettingsForm : Form
         _problems.Text = result.Problems.Count == 0
             ? string.Empty
             : string.Join(Environment.NewLine, result.Problems.Select(p => p.ToString()));
-        _problems.ForeColor = result.InForce ? SystemColors.GrayText : Color.FromArgb(0xB0, 0x30, 0x20);
+        _problems.ForeColor = result.InForce ? SystemColors.GrayText : Palette.ErrorText;
     }
 
     private void OpenSettingsFile()

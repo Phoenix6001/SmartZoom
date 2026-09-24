@@ -1,4 +1,4 @@
-﻿using SmartZoom.Core.Zoom.Content;
+using SmartZoom.Core.Zoom.Content;
 
 namespace SmartZoom.Core.Tests.Zoom.Content;
 

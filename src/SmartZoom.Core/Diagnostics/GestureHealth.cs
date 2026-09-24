@@ -17,7 +17,7 @@ public sealed class GestureHealth
 
     /// <summary>Creates an independent copy of <paramref name="source"/>.</summary>
     /// <param name="source">The tally to copy.</param>
-    /// <remarks>Used to build a point-in-time snapshot that cannot be affected by later mutation of the original.</remarks>
+    /// <remarks>Builds a point-in-time snapshot that cannot be affected by later mutation of the original.</remarks>
     public GestureHealth(GestureHealth source)
     {
         ArgumentNullException.ThrowIfNull(source);

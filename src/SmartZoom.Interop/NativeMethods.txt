@@ -60,3 +60,27 @@ EnumDisplayDevices
 DISPLAY_DEVICEW
 GetDpiForMonitor
 MonitorFromPoint
+
+// Hook vocabulary (both low-level hooks)
+HC_ACTION
+WM_QUIT
+WM_KEYDOWN
+WM_KEYUP
+WM_SYSKEYDOWN
+WM_SYSKEYUP
+WM_MBUTTONDOWN
+WM_MBUTTONUP
+WM_XBUTTONDOWN
+WM_XBUTTONUP
+KBDLLHOOKSTRUCT_FLAGS
+LLMHF_INJECTED
+LLMHF_LOWER_IL_INJECTED
+XBUTTON1
+XBUTTON2
+
+// Accessible objects (MSAA roots, Office object model); the call itself is hand-written in OleAcc
+OBJECT_IDENTIFIER
+
+// Refresh rate of the monitor under a point
+GetMonitorInfo
+MONITORINFOEXW

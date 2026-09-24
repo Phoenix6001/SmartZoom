@@ -6,6 +6,7 @@ using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
 using SmartZoom.Core.Zoom.Content;
 using SmartZoom.Core.Zoom.Office;
+using SmartZoom.Interop.Accessibility;
 using SmartZoom.Interop.Windows;
 
 using Windows.Win32;
@@ -29,10 +30,8 @@ namespace SmartZoom.Interop.Office;
 public sealed partial class WordAutomation(ILogger<WordAutomation> logger) : IWordAutomation, IDisposable
 {
     private const string DocumentPaneClass = "_WwG";
-    private const uint ObjIdNativeOm = 0xFFFFFFF0;
-    private static readonly Guid IidIDispatch = new("00020400-0000-0000-C000-000000000046");
 
-    private readonly StaThread _sta = new("SmartZoom Office COM");
+    private readonly StaThread _sta = new("SmartZoom Word COM");
 
     /// <inheritdoc />
     public async Task<IWordWindow?> AttachAsync(TargetInfo target, CancellationToken cancellationToken)
@@ -51,54 +50,43 @@ public sealed partial class WordAutomation(ILogger<WordAutomation> logger) : IWo
 
     private WordWindow? Attach(HWND pane)
     {
-        var hr = AccessibleObjectFromWindow(pane, ObjIdNativeOm, in IidIDispatch, out var native);
+        var hr = OleAcc.AccessibleObjectFromWindow(pane, OleAcc.ObjIdNativeOm, in OleAcc.IidIDispatch, out var native);
         if (hr != 0 || native is null)
         {
             LogNoObjectModel(hr);
             return null;
         }
 
-        return new WordWindow(native, pane, _sta);
+        return new WordWindow(native, pane, _sta, this);
     }
 
-    private static HWND FindDocumentPane(TargetInfo target)
-    {
-        if (target.HitClassName == DocumentPaneClass)
-            return new HWND(target.HitWindow);
-
-        var found = HWND.Null;
-        PInvoke.EnumChildWindows(new HWND(target.RootWindow), (child, _) =>
-        {
-            if (WindowInspector.GetClassName(child) == DocumentPaneClass)
-            {
-                found = child;
-                return false;
-            }
-
-            return true;
-        }, default);
-
-        return found;
-    }
-
-    [DllImport("oleacc.dll", ExactSpelling = true)]
-    private static extern int AccessibleObjectFromWindow(HWND hwnd, uint dwId, in Guid riid, [MarshalAs(UnmanagedType.IDispatch)] out object? ppvObject);
+    private static HWND FindDocumentPane(TargetInfo target) =>
+        target.HitClassName == DocumentPaneClass
+            ? new HWND(target.HitWindow)
+            : WindowInspector.FindChildByClass(new HWND(target.RootWindow), DocumentPaneClass);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Word did not hand out its object model (0x{HResult:X8}).")]
     private partial void LogNoObjectModel(int hresult);
 
+    [LoggerMessage(Level = LogLevel.Debug, Message = "The Word document pane has no rectangle any more; reporting an empty viewport.")]
+    private partial void LogNoViewport();
+
     /// <summary>One attached Word <c>Window</c>. Every member marshals to the STA thread.</summary>
-    private sealed class WordWindow(object window, HWND pane, StaThread sta) : IWordWindow
+    private sealed class WordWindow(object window, HWND pane, StaThread sta, WordAutomation owner) : IWordWindow
     {
-        // Word constants (WdUnits etc.) are plain integers in the object model.
-        private const int WdParagraph = 4;
+        // Word constants (WdInformation etc.) are plain integers in the object model.
+        private const int WdWithInTable = 12;
 
         public PixelRect Viewport
         {
             get
             {
-                PInvoke.GetWindowRect(pane, out var rect);
-                return new PixelRect(rect.left, rect.top, rect.right, rect.bottom);
+                if (WindowInspector.Bounds(pane) is { } bounds)
+                    return bounds;
+
+                // The pane is gone (the document closed under the cursor); an empty viewport says so.
+                owner.LogNoViewport();
+                return default;
             }
         }
 
@@ -117,7 +105,7 @@ public sealed partial class WordAutomation(ILogger<WordAutomation> logger) : IWo
 
             // A picture or table is the reading unit; otherwise the paragraph the point falls in.
             dynamic block = range.InlineShapes.Count > 0 ? range.InlineShapes[1].Range
-                : range.Information[12] /* wdWithInTable */ ? range.Tables[1].Range
+                : range.Information[WdWithInTable] ? range.Tables[1].Range
                 : range.Paragraphs[1].Range;
 
             int left, top, width, height;
@@ -152,8 +140,10 @@ public sealed partial class WordAutomation(ILogger<WordAutomation> logger) : IWo
 
         public void Dispose() => sta.Run(() =>
         {
+            // One release for the one reference this object took; the runtime may be sharing the wrapper with
+            // another caller, and FinalReleaseComObject would pull it out from under them.
             if (Marshal.IsComObject(window))
-                Marshal.FinalReleaseComObject(window);
+                Marshal.ReleaseComObject(window);
         });
     }
 }

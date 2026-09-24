@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 using SmartZoom.Core.Routing;
 
 namespace SmartZoom.Core.Settings;
@@ -15,6 +17,11 @@ public sealed class RoutingSettings
     /// setting <c>"None"</c> to switch SmartZoom off there. Entries here win over the defaults, and because
     /// the defaults live in the code, upgrading SmartZoom brings new applications with it instead of
     /// leaving them out of an old settings file.
+    ///
+    /// A file is read <em>into</em> this dictionary rather than replacing it, so the case-insensitive comparer
+    /// survives a load: <c>"chrome"</c> and <c>"Chrome"</c> in a file are one entry, and a lookup by process
+    /// name matches whatever case the user typed.
     /// </remarks>
-    public IDictionary<string, AdapterId> Apps { get; set; } = new Dictionary<string, AdapterId>(StringComparer.OrdinalIgnoreCase);
+    [JsonObjectCreationHandling(JsonObjectCreationHandling.Populate)]
+    public IDictionary<string, AdapterId> Apps { get; init; } = new Dictionary<string, AdapterId>(StringComparer.OrdinalIgnoreCase);
 }

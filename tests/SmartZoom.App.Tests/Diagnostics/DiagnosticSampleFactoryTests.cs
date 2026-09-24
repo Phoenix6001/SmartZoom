@@ -10,12 +10,12 @@ using SmartZoom.Core.Zoom.Content;
 namespace SmartZoom.App.Tests.Diagnostics;
 
 /// <summary>
-/// The privacy contract, tested where the guarantee actually lives. A prior attempt tested it against
-/// <see cref="Core.Diagnostics.DiagnosticKey"/> and <see cref="Core.Diagnostics.DiagnosticSample"/> directly
-/// and could not fail: neither type has a field for a window title, a URL, or a coordinate, so there was
-/// nothing a regression could add data to. The guarantee lives in the code that builds a sample from live
-/// zoom data — here, a real <see cref="BrowserAdapter"/> reading a real accessibility path with absolute
-/// screen coordinates, through the real <see cref="ZoomCoordinator"/>, into <see cref="DiagnosticSampleFactory"/>.
+/// The privacy contract, tested where the guarantee actually lives. Tested against
+/// <see cref="Core.Diagnostics.DiagnosticKey"/> and <see cref="Core.Diagnostics.DiagnosticSample"/> directly it
+/// cannot fail: neither type has a field for a window title, a URL, or a coordinate, so there is nothing a
+/// regression could add data to. The guarantee lives in the code that builds a sample from live zoom data —
+/// here, a real <see cref="BrowserAdapter"/> reading a real accessibility path with absolute screen
+/// coordinates, through the real <see cref="ZoomCoordinator"/>, into <see cref="DiagnosticSampleFactory"/>.
 /// </summary>
 public sealed class DiagnosticSampleFactoryTests
 {
@@ -92,8 +92,8 @@ public sealed class DiagnosticSampleFactoryTests
 
         var (key, sample) = DiagnosticSampleFactory.ForZoomedNothing(outcome, DateTimeOffset.UnixEpoch);
 
-        // The "What happened" column used to mix a ZoomReason with a ZoomAction, so every Reader and
-        // Ctrl+wheel no-op read "ZoomedNothing/Unhandled" - the least informative label available.
+        // The reason, never the action: "Unhandled" is the least informative label available for a Reader
+        // or Ctrl+wheel no-op, and it is a ZoomAction, not a ZoomReason.
         Assert.Equal("AdapterCouldNotAct", key.Reason);
         Assert.Null(sample);
     }

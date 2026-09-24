@@ -98,11 +98,8 @@ internal sealed partial class TriggerDispatcher(
     }
 
     /// <summary>
-    /// Runs a diagnostics recording action, swallowing anything it throws. Diagnostics never participates in
-    /// control flow: every call site above that records something routes through here rather than its own
-    /// try/catch, because one of those sites already sits inside DispatchAsync's exception handler — a throw
-    /// there has nothing further wrapping it and would escape ExecuteAsync's await foreach outright, ending
-    /// the dispatcher (and every future trigger) along with it.
+    /// Runs a diagnostics recording action and swallows anything it throws, so that a failure to record can
+    /// never end the dispatcher.
     /// </summary>
     /// <param name="record">The recording to attempt.</param>
     private void RecordSafely(Action record)

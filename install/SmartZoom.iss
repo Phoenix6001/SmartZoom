@@ -28,6 +28,7 @@ AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
 AppPublisher={#AppPublisher}
+AppComments=Bringing macOS's smart zoom to Windows
 VersionInfoVersion={#AppVersion}
 
 ; "lowest" is what keeps the whole thing UAC-free; {autopf} then means %LOCALAPPDATA%\Programs.
@@ -125,10 +126,6 @@ begin
   StopSmartZoom();
   Result := '';
 end;
-
-{ On an upgrade there is already a settings file with the user's own triggers in it, so "change nothing" is
-  the right default; on a first install there is nothing to keep. }
-
 
 function InitializeUninstall(): Boolean;
 begin

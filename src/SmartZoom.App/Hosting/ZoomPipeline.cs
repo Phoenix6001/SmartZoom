@@ -16,7 +16,7 @@ internal sealed record ZoomPipeline(
     ZoomRouter Router,
     IReadOnlyDictionary<AdapterId, Type> RestoreTypes)
 {
-    /// <summary>The ids whose restore state this generation can no longer make sense of.</summary>
+    /// <summary>The ids whose restore state from <paramref name="previous"/> this generation cannot use.</summary>
     /// <param name="previous">The generation being replaced.</param>
     public IEnumerable<AdapterId> ObsoletedBy(ZoomPipeline previous)
     {

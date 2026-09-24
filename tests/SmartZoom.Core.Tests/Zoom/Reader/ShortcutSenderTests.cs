@@ -1,4 +1,7 @@
+using System.Diagnostics;
+
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Zoom.Reader;
@@ -15,12 +18,27 @@ public sealed class ShortcutSenderTests
 
     private readonly FakeInputInjector _injector = new();
     private readonly FakeActivator _activator = new();
+    private readonly FakeTimeProvider _time = new();
 
     private ShortcutSender Create(TimeSpan? modifierTimeout = null) =>
-        new(_injector, _activator, TimeProvider.System, NullLogger<ShortcutSender>.Instance, modifierTimeout ?? ShortcutSender.ModifierReleaseTimeout);
+        new(_injector, _activator, _time, NullLogger<ShortcutSender>.Instance, modifierTimeout ?? ShortcutSender.ModifierReleaseTimeout);
 
-    private Task<bool> SendAsync(Action? prepare = null, Action? finish = null, TimeSpan? modifierTimeout = null) =>
-        Create(modifierTimeout).SendAsync(Reader.Acrobat, FitWidth, prepare, finish, CancellationToken.None);
+    /// <summary>Runs a send to completion, stepping the fake clock through every wait the sender makes.</summary>
+    private async Task<bool> SendAsync(Action? prepare = null, Action? finish = null, TimeSpan? modifierTimeout = null)
+    {
+        var send = Create(modifierTimeout).SendAsync(Reader.Acrobat, FitWidth, prepare, finish, CancellationToken.None);
+        var patience = Stopwatch.StartNew();
+        while (!send.IsCompleted)
+        {
+            // The sender's continuations run on the pool; give them real time, bounded by the wall clock rather than
+            // by a step count, so a loaded test run cannot starve them into a false failure.
+            Assert.True(patience.Elapsed < TimeSpan.FromSeconds(10), "the send did not complete");
+            _time.Advance(TimeSpan.FromMilliseconds(10));
+            await Task.WhenAny(send, Task.Delay(1));
+        }
+
+        return await send;
+    }
 
     [Fact]
     public async Task The_target_is_focused_and_the_shortcut_is_sent()
@@ -100,6 +118,20 @@ public sealed class ShortcutSenderTests
 
         Assert.False(await SendAsync());
         Assert.Empty(_injector.Log);
+    }
+
+    [Fact]
+    public async Task A_window_the_user_moved_to_while_we_waited_is_left_in_front()
+    {
+        // The foreground is only put back while the reader still holds it; a third window in front is the
+        // user's own doing, and taking it away from them would be the rearrangement this exists to avoid.
+        _activator.ForegroundWindow = 0x111;
+        _activator.StealForegroundAfterActivating = 0x999;
+
+        Assert.False(await SendAsync());
+
+        Assert.Equal([0x300L], _activator.Activated);
+        Assert.Equal(0x999, _activator.ForegroundWindow);
     }
 
     [Fact]

@@ -62,61 +62,58 @@ internal static class TriggerCommand
         // No host and no tray here: this is a dialog and an exit. Per-Monitor V2 comes from the csproj.
         ApplicationConfiguration.Initialize();
 
-        // Nothing is running to silence: the installer stopped any previous copy before it got this far.
-        using var recorder = new TriggerRecorderDialog(triggers: null, SystemInput.DoubleClickTimeMs, Existing());
+        // Nothing is running to silence: the installer stopped any previous copy before it got this far. There
+        // is no host either, so the Interop implementation is constructed directly.
+        var store = DefaultStore();
+        var doubleClickMs = new SystemInput().DoubleClickTimeMs;
+        using var recorder = new TriggerRecorderDialog(triggers: null, doubleClickMs, Existing(store));
         if (recorder.ShowDialog() != DialogResult.OK)
             return 1;
 
-        return Persist(recorder.Result);
+        return Persist(recorder.Result, store, doubleClickMs);
     }
 
-    /// <summary>The trigger to show as the starting point, or null on a machine with nothing configured yet.</summary>
-    private static TriggerSettings? Existing()
-    {
-        try
-        {
-            var store = new SettingsStore(AppPaths.CreateDefault(), NullLogger<SettingsStore>.Instance);
-            return store.Load().Triggers.FirstOrDefault();
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            // An unreadable file is not worth refusing to ask over; the recorder simply starts empty.
-            return null;
-        }
-    }
+    /// <summary>
+    /// The trigger to show as the starting point, or null on a machine with nothing configured yet. Reads
+    /// without writing: Cancel must leave a fresh machine with no settings file.
+    /// </summary>
+    /// <param name="store">Where the settings file is.</param>
+    internal static TriggerSettings? Existing(SettingsStore store) =>
+        store.TryLoad(out var settings, out _) ? settings.Triggers.FirstOrDefault() : null;
 
-    private static int Taps(string[] args)
+    /// <summary>The value after <c>--taps</c>, or one press when it is missing or not a number.</summary>
+    /// <param name="args">The process arguments.</param>
+    internal static int Taps(string[] args)
     {
         var index = Array.FindIndex(args, a => string.Equals(a, "--taps", StringComparison.OrdinalIgnoreCase));
         return index >= 0 && index + 1 < args.Length && int.TryParse(args[index + 1], out var taps) ? taps : 1;
     }
 
-    private static int Write(string spec, int taps, bool swallow)
+    /// <summary>A mouse button by name, or anything else read as a key combination.</summary>
+    /// <param name="spec">The text after <c>--trigger</c>.</param>
+    /// <returns>Null when the text names neither.</returns>
+    internal static TriggerSettings? Parse(string spec)
     {
-        if (Parse(spec) is not { } trigger)
-            return 1;
+        if (Enum.TryParse<MouseButton>(spec, ignoreCase: true, out var button) && button != MouseButton.None)
+            return new TriggerSettings { Mouse = button };
 
-        trigger.TapCount = taps;
-        trigger.SwallowClicks = swallow;
-        return Persist(trigger);
+        return KeyCombo.TryParse(spec, out var combo) ? new TriggerSettings { Keys = combo.ToString() } : null;
     }
 
     /// <summary>
-    /// Replaces the trigger the recorder was showing — the first one — and leaves every other trigger, and
-    /// every other setting, as it was.
+    /// Replaces the first trigger — the one the recorder shows — and leaves every other trigger, and every
+    /// other setting, as it was. A user with a mouse button and a hotkey keeps the hotkey.
     /// </summary>
-    /// <remarks>
-    /// This used to overwrite the whole list. That was harmless while the installer only ever ran on a fresh
-    /// machine, but once the recorder started opening on every install it silently deleted the user's other
-    /// triggers: someone with a mouse button *and* Ctrl+Alt+Z pressed OK to keep the button and lost the
-    /// hotkey, with nothing on screen to say so.
-    /// </remarks>
-    private static int Persist(TriggerSettings trigger)
+    /// <param name="trigger">The trigger to write.</param>
+    /// <param name="store">Where the settings file is.</param>
+    /// <param name="systemDoubleClickMs">The double-tap window for a trigger that does not set its own.</param>
+    /// <returns>0 when the file was written, 1 when the trigger was refused or the file could not be.</returns>
+    internal static int Persist(TriggerSettings trigger, SettingsStore store, uint systemDoubleClickMs)
     {
         try
         {
             // Refuse anything the hook would refuse, while there is still an installer on screen to say so.
-            _ = new TapDetector(trigger.ToDefinition(SystemInput.DoubleClickTimeMs).Tap);
+            _ = new TapDetector(trigger.ToDefinition(systemDoubleClickMs).Tap);
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or FormatException)
         {
@@ -125,7 +122,6 @@ internal static class TriggerCommand
 
         try
         {
-            var store = new SettingsStore(AppPaths.CreateDefault(), NullLogger<SettingsStore>.Instance);
             var settings = store.Load();
             if (settings.Triggers.Count > 0)
                 settings.Triggers[0] = trigger;
@@ -141,12 +137,15 @@ internal static class TriggerCommand
         }
     }
 
-    /// <summary>A mouse button by name, or anything else read as a key combination.</summary>
-    private static TriggerSettings? Parse(string spec)
+    private static int Write(string spec, int taps, bool swallow)
     {
-        if (Enum.TryParse<MouseButton>(spec, ignoreCase: true, out var button) && button != MouseButton.None)
-            return new TriggerSettings { Mouse = button };
+        if (Parse(spec) is not { } trigger)
+            return 1;
 
-        return KeyCombo.TryParse(spec, out var combo) ? new TriggerSettings { Keys = combo.ToString() } : null;
+        trigger.TapCount = taps;
+        trigger.SwallowClicks = swallow;
+        return Persist(trigger, DefaultStore(), new SystemInput().DoubleClickTimeMs);
     }
+
+    private static SettingsStore DefaultStore() => new(AppPaths.CreateDefault(), NullLogger<SettingsStore>.Instance);
 }

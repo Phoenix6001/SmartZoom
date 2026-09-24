@@ -61,6 +61,8 @@ public sealed partial class WordComAdapter : ZoomAdapter<WordViewState>
         if (window is null)
             return ZoomInResult.Unhandled;
 
+        // Null until GetState has run: a failure before that point has nothing to put back.
+        WordViewState? captured = null;
         try
         {
             var block = window.GetBlockAt(point);
@@ -71,7 +73,15 @@ public sealed partial class WordComAdapter : ZoomAdapter<WordViewState>
             }
 
             var viewport = window.Viewport;
+            if (viewport.IsEmpty)
+            {
+                // The pane is gone (the document closed under the cursor); a zero-width fit would read as "already fits".
+                LogNoViewport(target.ProcessName);
+                return ZoomInResult.Handled(ZoomReason.AutomationFailed);
+            }
+
             var before = window.GetState();
+            captured = before;
 
             // Same fit rule as the browsers: the block plus margins fills the pane width.
             var scale = Math.Min((double)viewport.Width / (bounds.Width + (2 * _margin)), _maxScale);
@@ -87,11 +97,12 @@ public sealed partial class WordComAdapter : ZoomAdapter<WordViewState>
             await AnimateZoomAsync(window, before.ZoomPercent, targetZoom, cancellationToken).ConfigureAwait(false);
             window.ScrollBlockIntoView(point);
 
-            return ZoomInResult.Applied(before);
+            return Applied(before);
         }
         catch (COMException ex)
         {
             LogComFailure(ex, target.ProcessName);
+            TryRestore(window, captured);
             return ZoomInResult.Handled(ZoomReason.AutomationFailed);
         }
     }
@@ -99,20 +110,35 @@ public sealed partial class WordComAdapter : ZoomAdapter<WordViewState>
     /// <inheritdoc />
     protected override async Task ZoomOutAsync(TargetInfo target, WordViewState restoreState, CancellationToken cancellationToken)
     {
-        var state = restoreState;
-
         using var window = await _word.AttachAsync(target, cancellationToken).ConfigureAwait(false);
         if (window is null)
             return;
 
         try
         {
-            await AnimateZoomAsync(window, window.GetState().ZoomPercent, state.ZoomPercent, cancellationToken).ConfigureAwait(false);
-            window.Restore(state);
+            await AnimateZoomAsync(window, window.GetState().ZoomPercent, restoreState.ZoomPercent, cancellationToken).ConfigureAwait(false);
+            window.Restore(restoreState);
         }
         catch (COMException ex)
         {
             LogComFailure(ex, target.ProcessName);
+        }
+    }
+
+    // Best-effort undo after a failure part-way through: the animation may already have stepped Word some of
+    // the way. Nothing to do when the state was never read.
+    private static void TryRestore(IWordWindow window, WordViewState? captured)
+    {
+        if (captured is not { } state)
+            return;
+
+        try
+        {
+            window.Restore(state);
+        }
+        catch (COMException)
+        {
+            // Word is still unwell; the user's next trigger will set the zoom anyway.
         }
     }
 
@@ -146,6 +172,9 @@ public sealed partial class WordComAdapter : ZoomAdapter<WordViewState>
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Smart zoom unavailable: no paragraph, table or picture under the cursor in {Process}. Nothing was zoomed.")]
     private partial void LogNoBlock(string? process);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Word's document pane in {Process} has no size (closed or minimised); nothing was zoomed.")]
+    private partial void LogNoViewport(string? process);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Block ({Width} px) already fills the {ViewportWidth} px pane in {Process}; nothing to zoom.")]
     private partial void LogAlreadyFits(string? process, int width, int viewportWidth);

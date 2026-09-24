@@ -37,9 +37,8 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
 
     // After resetting a stuck visual zoom, the browser needs a moment before its accessibility rects are right
     // again. One more look is all it gets: the reset is instant, and a cold accessibility tree costs the hit tester
-    // ~600 ms of wake-up retries per look, so three looks kept the user waiting 2.4 s (and their next press was dropped).
+    // ~600 ms of wake-up retries per look, so a second look would keep the user waiting longer than a press is worth.
     private static readonly TimeSpan ResetSettle = TimeSpan.FromMilliseconds(200);
-    private const int ResetAttempts = 1;
 
     private readonly IContentHitTester _hitTester;
     private readonly IPinchInjector _pinch;
@@ -100,12 +99,9 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
             // not appear in the gesture-health totals (the injector excludes zero-duration pinches for exactly
             // that reason).
             await _pinch.PinchAsync(ClampInto(point, hit.Viewport), RestoreOvershoot / _planner.MaxScale, TimeSpan.Zero, ContactBounds(hit.Viewport), cancellationToken).ConfigureAwait(false);
-            for (var attempt = 0; attempt < ResetAttempts && block is null; attempt++)
-            {
-                await Task.Delay(ResetSettle, cancellationToken).ConfigureAwait(false);
-                hit = await _hitTester.HitTestAsync(target, point, cancellationToken).ConfigureAwait(false);
-                block = hit is null ? null : _blocks.Select(hit);
-            }
+            await Task.Delay(ResetSettle, cancellationToken).ConfigureAwait(false);
+            hit = await _hitTester.HitTestAsync(target, point, cancellationToken).ConfigureAwait(false);
+            block = hit is null ? null : _blocks.Select(hit);
 
             if (hit is null || block is null)
             {
@@ -135,43 +131,20 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
 
         var bounds = ContactBounds(hit.Viewport);
 
-        // No baseline pinch-out here any more, and this is the one thing to know before adding one back.
-        //
-        // Every zoom-in used to begin with an instant pinch-out, on the theory that it is invisible at 1.0
-        // because the browser clamps there, while resetting a page left visually zoomed by a SmartZoom that
-        // was restarted. The first half of that is not true of every browser: Chromium swallows the clamped
-        // gesture, but Edge draws a transient shrink before clamping and then snaps back. Frame-by-frame
-        // capture put it at roughly a tenth of a second of the page visibly shrinking and rebounding, before
-        // the zoom the user asked for even started — "it wiggles", and it did so on every single press.
-        // Without it, Edge's trajectory is indistinguishable from Chromium's.
-        //
-        // The stuck-zoom case it guarded is still handled, where it actually shows up: a page that is
-        // visually zoomed reports accessibility rects that no longer agree with the screen, so no block
-        // qualifies, and the recovery above resets and looks again. What is given up is the narrower case
-        // where a stale zoom still leaves a plausible block. That one no longer resets in a single press:
-        // because zoom-out deliberately overshoots past 1.0, each press walks the page back toward the
-        // clamp, and a page left at x2 by something other than SmartZoom was measured returning to exactly
-        // its resting pixels after three presses. A few presses to converge, against a wiggle on every
-        // press, is the trade this makes.
+        // The first gesture is the zoom itself: Edge renders a pinch-out below 1.0 as a visible shrink-and-rebound,
+        // so no preparatory gesture may precede it (see docs/decisions.md, "Browsers").
         if (!await _pinch.PinchAsync(p.Anchor, p.Scale, _animation, bounds, cancellationToken).ConfigureAwait(false))
         {
             LogPinchRejected(target.ProcessName);
             return ZoomInResult.Handled(ZoomReason.GestureRefused);
         }
 
-        return ZoomInResult.Applied(new RestoreState(p, bounds));
+        return Applied(new RestoreState(p, bounds));
     }
 
-    private static ScreenPoint ClampInto(ScreenPoint point, PixelRect rect) =>
-        new(ClampWithInset(point.X, rect.Left, rect.Right - 1), ClampWithInset(point.Y, rect.Top, rect.Bottom - 1));
-
-    // Clamp into [min + EdgeInset, max - EdgeInset]; a range narrower than two insets (a tiny viewport) yields its middle.
-    private static int ClampWithInset(int value, int min, int max)
-    {
-        var low = min + EdgeInset;
-        var high = max - EdgeInset;
-        return low > high ? (min + max) / 2 : Math.Clamp(value, low, high);
-    }
+    private static ScreenPoint ClampInto(ScreenPoint point, PixelRect rect) => new(
+        PixelRect.ClampWithInset(point.X, rect.Left, rect.Right - 1, EdgeInset),
+        PixelRect.ClampWithInset(point.Y, rect.Top, rect.Bottom - 1, EdgeInset));
 
     // Where synthetic contacts may land: the viewport minus the vertical scrollbar strip on the right and minus
     // the window's touch resize zone on the other sides (the scrollbar strip already covers it on the right).

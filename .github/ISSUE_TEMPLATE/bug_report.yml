@@ -5,9 +5,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        The log answers most of these questions on its own. It is at
-        `%LOCALAPPDATA%\SmartZoom\logs\smartzoom-<date>.log`, or right-click the tray icon and choose
-        **Open log folder**. The lines from the press that went wrong are the useful part.
+        The diagnostic report answers most of these questions on its own: it says which application each
+        press resolved to, which strategy ran, and why nothing was zoomed. Nothing in it leaves your machine
+        until you paste it here.
 
   - type: input
     id: application
@@ -29,12 +29,26 @@ body:
       required: true
 
   - type: textarea
+    id: report
+    attributes:
+      label: Diagnostic report
+      description: >
+        Double-click the tray icon (or right-click it and choose **Diagnostic report…**), open the
+        **Diagnostics** tab, press **Copy**, and paste here. Read it first: it names the applications
+        SmartZoom has seen.
+      render: markdown
+    validations:
+      required: true
+
+  - type: textarea
     id: log
     attributes:
-      label: Log lines
+      label: Log lines (optional)
       description: >
-        The `Trigger at …` line for that press and anything after it. Note that a log names the
-        applications you had open.
+        If you already have the log open, the `Trigger at …` line for that press and anything after it.
+        The log is at `%LOCALAPPDATA%\SmartZoom\logs\smartzoom-<date>.log`, or right-click the tray icon
+        and choose **Open log folder**. Ticking **Include recent log lines** before copying the report
+        does the same thing.
       render: text
 
   - type: input

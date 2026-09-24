@@ -14,6 +14,9 @@ namespace SmartZoom.App.Settings;
 /// </remarks>
 internal sealed class TriggerRecorderDialog : Form
 {
+    // One for every dialog rather than one per dialog: a control does not dispose a Font it was handed.
+    private static readonly Font CapturedFont = new(SystemFonts.MessageBoxFont!.FontFamily, 12f, FontStyle.Bold);
+
     private readonly ITriggerSource? _triggers;
     private readonly bool _triggersWereEnabled;
 
@@ -23,7 +26,7 @@ internal sealed class TriggerRecorderDialog : Form
         Dock = DockStyle.Fill,
         TextAlign = ContentAlignment.MiddleCenter,
         BorderStyle = BorderStyle.FixedSingle,
-        Font = new Font(SystemFonts.MessageBoxFont!.FontFamily, 12f, FontStyle.Bold),
+        Font = CapturedFont,
         Text = "Press a button or key combination…",
     };
 
@@ -177,11 +180,21 @@ internal sealed class TriggerRecorderDialog : Form
         UpdateWindowEnabled();
     }
 
+    /// <summary>
+    /// The button and the combination a trigger stands for, exactly one of them set: whichever the trigger
+    /// does not name is cleared, so restoring a trigger over another leaves nothing of the first behind.
+    /// </summary>
+    /// <param name="trigger">The trigger to show.</param>
+    internal static (MouseButton? Button, KeyCombo? Combo) Recorded(TriggerSettings trigger)
+    {
+        ArgumentNullException.ThrowIfNull(trigger);
+
+        return (trigger.Mouse, KeyCombo.TryParse(trigger.Keys, out var combo) ? combo : null);
+    }
+
     private void Restore(TriggerSettings existing, uint systemDoubleClickMs)
     {
-        _button = existing.Mouse;
-        if (KeyCombo.TryParse(existing.Keys, out var combo))
-            _combo = combo;
+        (_button, _combo) = Recorded(existing);
 
         _doubleTap.Checked = existing.TapCount == 2;
         _everyPress.Checked = existing.TapCount != 2;

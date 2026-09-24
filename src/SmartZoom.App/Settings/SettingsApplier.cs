@@ -7,7 +7,6 @@ using SmartZoom.App.Diagnostics;
 using SmartZoom.App.Hosting;
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Settings;
-using SmartZoom.Interop;
 
 namespace SmartZoom.App.Settings;
 
@@ -25,7 +24,9 @@ namespace SmartZoom.App.Settings;
 /// pipeline is constructed, and both throw on bad values while the old ones are still in force.
 /// </para>
 /// <para>
-/// Applying can block for as long as a zoom in flight takes, so this must not run on the UI thread.
+/// One change at a time: every entry point takes the same gate, so two writers can never interleave on the
+/// settings file or publish through <see cref="SettingsHolder"/> out of order. Applying can block for as long
+/// as a zoom in flight takes, so this must not run on the UI thread.
 /// </para>
 /// </remarks>
 internal sealed partial class SettingsApplier(
@@ -34,14 +35,14 @@ internal sealed partial class SettingsApplier(
     ZoomPipelineFactory factory,
     ZoomEngine engine,
     ITriggerSource triggers,
+    ISystemInput systemInput,
     DiagnosticRecorder recorder,
     LoggingLevelSwitch logLevel,
-    ILogger<SettingsApplier> logger)
+    ILogger<SettingsApplier> logger) : IDisposable
 {
-    /// <summary>Everything wrong with a candidate set of settings, without changing anything.</summary>
-    /// <param name="settings">The candidate.</param>
-    public IReadOnlyList<SettingsProblem> Validate(SmartZoomSettings settings) =>
-        SettingsValidator.Validate(settings, engine.Current.Router.Adapters, SystemInput.DoubleClickTimeMs);
+    private const string FileSection = "Settings file";
+
+    private readonly SemaphoreSlim _changing = new(1, 1);
 
     /// <summary>Puts a new set of settings into force and saves them.</summary>
     /// <param name="settings">The new settings. They become the app's, so the caller must not keep editing them.</param>
@@ -50,6 +51,60 @@ internal sealed partial class SettingsApplier(
     {
         ArgumentNullException.ThrowIfNull(settings);
 
+        await _changing.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            return await ApplyUnderGateAsync(settings).ConfigureAwait(false);
+        }
+        finally
+        {
+            _changing.Release();
+        }
+    }
+
+    /// <summary>
+    /// Applies the settings file as it is on disk right now, whoever edited it. A file that cannot be read as
+    /// it stands is rejected, never replaced: the user's edits are the point of this call.
+    /// </summary>
+    public Task<SettingsApplyResult> ReloadAsync() =>
+        store.TryLoad(out var settings, out var error)
+            ? ApplyAsync(settings)
+            : Task.FromResult(SettingsApplyResult.Rejected([SettingsProblem.Error(FileSection, error)]));
+
+    /// <summary>
+    /// Turns zooming on or off. Kept apart from <see cref="ApplyAsync"/> because nothing has to be rebuilt:
+    /// the trigger source carries this one live.
+    /// </summary>
+    /// <param name="enabled">Whether triggers should be acted on.</param>
+    /// <returns>Applied, or applied but not saved when the file could not be written.</returns>
+    public async Task<SettingsApplyResult> SetEnabledAsync(bool enabled)
+    {
+        await _changing.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            // A copy, so the settings already published are never edited underneath whoever is reading them.
+            var settings = SettingsStore.Clone(holder.Current);
+            settings.Enabled = enabled;
+            triggers.Enabled = enabled;
+            holder.Replace(settings);
+
+            return Save(settings, []);
+        }
+        finally
+        {
+            _changing.Release();
+        }
+    }
+
+    /// <inheritdoc />
+    public void Dispose() => _changing.Dispose();
+
+    /// <summary>Everything wrong with a candidate set of settings, without changing anything.</summary>
+    private IReadOnlyList<SettingsProblem> Validate(SmartZoomSettings settings) =>
+        SettingsValidator.Validate(settings, engine.Current.Router.Adapters, systemInput.DoubleClickTimeMs);
+
+    private async Task<SettingsApplyResult> ApplyUnderGateAsync(SmartZoomSettings settings)
+    {
         var problems = Validate(settings);
         if (problems.Any(p => p.Severity == SettingsProblemSeverity.Error))
             return SettingsApplyResult.Rejected(problems);
@@ -59,7 +114,7 @@ internal sealed partial class SettingsApplier(
         ZoomPipeline pipeline;
         try
         {
-            definitions = [.. settings.Triggers.Select(t => t.ToDefinition(SystemInput.DoubleClickTimeMs))];
+            definitions = [.. settings.Triggers.Select(t => t.ToDefinition(systemInput.DoubleClickTimeMs))];
             pipeline = factory.Build(settings);
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or FormatException)
@@ -72,8 +127,8 @@ internal sealed partial class SettingsApplier(
         // From here nothing throws, so the app cannot be left half-changed.
         triggers.SetTriggers(definitions);
         triggers.Enabled = settings.Enabled;
-        await engine.ReplaceAsync(pipeline).ConfigureAwait(false);
-        logLevel.MinimumLevel = Serilog(settings.Logging.Level);
+        var swappedCleanly = await engine.ReplaceAsync(pipeline).ConfigureAwait(false);
+        logLevel.MinimumLevel = ToSerilogLevel(settings.Logging.Level);
 
         // The diagnostics switch is carried live, like triggers.Enabled: nothing has to be rebuilt for it,
         // and it is the only control the user has over a privacy feature - it may not wait for a restart.
@@ -82,6 +137,24 @@ internal sealed partial class SettingsApplier(
 
         LogApplied();
 
+        if (!swappedCleanly)
+        {
+            // The engine has already logged it; the person who pressed Save is told here.
+            problems =
+            [
+                .. problems,
+                SettingsProblem.Warning(
+                    "Zoom",
+                    "The settings were applied while a zoom was running; windows zoomed by a strategy that changed will zoom in again rather than come back."),
+            ];
+        }
+
+        return Save(settings, problems);
+    }
+
+    /// <summary>Writes settings that are already in force; a write that fails costs nothing but persistence.</summary>
+    private SettingsApplyResult Save(SmartZoomSettings settings, IReadOnlyList<SettingsProblem> problems)
+    {
         try
         {
             store.Save(settings);
@@ -96,32 +169,9 @@ internal sealed partial class SettingsApplier(
         return SettingsApplyResult.Applied(problems);
     }
 
-    /// <summary>Applies the settings file as it is on disk right now, whoever edited it.</summary>
-    public Task<SettingsApplyResult> ReloadAsync() => ApplyAsync(store.Load());
-
-    /// <summary>
-    /// Turns zooming on or off. Kept apart from <see cref="ApplyAsync"/> because nothing has to be rebuilt:
-    /// the trigger source carries this one live.
-    /// </summary>
-    /// <param name="enabled">Whether triggers should be acted on.</param>
-    public void SetEnabled(bool enabled)
-    {
-        var settings = holder.Current;
-        settings.Enabled = enabled;
-        triggers.Enabled = enabled;
-
-        try
-        {
-            store.Save(settings);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            LogSaveFailed(ex);
-        }
-    }
-
     /// <summary>Maps the setting's level onto Serilog's, which is the same ladder under another name.</summary>
-    private static LogEventLevel Serilog(LogLevel level) => level switch
+    /// <summary>The Serilog level a settings level stands for; <see cref="LogLevel.None"/> turns the log off.</summary>
+    internal static LogEventLevel ToSerilogLevel(LogLevel level) => level switch
     {
         LogLevel.Trace => LogEventLevel.Verbose,
         LogLevel.Debug => LogEventLevel.Debug,
@@ -129,6 +179,7 @@ internal sealed partial class SettingsApplier(
         LogLevel.Warning => LogEventLevel.Warning,
         LogLevel.Error => LogEventLevel.Error,
         LogLevel.Critical => LogEventLevel.Fatal,
+        LogLevel.None => LevelAlias.Off,
         _ => LogEventLevel.Fatal,
     };
 

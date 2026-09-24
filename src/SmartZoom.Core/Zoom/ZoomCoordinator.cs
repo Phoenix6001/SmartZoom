@@ -19,12 +19,13 @@ public sealed partial class ZoomCoordinator
     private readonly bool _fallbackToCtrlWheel;
     private readonly ILogger<ZoomCoordinator> _logger;
     private readonly HashSet<string> _reportedMissing = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Lock _reportedMissingGate = new();
 
     /// <summary>Creates a coordinator over the given adapters.</summary>
     /// <param name="router">Process-to-adapter routing.</param>
     /// <param name="adapters">Available adapters; at most one per <see cref="AdapterId"/>.</param>
     /// <param name="state">Per-window toggle memory.</param>
-    /// <param name="windows">Used to detect windows that have closed.</param>
+    /// <param name="windows">Detects windows that have closed.</param>
     /// <param name="fallbackToCtrlWheel">When an adapter reports <see cref="ZoomInStatus.Unhandled"/>, try the Ctrl+wheel adapter instead.</param>
     /// <param name="logger">Logger.</param>
     public ZoomCoordinator(
@@ -58,23 +59,34 @@ public sealed partial class ZoomCoordinator
 
         if (_state.TryTake(target, out var previousId, out var restoreState))
         {
-            // TryTake has already removed the entry, so everything below has to cope without it.
+            // TryTake removes the entry, so everything below has to cope without it.
             if (!_adapters.TryGetValue(previousId, out var previous))
             {
-                // The window was zoomed by an adapter this process no longer has. Nothing can undo it from
+                // The window was zoomed by an adapter this process does not have. Nothing can undo it from
                 // here, so say so instead of silently zooming the window a second time.
                 LogRestoreImpossible(target.ProcessName, previousId);
             }
             else if (!previous.RestoreType.IsInstanceOfType(restoreState))
             {
-                // Same id, different adapter behind it: the reader's two modes, after a settings change that
-                // the applier failed to invalidate. Zooming in again is a worse answer than it sounds, but it
-                // is far better than the alternative, which is an exception and a window stuck zoomed.
+                // Same id, different adapter behind it: the reader's two modes share one id, so an entry
+                // saved by one mode can meet the other. Zooming in again is a worse answer than it sounds,
+                // but it is far better than the alternative, which is an exception and a window stuck zoomed.
                 LogRestoreObsolete(target.ProcessName, previousId, restoreState.GetType().Name, previous.RestoreType.Name);
             }
             else
             {
-                await previous.ZoomOutAsync(target, restoreState, cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    await previous.ZoomOutAsync(target, restoreState, cancellationToken).ConfigureAwait(false);
+                }
+                catch
+                {
+                    // The window is still zoomed. Forgetting how to undo it would leave it that way for good,
+                    // so the entry goes back and the next press tries again.
+                    _state.Save(target, previousId, restoreState);
+                    throw;
+                }
+
                 LogZoomedOut(target.ProcessName, previousId);
                 return new ZoomOutcome(ZoomAction.ZoomedOut, target.ProcessName, previousId);
             }
@@ -130,7 +142,7 @@ public sealed partial class ZoomCoordinator
 
     private void WarnMissingAdapterOnce(string? process, AdapterId id)
     {
-        lock (_reportedMissing)
+        lock (_reportedMissingGate)
         {
             if (!_reportedMissing.Add($"{process}/{id}"))
                 return;

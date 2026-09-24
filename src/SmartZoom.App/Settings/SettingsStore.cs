@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -37,12 +38,7 @@ internal sealed partial class SettingsStore(AppPaths paths, ILogger<SettingsStor
 
         try
         {
-            SmartZoomSettings settings;
-            using (var stream = File.OpenRead(file))
-            {
-                settings = JsonSerializer.Deserialize<SmartZoomSettings>(stream, JsonOptions) ?? new SmartZoomSettings();
-            }
-
+            var settings = Read(file);
             LogLoaded(file);
             return settings;
         }
@@ -51,6 +47,49 @@ internal sealed partial class SettingsStore(AppPaths paths, ILogger<SettingsStor
             LogInvalidFile(ex, file);
             return new SmartZoomSettings();
         }
+    }
+
+    /// <summary>
+    /// Reads the settings file exactly as it is, or says why it cannot be. Nothing is written and nothing is
+    /// defaulted: a caller that wants the user's file, not a stand-in for it, uses this rather than
+    /// <see cref="Load"/>.
+    /// </summary>
+    /// <param name="settings">The file's contents, when it could be read.</param>
+    /// <param name="error">Why it could not be, addressed to the user.</param>
+    /// <returns>False when the file is missing, unreadable or not valid JSON.</returns>
+    public bool TryLoad([NotNullWhen(true)] out SmartZoomSettings? settings, [NotNullWhen(false)] out string? error)
+    {
+        var file = paths.SettingsFile;
+        settings = null;
+        error = null;
+
+        if (!File.Exists(file))
+        {
+            error = $"There is no settings file at {file}.";
+            return false;
+        }
+
+        try
+        {
+            settings = Read(file);
+            return true;
+        }
+        catch (JsonException ex)
+        {
+            error = $"{file} is not valid JSON: {ex.Message}";
+            return false;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            error = $"{file} could not be read: {ex.Message}";
+            return false;
+        }
+    }
+
+    private static SmartZoomSettings Read(string file)
+    {
+        using var stream = File.OpenRead(file);
+        return JsonSerializer.Deserialize<SmartZoomSettings>(stream, JsonOptions) ?? new SmartZoomSettings();
     }
 
     /// <summary>

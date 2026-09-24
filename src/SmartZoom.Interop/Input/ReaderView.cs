@@ -7,6 +7,7 @@ using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
 using SmartZoom.Core.Zoom;
 using SmartZoom.Core.Zoom.Content;
+using SmartZoom.Interop.Windows;
 
 using Windows.Win32;
 using Windows.Win32.Foundation;
@@ -34,10 +35,9 @@ public sealed partial class ReaderView(ILogger<ReaderView> logger) : IReaderView
         ArgumentNullException.ThrowIfNull(target);
 
         var window = target.HitWindow == 0 ? target.RootWindow : target.HitWindow;
-        if (window == 0 || !PInvoke.GetWindowRect(new HWND(window), out var rect))
+        if (window == 0 || WindowInspector.Bounds(new HWND(window)) is not { } bounds)
             return null;
 
-        var bounds = new PixelRect(rect.left, rect.top, rect.right, rect.bottom);
         return ReaderViewGeometry.IsMeasurable(bounds) ? bounds : null;
     }
 
@@ -165,9 +165,7 @@ public sealed partial class ReaderView(ILogger<ReaderView> logger) : IReaderView
         var data = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
         try
         {
-            var samples = 0;
-            for (var x = 0; x < bitmap.Width; x += ColumnStep)
-                samples++;
+            var samples = (bitmap.Width + ColumnStep - 1) / ColumnStep;
 
             for (var y = 0; y < bitmap.Height; y++)
             {

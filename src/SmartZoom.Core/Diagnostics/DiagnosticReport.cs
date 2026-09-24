@@ -3,11 +3,6 @@ using System.Text;
 
 namespace SmartZoom.Core.Diagnostics;
 
-/// <summary>Cleans one piece of text before it is rendered.</summary>
-/// <param name="text">The text.</param>
-/// <returns>The text with identifying parts removed.</returns>
-public delegate string Redactor(string text);
-
 /// <summary>
 /// Renders a record as markdown meant to be read by the person who produced it, then pasted into an issue.
 /// </summary>
@@ -45,7 +40,7 @@ public static class DiagnosticReport
 
         Section(text, "Displays", () =>
         {
-            foreach (var d in facts.Displays)
+            foreach (var d in facts.GetDisplays())
             {
                 var role = d.Primary ? " (primary)" : string.Empty;
                 text.AppendLine(CultureInfo.InvariantCulture,

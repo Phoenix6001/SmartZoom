@@ -15,7 +15,8 @@ namespace SmartZoom.Core.Zoom.Reader;
 /// The target is brought to the foreground first, because shortcuts go to the window with keyboard focus and
 /// the trigger itself does not focus anything — SmartZoom swallows the button press. Whatever was in front
 /// before is put back afterwards: a zoom must not rearrange the desktop, and a reader left on top of an
-/// overlapping browser would catch the user's next trigger.
+/// overlapping browser would catch the user's next trigger. That holds only while the reader still has the
+/// foreground it was given; a foreground the user has moved elsewhere in the meantime is theirs, and is left.
 ///
 /// When the trigger is a hotkey, the user is still holding its modifiers as the shortcut goes out, which
 /// would turn Ctrl+2 into Ctrl+Alt+2. So it waits for modifiers outside the shortcut to be released, and
@@ -73,7 +74,10 @@ public sealed partial class ShortcutSender
         _modifierReleaseTimeout = modifierReleaseTimeout;
     }
 
-    /// <summary>Brings the reader to the front, sends a shortcut once the keyboard is free, and hands the front back.</summary>
+    /// <summary>
+    /// Brings the reader to the front, sends a shortcut once the keyboard is free, and hands the front back
+    /// to the window that had it, unless the user has moved it somewhere else in the meantime.
+    /// </summary>
     /// <param name="target">The reader window.</param>
     /// <param name="combo">The shortcut to send.</param>
     /// <param name="prepare">Runs after the trigger's modifiers are released and before the shortcut goes out.</param>
@@ -97,7 +101,9 @@ public sealed partial class ShortcutSender
         }
         finally
         {
-            if (previous != 0 && previous != target.RootWindow)
+            // Only a foreground this sender gave the reader is its to take back. If a third window holds it,
+            // the user put it there, and pulling it away would be exactly the rearrangement this avoids.
+            if (previous != 0 && previous != target.RootWindow && _activator.ForegroundWindow == target.RootWindow)
                 await RestoreForegroundAsync(previous, target.ProcessName).ConfigureAwait(false);
         }
     }

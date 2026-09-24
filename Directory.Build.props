@@ -19,6 +19,7 @@
 
     <Authors>SmartZoom contributors</Authors>
     <Product>SmartZoom</Product>
+    <Description>Bringing macOS's smart zoom to Windows.</Description>
     <Copyright>Copyright (c) 2026 SmartZoom</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryType>git</RepositoryType>

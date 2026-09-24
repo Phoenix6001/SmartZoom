@@ -103,8 +103,8 @@ public sealed class DiagnosticRecord
     /// <remarks>
     /// The key cap still applies, so a file listing more than <see cref="MaxKeys"/> keys fills
     /// <see cref="OmittedKeys"/> exactly as a running session would. What does not apply is the cost of the
-    /// count: loading happens inside the recorder's field initialiser, which runs during DI construction, so
-    /// a file claiming two billion occurrences would stop SmartZoom starting if it were replayed one at a time.
+    /// count: the file is read while SmartZoom starts, so a count is assigned in one step rather than replayed
+    /// one occurrence at a time, and a file claiming two billion occurrences costs nothing extra.
     /// </remarks>
     public void Restore(DiagnosticKey key, int count, DateTimeOffset firstSeen, DateTimeOffset lastSeen)
     {
@@ -113,22 +113,20 @@ public sealed class DiagnosticRecord
         if (count <= 0)
             return;
 
-        var remaining = Math.Min(count, MaxRestoredCount);
-        if (!_counters.TryGetValue(key, out var counter))
+        var claimed = Math.Min(count, MaxRestoredCount);
+        if (_counters.TryGetValue(key, out var counter))
         {
-            if (_counters.Count >= MaxKeys)
-            {
-                OmittedKeys++;
-                return;
-            }
-
-            // The constructor counts the first occurrence itself.
-            counter = new DiagnosticCounter(key, firstSeen);
-            _counters[key] = counter;
-            remaining--;
+            counter.Add(claimed, lastSeen);
+            return;
         }
 
-        counter.Add(remaining, lastSeen);
+        if (_counters.Count >= MaxKeys)
+        {
+            OmittedKeys++;
+            return;
+        }
+
+        _counters[key] = new DiagnosticCounter(key, claimed, firstSeen, lastSeen);
     }
 
     /// <summary>Puts back the count of keys a stored record had already refused.</summary>

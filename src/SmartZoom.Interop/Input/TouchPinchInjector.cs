@@ -29,30 +29,20 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
     // Fallback when the display refuses to say how fast it refreshes.
     private const int DefaultFrameMs = 8;
 
+    // The frame interval is clamped to this range: below it a 240 Hz panel would ask for a 4 ms cadence the
+    // thread cannot keep, above it a misreported slow mode would make the zoom stutter.
+    private const int MinFrameMs = 8;
+    private const int MaxFrameMs = 20;
 
-    // Injecting faster than the screen can show is not smoothness, it is waste — and measurably worse than
-    // waste here: at 8 ms on a 59 Hz panel (16.9 ms a refresh) a third of the frames went out late, by up to
-    // 13.7 ms, because the thread cannot reliably be woken that often. Two samples per refresh, arriving at
-    // uneven times, leave it to the browser's input sampling which one it happens to see, and browsers do
-    // that differently. One sample per refresh removes the beat entirely.
-    private static readonly int FrameMs = RefreshPeriodMs();
-
-    /// <summary>The display's refresh period in whole milliseconds, clamped to something sane.</summary>
-    private static int RefreshPeriodMs()
-    {
-        var mode = new DEVMODEW { dmSize = (ushort)Marshal.SizeOf<DEVMODEW>() };
-        if (!PInvoke.EnumDisplaySettings(null, ENUM_DISPLAY_SETTINGS_MODE.ENUM_CURRENT_SETTINGS, ref mode))
-            return DefaultFrameMs;
-
-        var hz = mode.dmDisplayFrequency;
-
-        // 0 and 1 are the documented "default/unknown" answers. The clamp keeps a 240 Hz panel from asking
-        // for a 4 ms cadence the thread cannot keep, and a misreported slow one from making the zoom stutter.
-        return hz <= 1 ? DefaultFrameMs : Math.Clamp((int)Math.Round(1000.0 / hz), 8, 20);
-    }
     private const int PanDurationMs = 140;
     private const int PanSettleMs = 60;
     private const uint TouchMaskContactAreaOrientationPressure = 0x1 | 0x2 | 0x4;
+
+    // The shape of a synthetic finger. Chosen, not measured: any plausible contact is accepted, and every
+    // gesture in docs/measurements.md was measured with these.
+    private const uint ContactOrientation = 90;
+    private const uint ContactPressure = 32000;
+    private const int ContactHalfSize = 2;
     private const POINTER_FLAGS DownFlags = POINTER_FLAGS.POINTER_FLAG_DOWN | POINTER_FLAGS.POINTER_FLAG_INRANGE | POINTER_FLAGS.POINTER_FLAG_INCONTACT;
     private const POINTER_FLAGS UpdateFlags = POINTER_FLAGS.POINTER_FLAG_UPDATE | POINTER_FLAGS.POINTER_FLAG_INRANGE | POINTER_FLAGS.POINTER_FLAG_INCONTACT;
 
@@ -72,10 +62,11 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
             return false;
 
         var dpiScale = DpiScaleAt(anchor);
+        var frameMs = RefreshPeriodMs(anchor);
         var plan = PinchGeometry.Plan(anchor, factor, RecognizerProfile.SpanSlop(engine, dpiScale), bounds);
 
-        // Only when the gap actually shrank: the same path also handles "the same gap, turned the other way
-        // round", and reporting that as a narrowing was confusing in the log.
+        // Only when the gap shrank: the same path also handles "the same gap, turned the other way round",
+        // which is not a narrowing and must not be logged as one.
         if (plan.NarrowedHalfGap is { } narrowed && narrowed < PinchGeometry.HalfGap)
             LogNarrowed(anchor.X, anchor.Y, narrowed);
 
@@ -87,14 +78,14 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
         var hadCursor = PInvoke.GetCursorPos(out var cursorBefore);
         try
         {
-            if (!PinchAround(plan, duration, engine, cancellationToken))
+            if (!PinchAround(plan, duration, frameMs, engine, cancellationToken))
                 return false;
 
             if (plan.Pan.X == 0 && plan.Pan.Y == 0)
                 return true;
 
             LogPanning(anchor.X, anchor.Y, plan.Focus.X, plan.Focus.Y, plan.Pan.X, plan.Pan.Y);
-            return Pan(plan.Pan, bounds, RecognizerProfile.TouchSlop(engine, dpiScale), engine, cancellationToken);
+            return Pan(plan.Pan, bounds, RecognizerProfile.TouchSlop(engine, dpiScale), frameMs, engine, cancellationToken);
         }
         finally
         {
@@ -112,9 +103,41 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
         return BrowserWindows.IsChromiumWindowAt(anchor) ? GestureEngine.Chromium : GestureEngine.Windows;
     }
 
-    private bool PinchAround(PinchPlan plan, TimeSpan duration, GestureEngine engine, CancellationToken cancellationToken)
+    // Injecting faster than the screen can show is not smoothness, it is waste — and measurably worse than
+    // waste: at 8 ms on a 59 Hz panel (16.9 ms a refresh) a third of the frames go out late, by up to 13.7 ms,
+    // because the thread cannot reliably be woken that often. Two samples per refresh, arriving at uneven
+    // times, leave it to the browser's input sampling which one it happens to see, and browsers do that
+    // differently. One sample per refresh removes the beat entirely.
+    /// <summary>
+    /// The refresh period of the monitor showing a point, in whole milliseconds, clamped to
+    /// <see cref="MinFrameMs"/>..<see cref="MaxFrameMs"/>.
+    /// </summary>
+    /// <remarks>
+    /// Read per gesture, once per press, so a display plugged in or unplugged while the app runs is honoured
+    /// by the next press, and a gesture on a second monitor is paced for that monitor.
+    /// </remarks>
+    private static unsafe int RefreshPeriodMs(ScreenPoint point)
     {
-        var interval = FrameMs;
+        var monitor = PInvoke.MonitorFromPoint(new System.Drawing.Point(point.X, point.Y), MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
+        if (monitor.IsNull)
+            return DefaultFrameMs;
+
+        var info = new MONITORINFOEXW();
+        info.monitorInfo.cbSize = (uint)sizeof(MONITORINFOEXW);
+        if (!PInvoke.GetMonitorInfo(monitor, (MONITORINFO*)&info))
+            return DefaultFrameMs;
+
+        var mode = new DEVMODEW { dmSize = (ushort)Marshal.SizeOf<DEVMODEW>() };
+        if (!PInvoke.EnumDisplaySettings(info.szDevice.ToString(), ENUM_DISPLAY_SETTINGS_MODE.ENUM_CURRENT_SETTINGS, ref mode))
+            return DefaultFrameMs;
+
+        // 0 and 1 are the documented "default/unknown" answers.
+        var hz = mode.dmDisplayFrequency;
+        return hz <= 1 ? DefaultFrameMs : Math.Clamp((int)Math.Round(1000.0 / hz), MinFrameMs, MaxFrameMs);
+    }
+
+    private bool PinchAround(PinchPlan plan, TimeSpan duration, int interval, GestureEngine engine, CancellationToken cancellationToken)
+    {
         var frames = Math.Max(2, (int)Math.Round(duration.TotalMilliseconds / interval));
         var contacts = NewContacts(2);
         var clock = Stopwatch.StartNew();
@@ -182,20 +205,20 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
     }
 
     // One-finger drag that moves the content by 'delta' (content follows the finger).
-    private bool Pan(ScreenPoint delta, PixelRect bounds, double touchSlop, GestureEngine engine, CancellationToken cancellationToken)
+    private bool Pan(ScreenPoint delta, PixelRect bounds, double touchSlop, int frameMs, GestureEngine engine, CancellationToken cancellationToken)
     {
         foreach (var leg in PinchGeometry.PanLegs(delta, bounds, touchSlop))
         {
-            if (!Drag(leg, engine, cancellationToken))
+            if (!Drag(leg, frameMs, engine, cancellationToken))
                 return false;
         }
 
         return true;
     }
 
-    private bool Drag(PanLeg leg, GestureEngine engine, CancellationToken cancellationToken)
+    private bool Drag(PanLeg leg, int frameMs, GestureEngine engine, CancellationToken cancellationToken)
     {
-        var frames = Math.Max(2, PanDurationMs / FrameMs);
+        var frames = Math.Max(2, PanDurationMs / frameMs);
         var contacts = NewContacts(1);
         var clock = Stopwatch.StartNew();
 
@@ -209,7 +232,7 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
             for (var frame = 1; frame <= frames; frame++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                WaitUntil(clock, frame * FrameMs);
+                WaitUntil(clock, frame * frameMs);
 
                 var t = Easing.SmoothStep(frame / (double)frames);
                 PlaceOne(contacts, new ScreenPoint(
@@ -221,7 +244,7 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
             }
 
             // Hold still before lifting so the browser doesn't turn the drag into a fling.
-            WaitUntil(clock, (frames * FrameMs) + PanSettleMs);
+            WaitUntil(clock, (frames * frameMs) + PanSettleMs);
             if (!devices.Inject(contacts, UpdateFlags, engine))
                 return false;
 
@@ -243,8 +266,8 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
             contacts[i].pointerInfo.pointerType = POINTER_INPUT_TYPE.PT_TOUCH;
             contacts[i].pointerInfo.pointerId = (uint)i;
             contacts[i].touchMask = TouchMaskContactAreaOrientationPressure;
-            contacts[i].orientation = 90;
-            contacts[i].pressure = 32000;
+            contacts[i].orientation = ContactOrientation;
+            contacts[i].pressure = ContactPressure;
         }
 
         return contacts;
@@ -262,7 +285,7 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
     private static void SetLocation(ref POINTER_TOUCH_INFO contact, int x, int y)
     {
         contact.pointerInfo.ptPixelLocation = new System.Drawing.Point(x, y);
-        contact.rcContact = new RECT { left = x - 2, top = y - 2, right = x + 2, bottom = y + 2 };
+        contact.rcContact = new RECT { left = x - ContactHalfSize, top = y - ContactHalfSize, right = x + ContactHalfSize, bottom = y + ContactHalfSize };
     }
 
     // Device scale factor of the monitor showing the point (1.0 at 96 DPI, 2.0 at 200%).
@@ -300,10 +323,9 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
     /// Hands the gesture's pacing to diagnostics, swallowing anything the sink throws.
     /// </summary>
     /// <remarks>
-    /// This is the only recording site on the zoom path itself, in the middle of a gesture whose contacts are
-    /// still down - every other site in the app routes through a guard of its own, and this one had none.
-    /// Diagnostics never participates in control flow: a record that failed must cost a log line, not a
-    /// half-finished pinch with synthetic fingers left on the screen.
+    /// Diagnostics must never abort a gesture with contacts down. This is the only recording site on the zoom
+    /// path itself, in the middle of a gesture whose contacts are still on the screen, so it carries its own
+    /// guard: a record that fails costs a log line, not a half-finished pinch with synthetic fingers left behind.
     /// </remarks>
     private void ReportPacing(int frames, int intervalMs, int lateFrames, double worstLateMs)
     {

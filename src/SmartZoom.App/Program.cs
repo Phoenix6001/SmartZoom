@@ -30,10 +30,6 @@ namespace SmartZoom.App;
 
 internal static class Program
 {
-    // A second instance would install a second hook and double every zoom. "Local\" scopes the mutex to
-    // the current logon session, so other signed-in users can still run their own copy.
-    private const string SingleInstanceMutexName = @"Local\SmartZoom.App-9C7B1E52-3F0A-4C1F-8B7D-2E6A5D4C3B21";
-
     // Deliberately synchronous: WinForms needs an STA thread, and [STAThread] has no effect on async Main
     // (or top-level statements), whose continuations may resume on MTA thread-pool threads.
     [STAThread]
@@ -48,7 +44,8 @@ internal static class Program
         // tray icon comes down properly rather than being left behind by a killed process.
         var quitting = args.Any(a => string.Equals(a, "--quit", StringComparison.OrdinalIgnoreCase));
 
-        using var singleInstance = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out var isFirstInstance);
+        // A second instance would install a second hook and double every zoom.
+        using var singleInstance = new Mutex(initiallyOwned: true, AppIdentity.InstanceName, out var isFirstInstance);
         if (!isFirstInstance)
         {
             if (quitting)
@@ -97,12 +94,17 @@ internal static class Program
                 if (e.ExceptionObject is Exception ex)
                     Crash.Record(recorder, ex);
             };
-            Application.ThreadException += (_, e) => Crash.Record(recorder, e.Exception);
+            // The process survives these (CatchException above), so the record says which thread they were on.
+            Application.ThreadException += (_, e) => Crash.Record(recorder, e.Exception, Crash.UiThread);
+
+            // Built here, on the UI thread and before any hosted service can ask for it: the tray installs the
+            // WinForms synchronization context it needs by creating its first control.
+            var tray = host.Services.GetRequiredService<TrayApplicationContext>();
 
             host.Start();
             Log.ForContext(typeof(Program)).Information("SmartZoom {Version} started.", typeof(Program).Assembly.GetName().Version);
 
-            Application.Run(host.Services.GetRequiredService<TrayApplicationContext>());
+            Application.Run(tray);
 
             host.StopAsync().GetAwaiter().GetResult();
             return 0;
@@ -157,6 +159,7 @@ internal static class Program
 
         // Everything below has no settings in it; one instance is shared by every pipeline the factory builds.
         builder.Services.AddSingleton(TimeProvider.System);
+        builder.Services.AddSingleton<ISystemInput, SystemInput>();
         builder.Services.AddSingleton<IWindowInspector, WindowInspector>();
         builder.Services.AddSingleton<IInputInjector, SendInputInjector>();
         builder.Services.AddSingleton<ChromiumAccessibilityWake>();
@@ -202,6 +205,7 @@ internal static class Program
         builder.Services.AddHostedService<TriggerDispatcher>();
         builder.Services.AddHostedService<TriggerWatchdog>();
         builder.Services.AddSingleton<TrayApplicationContext>();
+        builder.Services.AddSingleton<ISettingsWindowOpener>(sp => sp.GetRequiredService<TrayApplicationContext>());
 
         return builder.Build();
     }
@@ -209,7 +213,7 @@ internal static class Program
     private static LowLevelInputHook CreateTriggerSource(IServiceProvider services)
     {
         var settings = services.GetRequiredService<SettingsHolder>().Current;
-        var systemDoubleClick = SystemInput.DoubleClickTimeMs;
+        var systemDoubleClick = services.GetRequiredService<ISystemInput>().DoubleClickTimeMs;
         var triggers = settings.Triggers.Select(t => t.ToDefinition(systemDoubleClick)).ToList();
 
         return new LowLevelInputHook(triggers, services.GetRequiredService<ILogger<LowLevelInputHook>>())

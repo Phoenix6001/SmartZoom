@@ -8,7 +8,7 @@ namespace SmartZoom.Core.Zoom.Reader;
 /// as routing and the settings file are concerned they are the same strategy, and <c>Zoom.Reader.Mode</c>
 /// decides which one the application registers.
 /// </summary>
-public static class ReaderAdapter
+public static class ReaderStrategy
 {
     /// <summary>How the reader strategy is named in settings, and what it handles out of the box.</summary>
     public static AdapterDescriptor Descriptor { get; } = new(

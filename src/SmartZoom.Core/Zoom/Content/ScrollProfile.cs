@@ -1,4 +1,4 @@
-﻿namespace SmartZoom.Core.Zoom.Content;
+namespace SmartZoom.Core.Zoom.Content;
 
 /// <summary>
 /// Measures how far a document scrolled, by comparing one-dimensional brightness profiles of the same strip of

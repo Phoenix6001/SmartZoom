@@ -26,9 +26,9 @@ public enum ZoomReason
     /// not act either (or was turned off).
     /// </summary>
     /// <remarks>
-    /// Only the browser and the two Office adapters ever report a reason of their own. Without this value
-    /// every no-op press in the Reader and Ctrl+wheel paths had no reason at all, which is precisely the
-    /// "where does a press do nothing?" question the diagnostics record exists to answer.
+    /// Only the browser and the two Office adapters report a reason of their own. This value gives every
+    /// no-op press in the Reader and Ctrl+wheel paths one as well, so the diagnostics record can answer
+    /// "where does a press do nothing?" for every strategy.
     /// </remarks>
     AdapterCouldNotAct,
 }

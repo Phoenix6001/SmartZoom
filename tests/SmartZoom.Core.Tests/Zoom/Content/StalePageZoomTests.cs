@@ -10,7 +10,7 @@ public sealed class StalePageZoomTests
     private static readonly PixelRect Window = PixelRect.FromSize(1891, 85, 1793, 1527);
     private static readonly PixelRect StaleDocument = PixelRect.FromSize(1782, -383, 2344, 1996);
 
-    public sealed class Detect
+    public sealed class Detecting_a_stale_zoom
     {
         [Fact]
         public void Document_that_matches_its_window_is_not_stale() =>
@@ -45,7 +45,7 @@ public sealed class StalePageZoomTests
         }
     }
 
-    public sealed class Translation
+    public sealed class Translating_back
     {
         private readonly StalePageZoom _zoom = StalePageZoom.Detect(StaleDocument, Window)!.Value;
 

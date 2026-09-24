@@ -65,10 +65,12 @@ public sealed partial class ExcelComAdapter : ZoomAdapter<ExcelViewState>
         if (window is null)
             return ZoomInResult.Unhandled;
 
-        var before = default(ExcelViewState);
+        // Null until GetState has run: a failure before that point has nothing to put back.
+        ExcelViewState? captured = null;
         try
         {
-            before = window.GetState();
+            var before = window.GetState();
+            captured = before;
 
             var found = window.ApplyFitToBlockAt(point);
             if (found is not { } block)
@@ -100,12 +102,12 @@ public sealed partial class ExcelComAdapter : ZoomAdapter<ExcelViewState>
             var row = Math.Max(block.Row, block.CursorRow - ContextRows);
             window.ScrollTo(row, block.Column);
             LogPlan(block.Rows, block.Columns, before.ZoomPercent, targetZoom);
-            return ZoomInResult.Applied(before);
+            return Applied(before);
         }
         catch (COMException ex)
         {
             LogComFailure(ex, target.ProcessName);
-            TryRestore(window, before);
+            TryRestore(window, captured);
             return ZoomInResult.Handled(ZoomReason.AutomationFailed);
         }
     }
@@ -115,15 +117,13 @@ public sealed partial class ExcelComAdapter : ZoomAdapter<ExcelViewState>
     {
         ArgumentNullException.ThrowIfNull(target);
 
-        var state = restoreState;
-
         using var window = await _excel.AttachAsync(target, cancellationToken).ConfigureAwait(false);
         if (window is null)
             return;
 
         try
         {
-            window.Restore(state);
+            window.Restore(restoreState);
         }
         catch (COMException ex)
         {
@@ -132,9 +132,10 @@ public sealed partial class ExcelComAdapter : ZoomAdapter<ExcelViewState>
     }
 
     // Best-effort undo after a failure part-way through: the window may already be at the fitting zoom.
-    private static void TryRestore(IExcelWindow window, ExcelViewState state)
+    // Nothing to do when the state was never read.
+    private static void TryRestore(IExcelWindow window, ExcelViewState? captured)
     {
-        if (state.ZoomPercent == 0)
+        if (captured is not { } state)
             return;
 
         try

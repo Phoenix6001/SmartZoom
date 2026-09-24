@@ -12,6 +12,10 @@ public enum DiagnosticKind
     /// <summary>A trigger resolved to no window at all.</summary>
     NoWindow,
 
-    /// <summary>An unhandled exception reached the top of the process.</summary>
+    /// <summary>
+    /// An unhandled exception reached the top of the process, or the top of the UI thread's message loop,
+    /// which the process survives. The key's adapter slot says which: <c>"UiThread"</c> for the second, null
+    /// for the first.
+    /// </summary>
     Crashed,
 }

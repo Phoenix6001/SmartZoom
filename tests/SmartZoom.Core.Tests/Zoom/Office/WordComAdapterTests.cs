@@ -1,4 +1,7 @@
+using System.Diagnostics;
+
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
@@ -16,11 +19,28 @@ public sealed class WordComAdapterTests : IDisposable
     private static readonly PixelRect Pane = PixelRect.FromSize(200, 300, 1600, 1200);
 
     private readonly FakeWord _word = new();
+    private readonly FakeTimeProvider _time = new();
 
     public void Dispose() => _word.Dispose();
 
     private IZoomAdapter Create(bool animate = false) =>
-        new WordComAdapter(_word, new ZoomSettings { Animate = animate, Smart = new SmartZoomTuning { AnimationMs = 100, MarginPx = 16 } }, TimeProvider.System, NullLogger<WordComAdapter>.Instance);
+        new WordComAdapter(_word, new ZoomSettings { Animate = animate, Smart = new SmartZoomTuning { AnimationMs = 100, MarginPx = 16 } }, _time, NullLogger<WordComAdapter>.Instance);
+
+    /// <summary>Runs an animated zoom to completion, stepping the fake clock through each animation delay.</summary>
+    private async Task Animate(Task zoom)
+    {
+        var patience = Stopwatch.StartNew();
+        while (!zoom.IsCompleted)
+        {
+            // The adapter's continuations run on the pool; give them real time, bounded by the wall clock rather
+            // than by a step count, so a loaded test run cannot starve them into a false failure.
+            Assert.True(patience.Elapsed < TimeSpan.FromSeconds(10), "the animation did not complete");
+            _time.Advance(TimeSpan.FromMilliseconds(10));
+            await Task.WhenAny(zoom, Task.Delay(1));
+        }
+
+        await zoom;
+    }
 
     [Fact]
     public async Task Zooms_the_paragraph_to_the_pane_width_and_remembers_the_view()
@@ -85,6 +105,20 @@ public sealed class WordComAdapterTests : IDisposable
     }
 
     [Fact]
+    public async Task A_pane_with_no_size_is_reported_as_automation_failed_rather_than_already_fitting()
+    {
+        // Word reports an empty viewport when the pane is gone; a zero-width fit must not read as "already fits".
+        _word.Block = PixelRect.FromSize(600, 850, 768, 120);
+        _word.Viewport = default;
+
+        var result = await Create().ZoomInAsync(Word, Cursor, CancellationToken.None);
+
+        Assert.Equal(ZoomInStatus.Handled, result.Status);
+        Assert.Equal(ZoomReason.AutomationFailed, result.Reason);
+        Assert.Null(_word.Zoom);
+    }
+
+    [Fact]
     public async Task An_object_model_failure_is_reported_as_automation_failed()
     {
         _word.Block = PixelRect.FromSize(600, 850, 768, 120);
@@ -95,6 +129,33 @@ public sealed class WordComAdapterTests : IDisposable
 
         Assert.Equal(ZoomInStatus.Handled, result.Status);
         Assert.Equal(ZoomReason.AutomationFailed, result.Reason);
+    }
+
+    [Fact]
+    public async Task An_object_model_failure_part_way_through_puts_the_view_back()
+    {
+        // The zoom has already been applied when the scroll fails; the user must not be left at 200 %.
+        _word.Block = PixelRect.FromSize(600, 850, 768, 120);
+        _word.State = new WordViewState(100, 40, 0);
+        _word.FailScroll = true;
+
+        var result = await Create().ZoomInAsync(Word, Cursor, CancellationToken.None);
+
+        Assert.Equal(ZoomInStatus.Handled, result.Status);
+        Assert.Equal(ZoomReason.AutomationFailed, result.Reason);
+        Assert.Equal(new WordViewState(100, 40, 0), _word.Restored);
+        Assert.Equal(100, _word.Zoom);
+    }
+
+    [Fact]
+    public async Task A_failure_before_the_view_is_read_has_nothing_to_put_back()
+    {
+        _word.FailBlock = true;
+
+        var result = await Create().ZoomInAsync(Word, Cursor, CancellationToken.None);
+
+        Assert.Equal(ZoomReason.AutomationFailed, result.Reason);
+        Assert.Null(_word.Restored);
     }
 
     [Fact]
@@ -111,7 +172,7 @@ public sealed class WordComAdapterTests : IDisposable
         _word.Block = PixelRect.FromSize(600, 850, 768, 120);
         _word.State = new WordViewState(100, 0, 0);
 
-        await Create(animate: true).ZoomInAsync(Word, Cursor, CancellationToken.None);
+        await Animate(Create(animate: true).ZoomInAsync(Word, Cursor, CancellationToken.None));
 
         Assert.True(_word.ZoomHistory.Count > 3, "expected several intermediate steps");
         Assert.Equal(200, _word.ZoomHistory[^1]);
@@ -123,6 +184,10 @@ public sealed class WordComAdapterTests : IDisposable
         public bool Attachable { get; set; } = true;
 
         public bool FailZoom { get; set; }
+
+        public bool FailScroll { get; set; }
+
+        public bool FailBlock { get; set; }
 
         public PixelRect? Block { get; set; }
 
@@ -136,30 +201,37 @@ public sealed class WordComAdapterTests : IDisposable
 
         public WordViewState? Restored { get; private set; }
 
-        public PixelRect Viewport => Pane;
+        public PixelRect Viewport { get; set; } = Pane;
 
         public Task<IWordWindow?> AttachAsync(TargetInfo target, CancellationToken cancellationToken) =>
             Task.FromResult<IWordWindow?>(Attachable ? this : null);
 
         public WordViewState GetState() => Zoom is { } z ? State with { ZoomPercent = z } : State;
 
-        public PixelRect? GetBlockAt(ScreenPoint point) => Block;
+        public PixelRect? GetBlockAt(ScreenPoint point) => FailBlock ? throw Busy() : Block;
 
         public void SetZoom(int percent)
         {
             if (FailZoom)
-            {
-                // Exactly what Word's object model throws when it is busy; the adapter catches this type.
-#pragma warning disable CA2201
-                throw new System.Runtime.InteropServices.COMException("Word is busy.", unchecked((int)0x800AC472));
-#pragma warning restore CA2201
-            }
+                throw Busy();
 
             Zoom = percent;
             ZoomHistory.Add(percent);
         }
 
-        public void ScrollBlockIntoView(ScreenPoint point) => ScrolledIntoView = true;
+        public void ScrollBlockIntoView(ScreenPoint point)
+        {
+            if (FailScroll)
+                throw Busy();
+
+            ScrolledIntoView = true;
+        }
+
+        // Exactly what Word's object model throws when it is busy; the adapter catches this type.
+#pragma warning disable CA2201
+        private static System.Runtime.InteropServices.COMException Busy() =>
+            new("Word is busy.", unchecked((int)0x800AC472));
+#pragma warning restore CA2201
 
         public void Restore(WordViewState state)
         {

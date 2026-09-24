@@ -14,14 +14,15 @@ namespace SmartZoom.App.Settings;
 /// </summary>
 internal sealed class DiagnosticsPage : UserControl
 {
+    /// <summary>How many lines from the end of the log the report carries when asked to.</summary>
+    private const int LogTailLines = 200;
+
     private readonly DiagnosticRecorder _recorder;
     private readonly DiagnosticsSettings _model;
     private readonly IMachineFacts _facts;
     private readonly AppPaths _paths;
 
-    // Owned here, and disposed here. A Font assigned to a control is not disposed by the control - WinForms
-    // only disposes what it created itself - so a new one per window leaked a GDI handle every time the
-    // settings window was opened.
+    // Owned here and disposed here: a control does not dispose a Font it was handed.
     private readonly Font _monospace = new("Consolas", 9f);
 
     private readonly TextBox _report = new()
@@ -81,14 +82,18 @@ internal sealed class DiagnosticsPage : UserControl
         // is undone by Close, instead of being a live mutation of the recorder that no button can cancel.
         _enabled.Checked = _model.Enabled;
         _enabled.CheckedChanged += (_, _) => _model.Enabled = _enabled.Checked;
-        _includeLog.CheckedChanged += (_, _) => Render();
-        _refresh.Click += (_, _) => RenderReport();
+        _includeLog.CheckedChanged += async (_, _) => await RenderAsync(announce: false).ConfigureAwait(true);
+        _refresh.Click += async (_, _) => await RenderAsync(announce: true).ConfigureAwait(true);
         _copy.Click += (_, _) => Copy();
         _save.Click += (_, _) => Save();
-        _clear.Click += (_, _) => { recorder.Clear(); Render(); };
+        _clear.Click += async (_, _) =>
+        {
+            recorder.Clear();
+            await RenderAsync(announce: false).ConfigureAwait(true);
+        };
 
         Controls.Add(BuildLayout());
-        Render();
+        _ = RenderAsync(announce: false);
     }
 
     private TableLayoutPanel BuildLayout()
@@ -117,12 +122,7 @@ internal sealed class DiagnosticsPage : UserControl
         return layout;
     }
 
-    /// <summary>
-    /// Guarded: <see cref="Clipboard.SetText(string)"/> is notoriously flaky when another process holds the
-    /// clipboard open. Left unguarded, that throw would land in the app-wide handler, which both logs it and
-    /// records it as a crash — turning a clipboard hiccup into a false crash entry in the very record this
-    /// page exists to make trustworthy. The status line is how the user tells a real copy from a failed one.
-    /// </summary>
+    /// <summary>Guarded because a clipboard held open by another process must not become a recorded crash.</summary>
     private void Copy()
     {
         try
@@ -158,23 +158,11 @@ internal sealed class DiagnosticsPage : UserControl
     private void ShowStatus(string text, bool failed)
     {
         _status.Text = text;
-        _status.ForeColor = failed ? Color.FromArgb(0xB0, 0x30, 0x20) : SystemColors.GrayText;
+        _status.ForeColor = failed ? Palette.ErrorText : SystemColors.GrayText;
     }
 
-    /// <summary>
-    /// Rebuilds the report from the record as it stands now.
-    /// </summary>
-    /// <remarks>
-    /// Named <c>RenderReport</c> rather than <c>Refresh</c> because <see cref="Control.Refresh"/> already
-    /// means "repaint". Called by the Refresh button and by the settings window when the tray's
-    /// "Diagnostic report…" item selects this tab on a window that was already open - the report is a
-    /// snapshot taken when it was built, and a press made since would otherwise be missing from it.
-    /// </remarks>
-    public void RenderReport()
-    {
-        Render();
-        ShowStatus($"Report built at {DateTime.Now.ToString("HH:mm:ss", CultureInfo.CurrentCulture)}.", failed: false);
-    }
+    /// <summary>Rebuilds the report from the record as it stands now, and says when it was built.</summary>
+    public void RenderReport() => _ = RenderAsync(announce: true);
 
     /// <inheritdoc />
     protected override void Dispose(bool disposing)
@@ -185,10 +173,51 @@ internal sealed class DiagnosticsPage : UserControl
         base.Dispose(disposing);
     }
 
-    private void Render()
+    /// <summary>
+    /// Builds the report off the UI thread: the log tail and the settings file are disk reads, and the
+    /// display facts are hardware queries. The buttons that act on the report wait until it is there.
+    /// </summary>
+    /// <param name="announce">Whether to put the build time in the status line.</param>
+    private async Task RenderAsync(bool announce)
     {
-        var tail = _includeLog.Checked ? LogTail() : null;
-        _report.Text = DiagnosticReport.Render(_recorder.Snapshot(), _facts, ReadSettingsJson(), tail, Redact);
+        var includeLog = _includeLog.Checked;
+        SetBusy(true);
+        try
+        {
+            var text = await Task.Run(() => Build(includeLog)).ConfigureAwait(true);
+            if (IsDisposed)
+                return;
+
+            _report.Text = text;
+            if (announce)
+                ShowStatus($"Report built at {DateTime.Now.ToString("HH:mm:ss", CultureInfo.CurrentCulture)}.", failed: false);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            if (!IsDisposed)
+                ShowStatus($"Couldn't build the report: {ex.Message}", failed: true);
+        }
+        finally
+        {
+            if (!IsDisposed)
+                SetBusy(false);
+        }
+    }
+
+    private void SetBusy(bool busy)
+    {
+        _refresh.Enabled = !busy;
+        _copy.Enabled = !busy;
+        _save.Enabled = !busy;
+        _clear.Enabled = !busy;
+        _includeLog.Enabled = !busy; // its CheckedChanged starts a render; two builds would race for the report text
+    }
+
+    /// <summary>Everything that reads a file or the hardware; runs on a thread-pool thread.</summary>
+    private string Build(bool includeLog)
+    {
+        var tail = includeLog ? LogTailOrNull() : null;
+        return DiagnosticReport.Render(_recorder.Snapshot(), _facts, ReadSettingsJson(), tail, Redact);
     }
 
     /// <summary>Reads the settings file for the report. A missing or locked file yields an empty object, not a crash.</summary>
@@ -204,8 +233,8 @@ internal sealed class DiagnosticsPage : UserControl
         }
     }
 
-    /// <summary>The last 200 lines of the newest log file, or null when the log can't be read for any reason.</summary>
-    private string? LogTail()
+    /// <summary>The end of the newest log file, or null when the log can't be read for any reason.</summary>
+    private string? LogTailOrNull()
     {
         try
         {
@@ -213,21 +242,8 @@ internal sealed class DiagnosticsPage : UserControl
                 .Select(path => new FileInfo(path))
                 .OrderByDescending(file => file.LastWriteTimeUtc)
                 .FirstOrDefault();
-            if (newest is null)
-                return null;
 
-            // The newest file is usually today's, which this same process is actively writing to via Serilog.
-            // File.ReadAllLines opens with FileShare.Read only, which is not enough to open a file another
-            // handle already holds for writing: the writer's own access must be permitted by this open's
-            // share flags too, not just the other way around. FileShare.ReadWrite grants that without asking
-            // for write access itself.
-            using var stream = new FileStream(newest.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            using var reader = new StreamReader(stream);
-            var lines = new List<string>();
-            while (reader.ReadLine() is { } line)
-                lines.Add(line);
-
-            return string.Join(Environment.NewLine, lines.Count <= 200 ? lines : lines[^200..]);
+            return newest is null ? null : LogTail.ReadLast(newest.FullName, LogTailLines);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {

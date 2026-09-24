@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
 
-
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
 using SmartZoom.Core.Settings;
@@ -11,7 +10,7 @@ namespace SmartZoom.Core.Tests.Zoom;
 public sealed class ZoomCoordinatorTests
 {
     private static readonly ScreenPoint Point = new(10, 10);
-    private static readonly TargetInfo Pdf = new(0x100, 0x101, 1, "i_view64", "R", "H");
+    private static readonly TargetInfo IrfanView = new(0x100, 0x101, 1, "i_view64", "R", "H");
     private static readonly TargetInfo Browser = new(0x200, 0x201, 2, "chrome", "R", "H");
     private static readonly TargetInfo Word = new(0x300, 0x301, 3, "WINWORD", "R", "H");
     private static readonly TargetInfo Unknown = new(0x400, 0x401, 4, "notepad", "R", "H");
@@ -40,9 +39,9 @@ public sealed class ZoomCoordinatorTests
     {
         var coordinator = Create();
 
-        Assert.Equal(ZoomAction.ZoomedIn, (await coordinator.HandleTriggerAsync(Pdf, Point, CancellationToken.None)).Action);
-        Assert.Equal(ZoomAction.ZoomedOut, (await coordinator.HandleTriggerAsync(Pdf, Point, CancellationToken.None)).Action);
-        Assert.Equal(ZoomAction.ZoomedIn, (await coordinator.HandleTriggerAsync(Pdf, Point, CancellationToken.None)).Action);
+        Assert.Equal(ZoomAction.ZoomedIn, (await coordinator.HandleTriggerAsync(IrfanView, Point, CancellationToken.None)).Action);
+        Assert.Equal(ZoomAction.ZoomedOut, (await coordinator.HandleTriggerAsync(IrfanView, Point, CancellationToken.None)).Action);
+        Assert.Equal(ZoomAction.ZoomedIn, (await coordinator.HandleTriggerAsync(IrfanView, Point, CancellationToken.None)).Action);
 
         Assert.Equal(["in", "out:state-1", "in"], _ctrlWheel.Calls);
         Assert.Equal(1, _store.Count);
@@ -52,12 +51,12 @@ public sealed class ZoomCoordinatorTests
     public async Task State_is_tracked_per_window()
     {
         var coordinator = Create();
-        var otherPdf = Pdf with { RootWindow = 0x110, HitWindow = 0x111 };
+        var otherWindow = IrfanView with { RootWindow = 0x110, HitWindow = 0x111 };
 
-        await coordinator.HandleTriggerAsync(Pdf, Point, CancellationToken.None);
-        Assert.Equal(ZoomAction.ZoomedIn, (await coordinator.HandleTriggerAsync(otherPdf, Point, CancellationToken.None)).Action);
-        Assert.Equal(ZoomAction.ZoomedOut, (await coordinator.HandleTriggerAsync(Pdf, Point, CancellationToken.None)).Action);
-        Assert.Equal(ZoomAction.ZoomedOut, (await coordinator.HandleTriggerAsync(otherPdf, Point, CancellationToken.None)).Action);
+        await coordinator.HandleTriggerAsync(IrfanView, Point, CancellationToken.None);
+        Assert.Equal(ZoomAction.ZoomedIn, (await coordinator.HandleTriggerAsync(otherWindow, Point, CancellationToken.None)).Action);
+        Assert.Equal(ZoomAction.ZoomedOut, (await coordinator.HandleTriggerAsync(IrfanView, Point, CancellationToken.None)).Action);
+        Assert.Equal(ZoomAction.ZoomedOut, (await coordinator.HandleTriggerAsync(otherWindow, Point, CancellationToken.None)).Action);
     }
 
     [Fact]
@@ -89,7 +88,7 @@ public sealed class ZoomCoordinatorTests
     }
 
     [Fact]
-    public async Task Self_managed_adapter_is_invoked_again_to_toggle_back()
+    public async Task A_handled_result_is_not_remembered_so_the_next_press_asks_the_adapter_again()
     {
         _browser.Result = ZoomInResult.Handled(ZoomReason.AlreadyFits);
         var coordinator = Create();
@@ -157,7 +156,7 @@ public sealed class ZoomCoordinatorTests
 
         ZoomOutcome[] outcomes =
         [
-            await coordinator.HandleTriggerAsync(Pdf, Point, CancellationToken.None),
+            await coordinator.HandleTriggerAsync(IrfanView, Point, CancellationToken.None),
             await coordinator.HandleTriggerAsync(Unknown, Point, CancellationToken.None),
         ];
 
@@ -172,12 +171,30 @@ public sealed class ZoomCoordinatorTests
     public async Task Closed_window_state_is_pruned_so_the_next_trigger_zooms_in()
     {
         var coordinator = Create();
-        await coordinator.HandleTriggerAsync(Pdf, Point, CancellationToken.None);
+        await coordinator.HandleTriggerAsync(IrfanView, Point, CancellationToken.None);
 
-        _windows.Dead.Add(Pdf.RootWindow);
+        _windows.Dead.Add(IrfanView.RootWindow);
 
-        Assert.Equal(ZoomAction.ZoomedIn, (await coordinator.HandleTriggerAsync(Pdf, Point, CancellationToken.None)).Action);
+        Assert.Equal(ZoomAction.ZoomedIn, (await coordinator.HandleTriggerAsync(IrfanView, Point, CancellationToken.None)).Action);
         Assert.Equal(["in", "in"], _ctrlWheel.Calls);
+    }
+
+    [Fact]
+    public async Task An_undo_that_fails_keeps_the_window_remembered_as_zoomed_so_the_next_press_tries_again()
+    {
+        var coordinator = Create();
+        await coordinator.HandleTriggerAsync(IrfanView, Point, CancellationToken.None);
+        _ctrlWheel.ZoomOutThrows = true;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => coordinator.HandleTriggerAsync(IrfanView, Point, CancellationToken.None));
+
+        // The window is still zoomed, so its memory must survive the failure.
+        Assert.Equal(1, _store.Count);
+
+        _ctrlWheel.ZoomOutThrows = false;
+        Assert.Equal(ZoomAction.ZoomedOut, (await coordinator.HandleTriggerAsync(IrfanView, Point, CancellationToken.None)).Action);
+        Assert.Equal(["in", "out:state-1", "out:state-1"], _ctrlWheel.Calls);
+        Assert.Equal(0, _store.Count);
     }
 
     [Fact]
@@ -185,7 +202,7 @@ public sealed class ZoomCoordinatorTests
     {
         _ctrlWheel.Result = ZoomInResult.Unhandled;
 
-        Assert.Equal(ZoomAction.Unhandled, (await Create().HandleTriggerAsync(Pdf, Point, CancellationToken.None)).Action);
+        Assert.Equal(ZoomAction.Unhandled, (await Create().HandleTriggerAsync(IrfanView, Point, CancellationToken.None)).Action);
         Assert.Equal(0, _store.Count);
     }
 
@@ -200,6 +217,9 @@ public sealed class ZoomCoordinatorTests
         /// <summary>Null means "Applied with a fresh state object each time".</summary>
         public ZoomInResult? Result { get; set; }
 
+        /// <summary>Whether undoing throws, as a real adapter does when the application is gone or busy.</summary>
+        public bool ZoomOutThrows { get; set; }
+
         public List<string> Calls { get; } = [];
 
         public Task<ZoomInResult> ZoomInAsync(TargetInfo target, ScreenPoint point, CancellationToken cancellationToken)
@@ -211,7 +231,7 @@ public sealed class ZoomCoordinatorTests
         public Task ZoomOutAsync(TargetInfo target, object restoreState, CancellationToken cancellationToken)
         {
             Calls.Add($"out:{restoreState}");
-            return Task.CompletedTask;
+            return ZoomOutThrows ? throw new InvalidOperationException("the undo failed") : Task.CompletedTask;
         }
     }
 

@@ -32,7 +32,7 @@ public sealed class CtrlWheelAdapter(IInputInjector injector, CtrlWheelSettings 
     protected override async Task<ZoomInResult> ZoomInAsync(TargetInfo target, ScreenPoint point, CancellationToken cancellationToken)
     {
         var ticks = await SendBurstAsync(settings.Ticks, cancellationToken).ConfigureAwait(false);
-        return ticks == 0 ? ZoomInResult.Unhandled : ZoomInResult.Applied(new RestoreState(ticks));
+        return ticks == 0 ? ZoomInResult.Unhandled : Applied(new RestoreState(ticks));
     }
 
     /// <inheritdoc />

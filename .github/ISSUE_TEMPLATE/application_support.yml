@@ -6,10 +6,10 @@ body:
     attributes:
       value: |
         Many applications need no code at all. If yours zooms with Ctrl and the mouse wheel, add one line to
-        `%APPDATA%\SmartZoom\settings.json` and restart:
+        `%APPDATA%\SmartZoom\settings.json`, then choose **Reload settings file** from the tray menu:
 
         ```jsonc
-        "Routing": { "Overrides": { "yourapp": "CtrlWheel" } }
+        "Routing": { "Apps": { "yourapp": "CtrlWheel" } }
         ```
 
         Please try that first and tell us whether it worked — it may be a documentation fix rather than a

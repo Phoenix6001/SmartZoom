@@ -24,7 +24,7 @@ public sealed partial class ReaderShortcutAdapter : ZoomAdapter<ReaderShortcutAd
     private readonly ShortcutSender _shortcuts;
     private readonly IReaderView? _view;
     private readonly bool _followCursor;
-    private readonly int _margin;
+    private readonly int _topGap;
     private readonly KeyCombo _zoomIn;
     private readonly KeyCombo _zoomOut;
     private readonly ILogger<ReaderShortcutAdapter> _logger;
@@ -36,7 +36,7 @@ public sealed partial class ReaderShortcutAdapter : ZoomAdapter<ReaderShortcutAd
     /// <param name="logger">Logger.</param>
     /// <exception cref="FormatException">One of the shortcuts is not a valid combination.</exception>
     public ReaderShortcutAdapter(ShortcutSender shortcuts, IReaderView? view, ReaderZoomSettings settings, ILogger<ReaderShortcutAdapter> logger)
-        : base(ReaderAdapter.Descriptor)
+        : base(ReaderStrategy.Descriptor)
     {
         ArgumentNullException.ThrowIfNull(settings);
 
@@ -44,7 +44,7 @@ public sealed partial class ReaderShortcutAdapter : ZoomAdapter<ReaderShortcutAd
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _view = view;
         _followCursor = settings.FollowCursor;
-        _margin = settings.TopGapPx;
+        _topGap = settings.TopGapPx;
         _zoomIn = KeyCombo.Parse(settings.ZoomInKeys);
         _zoomOut = KeyCombo.Parse(settings.ZoomOutKeys);
     }
@@ -102,11 +102,11 @@ public sealed partial class ReaderShortcutAdapter : ZoomAdapter<ReaderShortcutAd
             return 0;
 
         var below = point.Y - bounds.Top;
-        if (below <= _margin)
+        if (below <= _topGap)
             return 0;
 
-        var moved = Scroll(target, below - _margin, cancellationToken);
-        LogFollowed(target.ProcessName, below - _margin, moved);
+        var moved = Scroll(target, below - _topGap, cancellationToken);
+        LogFollowed(target.ProcessName, below - _topGap, moved);
         return moved;
     }
 

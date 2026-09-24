@@ -15,7 +15,7 @@ public sealed class ZoomRouterTests
     [
         CtrlWheelAdapter.Descriptor,
         BrowserAdapter.Descriptor,
-        ReaderAdapter.Descriptor,
+        ReaderStrategy.Descriptor,
         WordComAdapter.Descriptor,
         ExcelComAdapter.Descriptor,
     ];

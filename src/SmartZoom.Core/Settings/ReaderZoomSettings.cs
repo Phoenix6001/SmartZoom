@@ -37,17 +37,4 @@ public sealed class ReaderZoomSettings
 
     /// <summary>How long the gesture takes, in milliseconds.</summary>
     public int AnimationMs { get; set; } = 300;
-
-    /// <summary>Whether nothing in this section has been changed from its default.</summary>
-    internal bool IsDefault()
-    {
-        var fresh = new ReaderZoomSettings();
-        return ZoomInKeys == fresh.ZoomInKeys
-            && ZoomOutKeys == fresh.ZoomOutKeys
-            && Mode == fresh.Mode
-            && Magnification == fresh.Magnification
-            && FollowCursor == fresh.FollowCursor
-            && TopGapPx == fresh.TopGapPx
-            && AnimationMs == fresh.AnimationMs;
-    }
 }

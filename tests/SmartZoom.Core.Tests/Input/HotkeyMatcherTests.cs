@@ -125,7 +125,7 @@ public sealed class HotkeyMatcherTests
         Assert.Equal(KeyMatch.None, Key(matcher, 0x78, false));
     }
 
-    public sealed class ModifierTrackerTests
+    public sealed class The_modifier_tracker
     {
         [Fact]
         public void Tracks_left_and_right_sides_independently()

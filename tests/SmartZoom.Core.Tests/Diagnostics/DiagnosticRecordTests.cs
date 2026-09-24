@@ -37,8 +37,8 @@ public class DiagnosticRecordTests
             var taken = record.Samples;
             record.Sample(new DiagnosticSample(Key(), Noon.AddMinutes(1), "Group 100x20", null));
 
-            // Counters has always handed out a copy; Samples handed out the live backing list, so a caller
-            // holding one saw later samples appear in it - and could have added to it.
+            // Counters hands out a copy and Samples must too: a caller holding the live backing list would
+            // see later samples appear in it, and could add to it.
             Assert.Single(taken);
             Assert.Equal(2, record.Samples.Count);
         }
@@ -88,6 +88,33 @@ public class DiagnosticRecordTests
 
             var counter = Assert.Single(record.Counters);
             Assert.Equal(43, counter.Count);
+            Assert.Equal(Noon, counter.FirstSeen);
+            Assert.Equal(Noon.AddHours(3), counter.LastSeen);
+        }
+
+        [Fact]
+        public void With_a_count_of_one_still_carries_its_stored_last_seen_time()
+        {
+            var record = new DiagnosticRecord("0.1.0");
+
+            record.Restore(Key(), count: 1, firstSeen: Noon, lastSeen: Noon.AddHours(3));
+
+            var counter = Assert.Single(record.Counters);
+            Assert.Equal(1, counter.Count);
+            Assert.Equal(Noon, counter.FirstSeen);
+            Assert.Equal(Noon.AddHours(3), counter.LastSeen);
+        }
+
+        [Fact]
+        public void Adds_to_a_counter_the_record_already_has()
+        {
+            var record = new DiagnosticRecord("0.1.0");
+            record.Note(Key(), Noon);
+
+            record.Restore(Key(), count: 2, firstSeen: Noon.AddHours(-1), lastSeen: Noon.AddHours(3));
+
+            var counter = Assert.Single(record.Counters);
+            Assert.Equal(3, counter.Count);
             Assert.Equal(Noon, counter.FirstSeen);
             Assert.Equal(Noon.AddHours(3), counter.LastSeen);
         }

@@ -26,7 +26,7 @@ TapDetector / HotkeyMatcher (Core)   is this a trigger? do we swallow the press?
 TriggerDispatcher  (App)       drops events older than 750 ms, contains exceptions
         │
         ▼
-IWindowInspector   (Interop)   what window is under the cursor, and whose is it
+WindowInspector    (Interop)   what window is under the cursor, and whose is it
         │
         ▼
 ZoomRouter         (Core)      process name → AdapterId
@@ -35,7 +35,7 @@ ZoomRouter         (Core)      process name → AdapterId
 ZoomCoordinator    (Core)      already zoomed? then undo. otherwise zoom in
         │
         ▼
-IZoomAdapter       (Core)      the strategy for this application
+IZoomAdapter       (Core)      the adapter that implements the routed strategy
         │
         ▼
 IPinchInjector / IInputInjector / IContentHitTester / IWordAutomation … (Interop)
@@ -54,7 +54,11 @@ there is not, the routed adapter is asked to zoom in.
 
 Adapters are stateless. Everything needed to undo a zoom travels in the restore state the adapter returns.
 
-## The strategies
+## The adapters
+
+A *strategy* is the id a user names in `Routing.Apps` (`Browser`, `Reader`, `WordCom`, `ExcelCom`,
+`CtrlWheel`, `None`); an *adapter* is the class that implements one. Each adapter declares its strategy id
+and the processes it claims by default in an `AdapterDescriptor`.
 
 | Adapter | For | How |
 |---|---|---|
@@ -101,8 +105,12 @@ never interleave. Triggers are the exception: `LowLevelInputHook.SetTriggers` ta
 the same lock its callbacks use, because installing a second pair of hooks to change a button would be a much
 larger thing to get right.
 
-`SettingsApplier` is the only thing that writes the file, and it writes it **after** the change is in force —
-a file written first would describe a state the process was never in.
+`SettingsApplier` is the only thing that writes the file while the app runs, and it writes it **after** the
+change is in force — a file written first would describe a state the process was never in. Two writers run
+before the app starts: `SettingsStore.Load` creates the file with defaults on first run, and the installer's
+`--trigger` / `--record-trigger` job (`TriggerCommand`) writes the chosen trigger into it. **Reload settings
+file** goes through `SettingsStore.TryLoad` instead, which never writes and never substitutes defaults: a
+malformed or unreadable file is reported to the user and the running settings are kept.
 
 A file written by an older version still loads; keys it carries for shapes that no longer exist are ignored,
 and the defaults take over.

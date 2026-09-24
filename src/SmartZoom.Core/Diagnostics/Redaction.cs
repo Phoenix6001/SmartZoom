@@ -27,7 +27,7 @@ public static class Redaction
     {
         ArgumentNullException.ThrowIfNull(text);
 
-        foreach (var (folder, name) in Longest(home, localAppData, appData))
+        foreach (var (folder, name) in VariantsLongestFirst(home, localAppData, appData))
         {
             if (!string.IsNullOrEmpty(folder))
                 text = text.Replace(folder, name, StringComparison.OrdinalIgnoreCase);
@@ -49,21 +49,18 @@ public static class Redaction
             : string.Create(CultureInfo.InvariantCulture, $"{text[..max]}… [truncated, {text.Length} characters]");
     }
 
-    private static IEnumerable<(string Folder, string Name)> Longest(string home, string local, string roaming)
+    /// <summary>Every separator form of every folder, longest first, so a profile root never shadows a folder beneath it.</summary>
+    private static IEnumerable<(string Folder, string Name)> VariantsLongestFirst(string home, string local, string roaming)
     {
         var variants = new List<(string path, string varName)>();
 
-        // Generate all three separator forms for each folder, then sort by length descending
         foreach (var (folder, varName) in new[] { (local, "%LOCALAPPDATA%"), (roaming, "%APPDATA%"), (home, "%USERPROFILE%") })
         {
             if (!string.IsNullOrEmpty(folder))
             {
-                // Backslash form (standard path)
-                variants.Add((folder, varName));
-                // Forward slash form (Unix-style path)
-                variants.Add((folder.Replace('\\', '/'), varName));
-                // Doubled backslash form (JSON-escaped path)
-                variants.Add((folder.Replace(@"\", @"\\"), varName));
+                variants.Add((folder, varName));                       // C:\Users\ada
+                variants.Add((folder.Replace('\\', '/'), varName));    // C:/Users/ada
+                variants.Add((folder.Replace(@"\", @"\\"), varName));  // C:\\Users\\ada, as in JSON
             }
         }
 

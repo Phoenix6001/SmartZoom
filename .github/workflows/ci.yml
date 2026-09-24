@@ -54,10 +54,17 @@ jobs:
       - name: Publish
         run: dotnet publish src/SmartZoom.App --configuration Release --runtime win-x64 --no-self-contained --output publish
 
+      # The same version the installer stamps into its own filename, read the same way (install/build.ps1).
+      - name: Read version
+        id: version
+        run: '"version=$((Get-Item publish/SmartZoom.exe).VersionInfo.FileVersion)" >> $env:GITHUB_OUTPUT'
+
+      # Framework-dependent: this one needs the .NET 10 Desktop Runtime on the machine that runs it. The
+      # installer below carries its own.
       - name: Upload SmartZoom.exe
         uses: actions/upload-artifact@v4
         with:
-          name: SmartZoom-win-x64
+          name: SmartZoom-${{ steps.version.outputs.version }}-win-x64-framework-dependent
           path: publish/SmartZoom.exe
           if-no-files-found: error
 

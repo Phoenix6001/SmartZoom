@@ -6,8 +6,9 @@
 *.props   text
 *.slnx    text
 *.json    text
-*.js      text
 *.md      text
+*.yml     text
+*.iss     text
 *.ps1     text eol=crlf
 
 *.png     binary

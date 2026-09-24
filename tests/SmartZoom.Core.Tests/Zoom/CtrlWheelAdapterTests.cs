@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Time.Testing;
+
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
 using SmartZoom.Core.Settings;
@@ -11,9 +13,10 @@ public sealed class CtrlWheelAdapterTests
     private static readonly ScreenPoint Point = new(100, 200);
 
     private readonly FakeInputInjector _injector = new();
+    private readonly FakeTimeProvider _time = new();
 
     private IZoomAdapter Create(int ticks = 3) =>
-        new CtrlWheelAdapter(_injector, new CtrlWheelSettings { Ticks = ticks, IntervalMs = 0 }, TimeProvider.System);
+        new CtrlWheelAdapter(_injector, new CtrlWheelSettings { Ticks = ticks, IntervalMs = 0 }, _time);
 
     [Fact]
     public async Task Zoom_in_holds_ctrl_around_a_burst_of_upward_ticks()
@@ -84,11 +87,13 @@ public sealed class CtrlWheelAdapterTests
     public async Task Cancellation_between_ticks_still_releases_ctrl()
     {
         using var cts = new CancellationTokenSource();
-        IZoomAdapter adapter = new CtrlWheelAdapter(_injector, new CtrlWheelSettings { Ticks = 5, IntervalMs = 10_000 }, TimeProvider.System);
-        cts.CancelAfter(50);
+        IZoomAdapter adapter = new CtrlWheelAdapter(_injector, new CtrlWheelSettings { Ticks = 5, IntervalMs = 10_000 }, _time);
 
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => adapter.ZoomInAsync(Target, Point, cts.Token));
+        var zoom = adapter.ZoomInAsync(Target, Point, cts.Token);
+        Assert.False(zoom.IsCompleted, "the burst should be waiting between its first and second tick");
+        cts.Cancel();
 
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => zoom);
         Assert.Equal("Ctrl↓ +1 Ctrl↑", _injector.Script);
     }
 

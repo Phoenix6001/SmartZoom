@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Logging.Abstractions;
-
 using SmartZoom.App.Diagnostics;
 using SmartZoom.Core.Diagnostics;
 
@@ -10,21 +8,13 @@ public class DiagnosticRecorderTests
     private static DiagnosticKey Key(string process = "msedge") =>
         new(DiagnosticKind.ZoomedNothing, process, "Browser", "NoBlock");
 
-    private static DiagnosticRecorder CreateRecorder(string directory) =>
-        new(
-            new DiagnosticStore(
-                new AppPaths(SettingsDirectory: directory, LogDirectory: Path.Combine(directory, "logs")),
-                NullLogger<DiagnosticStore>.Instance),
-            TimeProvider.System,
-            version: "0.1.0-test");
-
     public sealed class The_Snapshot_method
     {
         [Fact]
         public void Is_unaffected_by_mutation_of_the_recorder_after_it_was_taken()
         {
             using var temp = new TempDirectory();
-            var recorder = CreateRecorder(temp.Path);
+            var recorder = DiagnosticFixtures.CreateRecorder(temp.Path);
             recorder.Note(Key());
 
             var snapshot = recorder.Snapshot();
@@ -45,7 +35,7 @@ public class DiagnosticRecorderTests
         public void Reflects_everything_noted_before_it_was_taken()
         {
             using var temp = new TempDirectory();
-            var recorder = CreateRecorder(temp.Path);
+            var recorder = DiagnosticFixtures.CreateRecorder(temp.Path);
 
             recorder.Note(Key());
             recorder.Note(Key());
@@ -63,7 +53,7 @@ public class DiagnosticRecorderTests
         public void Reflects_gesture_totals_recorded_before_it_and_is_unaffected_by_pacing_after()
         {
             using var temp = new TempDirectory();
-            var recorder = CreateRecorder(temp.Path);
+            var recorder = DiagnosticFixtures.CreateRecorder(temp.Path);
 
             recorder.Paced(frames: 18, intervalMs: 17, lateFrames: 1, worstLateMs: 9.0);
 
@@ -86,9 +76,8 @@ public class DiagnosticRecorderTests
         public void Keeps_the_record_pending_when_the_write_failed()
         {
             using var temp = new TempDirectory();
-            var paths = new AppPaths(SettingsDirectory: temp.Path, LogDirectory: Path.Combine(temp.Path, "logs"));
-            var recorder = new DiagnosticRecorder(
-                new DiagnosticStore(paths, NullLogger<DiagnosticStore>.Instance), TimeProvider.System, "0.1.0-test");
+            var paths = DiagnosticFixtures.Paths(temp.Path);
+            var recorder = DiagnosticFixtures.CreateRecorder(temp.Path);
             recorder.Note(Key());
 
             // A directory standing where the file belongs: the write fails and the store says so.
@@ -100,17 +89,15 @@ public class DiagnosticRecorderTests
             Directory.Delete(paths.DiagnosticsFile);
             recorder.Flush();
 
-            var store = new DiagnosticStore(paths, NullLogger<DiagnosticStore>.Instance);
-            Assert.Equal(Key(), Assert.Single(store.Load("0.1.0-test").Counters).Key);
+            Assert.Equal(Key(), Assert.Single(DiagnosticFixtures.CreateStore(temp.Path).Load(DiagnosticFixtures.Version).Counters).Key);
         }
 
         [Fact]
         public void Does_not_write_again_when_nothing_changed()
         {
             using var temp = new TempDirectory();
-            var paths = new AppPaths(SettingsDirectory: temp.Path, LogDirectory: Path.Combine(temp.Path, "logs"));
-            var recorder = new DiagnosticRecorder(
-                new DiagnosticStore(paths, NullLogger<DiagnosticStore>.Instance), TimeProvider.System, "0.1.0-test");
+            var paths = DiagnosticFixtures.Paths(temp.Path);
+            var recorder = DiagnosticFixtures.CreateRecorder(temp.Path);
             recorder.Note(Key());
             recorder.Flush();
 
@@ -121,6 +108,35 @@ public class DiagnosticRecorderTests
             Assert.False(File.Exists(paths.DiagnosticsFile), "A clean record must not be written again.");
             Assert.NotEqual(default, written);
         }
+
+        [Fact]
+        public void Serialises_concurrent_flushes_so_that_nothing_recorded_is_lost()
+        {
+            // The timer's flush and a crash's flush can run at the same moment. The recorder holds one lock
+            // across snapshot, save and mark, so an older snapshot can never be written after a newer one
+            // while the newer one's changes are marked as saved. Without that, the file would sit one
+            // snapshot behind and the next flush would see nothing to do.
+            using var temp = new TempDirectory();
+            var recorder = DiagnosticFixtures.CreateRecorder(temp.Path);
+
+            const int Writers = 8;
+            const int NotesPerWriter = 25;
+            Parallel.For(0, Writers, writer =>
+            {
+                for (var i = 0; i < NotesPerWriter; i++)
+                {
+                    recorder.Note(Key($"process-{writer}-{i}"));
+                    recorder.Flush();
+                }
+            });
+
+            // Everything is flushed by now if and only if the recorder's own bookkeeping is right: this
+            // flush must find nothing to do, and the file must already hold every key.
+            recorder.Flush();
+
+            var stored = DiagnosticFixtures.CreateStore(temp.Path).Load(DiagnosticFixtures.Version);
+            Assert.Equal(Writers * NotesPerWriter, stored.Counters.Count);
+        }
     }
 
     public sealed class Enabled
@@ -129,14 +145,14 @@ public class DiagnosticRecorderTests
         public void Defaults_to_true()
         {
             using var temp = new TempDirectory();
-            Assert.True(CreateRecorder(temp.Path).Enabled);
+            Assert.True(DiagnosticFixtures.CreateRecorder(temp.Path).Enabled);
         }
 
         [Fact]
         public void When_false_Note_and_Sample_do_nothing()
         {
             using var temp = new TempDirectory();
-            var recorder = CreateRecorder(temp.Path);
+            var recorder = DiagnosticFixtures.CreateRecorder(temp.Path);
             recorder.Enabled = false;
 
             recorder.Note(Key());
@@ -151,7 +167,7 @@ public class DiagnosticRecorderTests
         public void When_false_Paced_does_nothing()
         {
             using var temp = new TempDirectory();
-            var recorder = CreateRecorder(temp.Path);
+            var recorder = DiagnosticFixtures.CreateRecorder(temp.Path);
             recorder.Enabled = false;
 
             recorder.Paced(frames: 18, intervalMs: 17, lateFrames: 1, worstLateMs: 9.0);

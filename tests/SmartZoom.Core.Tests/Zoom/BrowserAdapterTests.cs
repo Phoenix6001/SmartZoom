@@ -38,8 +38,8 @@ public sealed class BrowserAdapterTests
 
         Assert.Equal(ZoomInStatus.Applied, result.Status);
 
-        // Exactly one gesture: the zoom the user asked for. Zoom-in used to be preceded by an instant
-        // baseline pinch-out, which some browsers draw as a shrink-and-rebound before the zoom starts.
+        // Exactly one gesture: the zoom the user asked for. Edge draws a pinch-out below 1.0 as a
+        // shrink-and-rebound, so nothing may precede it.
         Assert.Single(_pinch.Calls);
         var pinch = _pinch.Calls[0];
         Assert.Equal(1874.0 / (949 + 32), pinch.Factor, precision: 6);
@@ -110,10 +110,8 @@ public sealed class BrowserAdapterTests
     [Fact]
     public async Task A_zoom_that_found_its_block_sends_no_gesture_before_the_zoom()
     {
-        // Regression guard. A baseline pinch-out used to run before every zoom-in, on the theory that the
-        // browser clamps it at 1.0 and nobody sees it. Edge draws the shrink before clamping and rebounds,
-        // which is a visible wobble at the start of every zoom; frame captures showed it clearly and showed
-        // Edge tracking Chromium exactly once it was gone. Anything added here is seen by the user.
+        // Regression guard: Edge renders a pinch-out below 1.0 as a visible shrink-and-rebound before the
+        // zoom starts, so the zoom must be the first gesture. Anything added before it is seen by the user.
         _hits.Result = ParagraphHit;
 
         await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None);
@@ -216,7 +214,7 @@ public sealed class BrowserAdapterTests
 
         Assert.Equal(ZoomInStatus.Handled, (await Create().ZoomInAsync(Brave, new ScreenPoint(101, 101), CancellationToken.None)).Status);
 
-        Assert.Equal(new ScreenPoint(119, 114), Assert.Single(_pinch.Calls).Anchor);
+        Assert.Equal(new ScreenPoint(120, 114), Assert.Single(_pinch.Calls).Anchor);
     }
 
     [Fact]

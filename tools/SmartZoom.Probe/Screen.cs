@@ -1,6 +1,7 @@
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Globalization;
+using System.Runtime.InteropServices;
 
 using SmartZoom.Core.Zoom.Content;
 
@@ -175,14 +176,26 @@ internal static class Screen
         var width = Math.Min(region?.Width ?? bitmap.Width, bitmap.Width - left);
         var height = Math.Min(region?.Height ?? bitmap.Height, bitmap.Height - top);
 
+        // LockBits reads the region in one go; GetPixel per pixel is a call into GDI+ for every one of them.
         var pixels = new int[height, width];
-        for (var y = 0; y < height; y++)
+        var data = bitmap.LockBits(new Rectangle(left, top, width, height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+        try
         {
-            for (var x = 0; x < width; x++)
+            // 32bppArgb lays each pixel out as B, G, R, A.
+            var row = new byte[width * 4];
+            for (var y = 0; y < height; y++)
             {
-                var colour = bitmap.GetPixel(left + x, top + y);
-                pixels[y, x] = (colour.R + colour.G + colour.B) / 3;
+                Marshal.Copy(data.Scan0 + (y * data.Stride), row, 0, row.Length);
+                for (var x = 0; x < width; x++)
+                {
+                    var i = x * 4;
+                    pixels[y, x] = (row[i + 2] + row[i + 1] + row[i]) / 3;
+                }
             }
+        }
+        finally
+        {
+            bitmap.UnlockBits(data);
         }
 
         return pixels;

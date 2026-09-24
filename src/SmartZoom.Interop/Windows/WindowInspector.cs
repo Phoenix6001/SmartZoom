@@ -1,4 +1,4 @@
-﻿using SmartZoom.Core.Input;
+using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
 using SmartZoom.Core.Windows;
 using SmartZoom.Core.Zoom.Content;
@@ -24,27 +24,23 @@ public sealed class WindowInspector : IWindowInspector
     private const int MaxImagePathLength = 1024;
 
     /// <inheritdoc />
-    public unsafe TargetInfo? GetTargetAt(ScreenPoint point)
+    public TargetInfo? GetTargetAt(ScreenPoint point)
     {
         var hit = WindowUnder(point);
         if (hit.IsNull)
-        {
             return null;
-        }
 
         // GA_ROOTOWNER walks both the parent chain and the owner chain, so a dropdown or dialog resolves
         // to the application window that owns it. That window is the stable identity for toggle state.
         var root = PInvoke.GetAncestor(hit, GET_ANCESTOR_FLAGS.GA_ROOTOWNER);
         if (root.IsNull)
-        {
             root = hit;
-        }
 
         _ = PInvoke.GetWindowThreadProcessId(root, out var processId);
 
         return new TargetInfo(
-            RootWindow: (nint)root.Value,
-            HitWindow: (nint)hit.Value,
+            RootWindow: (nint)root,
+            HitWindow: (nint)hit,
             ProcessId: processId,
             ProcessName: TryGetProcessName(processId),
             RootClassName: GetClassName(root),
@@ -52,17 +48,12 @@ public sealed class WindowInspector : IWindowInspector
     }
 
     /// <summary>The window under a point, looking past any cursor decoration parked on top of it.</summary>
-    internal static HWND WindowAt(ScreenPoint point) => WindowUnder(point);
-
-    /// <summary>The window under a point, looking past any cursor decoration parked on top of it.</summary>
     /// <remarks>The rules are <see cref="DecorationPolicy"/>; this is the walk that applies them.</remarks>
-    private static HWND WindowUnder(ScreenPoint point)
+    internal static HWND WindowUnder(ScreenPoint point)
     {
         var hit = PInvoke.WindowFromPoint(new System.Drawing.Point(point.X, point.Y));
         if (hit.IsNull || !IsDecoration(hit))
-        {
             return hit;
-        }
 
         var next = PInvoke.GetAncestor(hit, GET_ANCESTOR_FLAGS.GA_ROOT);
         var considered = 0;
@@ -70,24 +61,42 @@ public sealed class WindowInspector : IWindowInspector
         {
             next = PInvoke.GetWindow(next, GET_WINDOW_CMD.GW_HWNDNEXT);
             if (next.IsNull)
-            {
                 return hit;
-            }
 
             if (!PInvoke.IsWindowVisible(next))
-            {
                 continue;   // hidden windows keep their place in the z-order; they are not what the cursor is on
-            }
 
             considered++;
             if (!IsDecoration(next) && Covers(next, point))
-            {
                 return Deepest(next, point);
-            }
         }
 
         return hit;
     }
+
+    /// <summary>The first descendant of a window with a given class, or <see cref="HWND.Null"/>.</summary>
+    /// <remarks><c>EnumChildWindows</c> walks the whole tree, so a grandchild is found as readily as a child.</remarks>
+    /// <param name="root">The window whose descendants are searched.</param>
+    /// <param name="className">The window class wanted, compared ordinally.</param>
+    internal static HWND FindChildByClass(HWND root, string className)
+    {
+        var found = HWND.Null;
+        PInvoke.EnumChildWindows(root, (child, _) =>
+        {
+            if (GetClassName(child) != className)
+                return true;
+
+            found = child;
+            return false;
+        }, default);
+
+        return found;
+    }
+
+    /// <summary>A window's rectangle in screen pixels, or null when Windows reports none (the window is gone).</summary>
+    /// <param name="window">The window.</param>
+    internal static PixelRect? Bounds(HWND window) =>
+        PInvoke.GetWindowRect(window, out var rect) ? new PixelRect(rect.left, rect.top, rect.right, rect.bottom) : null;
 
     /// <summary>Whether a window's rectangle contains a point.</summary>
     private static bool Covers(HWND window, ScreenPoint point) =>
@@ -100,15 +109,11 @@ public sealed class WindowInspector : IWindowInspector
         {
             var client = new System.Drawing.Point(point.X, point.Y);
             if (!PInvoke.ScreenToClient(parent, ref client))
-            {
                 return parent;
-            }
 
             var child = PInvoke.ChildWindowFromPointEx(parent, client, CWP_FLAGS.CWP_SKIPINVISIBLE | CWP_FLAGS.CWP_SKIPTRANSPARENT);
             if (child.IsNull || child == parent)
-            {
                 return parent;
-            }
 
             parent = child;
         }
@@ -120,9 +125,7 @@ public sealed class WindowInspector : IWindowInspector
     private static bool IsDecoration(HWND window)
     {
         if (Bounds(window) is not { } bounds)
-        {
             return false;
-        }
 
         const int DecorationMask = (int)(DecorationPolicy.DecorationStyles.Layered
             | DecorationPolicy.DecorationStyles.ToolWindow
@@ -132,17 +135,12 @@ public sealed class WindowInspector : IWindowInspector
         return DecorationPolicy.IsDecoration(bounds, (DecorationPolicy.DecorationStyles)styles);
     }
 
-    private static PixelRect? Bounds(HWND window) =>
-        PInvoke.GetWindowRect(window, out var rect) ? new PixelRect(rect.left, rect.top, rect.right, rect.bottom) : null;
-
     /// <inheritdoc />
     public bool IsWindowAlive(nint window, uint processId)
     {
         var hwnd = new HWND(window);
         if (!PInvoke.IsWindow(hwnd))
-        {
             return false;
-        }
 
         _ = PInvoke.GetWindowThreadProcessId(hwnd, out var owner);
         return owner == processId;
@@ -161,18 +159,14 @@ public sealed class WindowInspector : IWindowInspector
         // identify (and log) targets we won't be able to send input to.
         var process = PInvoke.OpenProcess(PROCESS_ACCESS_RIGHTS.PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
         if (process.IsNull)
-        {
             return null;
-        }
 
         try
         {
             var buffer = stackalloc char[MaxImagePathLength];
             var size = (uint)MaxImagePathLength;
             if (!PInvoke.QueryFullProcessImageName(process, PROCESS_NAME_FORMAT.PROCESS_NAME_WIN32, new PWSTR(buffer), &size))
-            {
                 return null;
-            }
 
             return Path.GetFileNameWithoutExtension(new ReadOnlySpan<char>(buffer, (int)size)).ToString();
         }

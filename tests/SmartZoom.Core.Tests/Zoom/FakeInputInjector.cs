@@ -33,9 +33,18 @@ internal sealed class FakeInputInjector : IInputInjector
             return false;
         }
 
-        Log.Add(isDown ? "Ctrl↓" : "Ctrl↑");
+        Log.Add(Name(key) + (isDown ? "↓" : "↑"));
         return true;
     }
+
+    private static string Name(ModifierKey key) => key switch
+    {
+        ModifierKey.Control => "Ctrl",
+        ModifierKey.Alt => "Alt",
+        ModifierKey.Shift => "Shift",
+        ModifierKey.Win => "Win",
+        _ => key.ToString(),
+    };
 
     public bool TrySendWheel(int ticks)
     {

@@ -18,7 +18,7 @@ public sealed class PinchGeometryTests
     /// <summary>Chromium's span slop at 200%: 23 DIP x 2.</summary>
     private const double ChromiumSlopAt200 = 46;
 
-    public sealed class TheSpread
+    public sealed class The_spread
     {
         [Fact]
         public void A_zoom_in_starts_at_the_resting_gap_and_ends_at_the_factor_times_the_pre_rolled_span()
@@ -52,7 +52,7 @@ public sealed class PinchGeometryTests
         }
     }
 
-    public sealed class WhereTheFingersGo
+    public sealed class Where_the_fingers_go
     {
         [Fact]
         public void A_point_with_room_around_it_is_pinched_exactly_there()
@@ -168,6 +168,19 @@ public sealed class PinchGeometryTests
         }
 
         [Fact]
+        public void A_viewport_narrower_than_the_edge_margins_puts_the_focus_at_its_rounded_middle()
+        {
+            // No inset range exists on either axis, so the middle is the only answer; it rounds like every
+            // other planned coordinate (x: (100 + 107) / 2 = 103.5 -> 104, y: (100 + 104) / 2 = 102).
+            var tiny = new PixelRect(100, 100, 108, 105);
+
+            var plan = PinchGeometry.Plan(new ScreenPoint(101, 101), 0.5, ChromiumSlopAt200, tiny);
+
+            Assert.Equal(new ScreenPoint(104, 102), plan.Focus);
+            Assert.NotNull(plan.Shortfall);
+        }
+
+        [Fact]
         public void An_anchor_outside_the_content_area_never_hosts_a_contact()
         {
             // An anchor in the window's resize-border zone is exactly the case above.
@@ -180,7 +193,7 @@ public sealed class PinchGeometryTests
         }
     }
 
-    public sealed class TheDrag
+    public sealed class The_drag
     {
         [Fact]
         public void A_drag_that_fits_is_one_leg_centred_in_the_content_area()
@@ -210,7 +223,7 @@ public sealed class PinchGeometryTests
             Assert.Empty(PinchGeometry.PanLegs(new ScreenPoint(0, 0), Viewport, touchSlop: 16));
     }
 
-    public sealed class TheRecognizers
+    public sealed class The_recognizers
     {
         [Theory]
         [InlineData(GestureEngine.Chromium, 2.0, 46)]        // 23 DIP at 200%
@@ -229,7 +242,7 @@ public sealed class PinchGeometryTests
             Assert.Equal(expected, RecognizerProfile.TouchSlop(engine, dpiScale), 6);
     }
 
-    public sealed class TheEasing
+    public sealed class The_easing
     {
         [Theory]
         [InlineData(0.0, 0.0)]

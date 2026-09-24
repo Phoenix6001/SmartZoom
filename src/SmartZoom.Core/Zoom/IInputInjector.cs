@@ -1,21 +1,5 @@
 namespace SmartZoom.Core.Zoom;
 
-/// <summary>Keyboard modifiers an adapter may hold while injecting other input.</summary>
-public enum ModifierKey
-{
-    /// <summary>The Control key.</summary>
-    Control,
-
-    /// <summary>The Alt key.</summary>
-    Alt,
-
-    /// <summary>The Shift key.</summary>
-    Shift,
-
-    /// <summary>The Windows key.</summary>
-    Win,
-}
-
 /// <summary>Synthesizes user input. The Windows implementation wraps <c>SendInput</c>.</summary>
 /// <remarks>Every method returns false instead of throwing when the OS rejects the input, most commonly
 /// because the foreground window is elevated (UIPI). Adapters must treat that as a soft failure.</remarks>

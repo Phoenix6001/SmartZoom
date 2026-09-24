@@ -100,8 +100,8 @@ public static class PinchGeometry
             var slopX = length == 0 ? 0 : dx / length * touchSlop;
             var slopY = length == 0 ? 0 : dy / length * touchSlop;
             var start = new ScreenPoint(
-                Clamp(bounds.CenterX - ((dx + slopX) / 2), bounds.Left, bounds.Right - 1, EdgeMargin),
-                Clamp(bounds.CenterY - ((dy + slopY) / 2), bounds.Top, bounds.Bottom - 1, EdgeMargin));
+                PixelRect.ClampWithInset(bounds.CenterX - ((dx + slopX) / 2), bounds.Left, bounds.Right - 1, EdgeMargin),
+                PixelRect.ClampWithInset(bounds.CenterY - ((dy + slopY) / 2), bounds.Top, bounds.Bottom - 1, EdgeMargin));
             var end = new ScreenPoint(
                 (int)Math.Round(start.X + dx + slopX),
                 (int)Math.Round(start.Y + dy + slopY));
@@ -178,8 +178,8 @@ public static class PinchGeometry
     internal static (ScreenPoint Focus, bool Vertical, double Room) PlaceFocusForZoomOut(ScreenPoint anchor, double maxHalf, PixelRect bounds)
     {
         var focus = new ScreenPoint(
-            Clamp(anchor.X, bounds.Left, bounds.Right - 1, maxHalf),
-            Clamp(anchor.Y, bounds.Top, bounds.Bottom - 1, EdgeMargin));
+            PixelRect.ClampWithInset(anchor.X, bounds.Left, bounds.Right - 1, maxHalf),
+            PixelRect.ClampWithInset(anchor.Y, bounds.Top, bounds.Bottom - 1, EdgeMargin));
 
         return (focus, false, Math.Min(focus.X - bounds.Left, bounds.Right - 1 - focus.X));
     }
@@ -198,11 +198,11 @@ public static class PinchGeometry
     internal static (ScreenPoint Focus, bool Vertical, double Room) PlaceFocus(ScreenPoint anchor, double maxHalf, PixelRect bounds)
     {
         var horizontal = new ScreenPoint(
-            Clamp(anchor.X, bounds.Left, bounds.Right - 1, maxHalf),
-            Clamp(anchor.Y, bounds.Top, bounds.Bottom - 1, EdgeMargin));
+            PixelRect.ClampWithInset(anchor.X, bounds.Left, bounds.Right - 1, maxHalf),
+            PixelRect.ClampWithInset(anchor.Y, bounds.Top, bounds.Bottom - 1, EdgeMargin));
         var vertical = new ScreenPoint(
-            Clamp(anchor.X, bounds.Left, bounds.Right - 1, EdgeMargin),
-            Clamp(anchor.Y, bounds.Top, bounds.Bottom - 1, maxHalf));
+            PixelRect.ClampWithInset(anchor.X, bounds.Left, bounds.Right - 1, EdgeMargin),
+            PixelRect.ClampWithInset(anchor.Y, bounds.Top, bounds.Bottom - 1, maxHalf));
 
         var horizontalRoom = Math.Min(horizontal.X - bounds.Left, bounds.Right - 1 - horizontal.X);
         var horizontalMove = Distance(anchor, horizontal);
@@ -211,14 +211,6 @@ public static class PinchGeometry
             return (horizontal, false, horizontalRoom);
 
         return (vertical, true, Math.Min(vertical.Y - bounds.Top, bounds.Bottom - 1 - vertical.Y));
-    }
-
-    /// <summary>Clamps into [min + inset, max - inset]; if the inset is wider than the range, uses the middle.</summary>
-    internal static int Clamp(double value, int min, int max, double inset)
-    {
-        var low = min + inset;
-        var high = max - inset;
-        return (int)Math.Round(low > high ? (min + max) / 2.0 : Math.Clamp(value, low, high));
     }
 
     private static ScreenPoint Offset(ScreenPoint focus, double offset, bool vertical) => new(

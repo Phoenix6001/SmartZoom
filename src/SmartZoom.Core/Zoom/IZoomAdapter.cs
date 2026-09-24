@@ -24,7 +24,7 @@ public interface IZoomAdapter
     /// <summary>
     /// The type this adapter hands out as its restore state. The coordinator stores restore state as
     /// <see cref="object"/>, so this is how it can tell — without catching an exception — that an entry
-    /// left behind by an earlier build of this adapter is no longer one this build can undo.
+    /// left behind by another build of this adapter is not one this build can undo.
     /// </summary>
     Type RestoreType { get; }
 
@@ -34,7 +34,7 @@ public interface IZoomAdapter
     /// <param name="cancellationToken">Cancels a zoom in progress; adapters must still leave the system in a sane state (no stuck modifier keys).</param>
     Task<ZoomInResult> ZoomInAsync(TargetInfo target, ScreenPoint point, CancellationToken cancellationToken);
 
-    /// <summary>Undoes a zoom previously applied by this adapter.</summary>
+    /// <summary>Undoes a zoom this adapter applied.</summary>
     /// <param name="target">Window that was zoomed. It is still alive when this is called.</param>
     /// <param name="restoreState">The state this adapter returned from <see cref="ZoomInAsync"/>.</param>
     /// <param name="cancellationToken">Cancels the restore.</param>

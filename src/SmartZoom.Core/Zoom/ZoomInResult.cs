@@ -35,7 +35,11 @@ public sealed class ZoomInResult
 
     /// <summary>The zoom was applied; <paramref name="restoreState"/> will be passed to <see cref="IZoomAdapter.ZoomOutAsync"/> to undo it.</summary>
     /// <param name="restoreState">Adapter-specific undo data.</param>
-    public static ZoomInResult Applied(object restoreState)
+    /// <remarks>
+    /// Adapters reach this through the typed <c>Applied</c> on <see cref="ZoomAdapter{TRestore}"/>, so handing
+    /// back the wrong kind of state is a compile error there rather than a surprise on the toggle press.
+    /// </remarks>
+    internal static ZoomInResult Applied(object restoreState)
     {
         ArgumentNullException.ThrowIfNull(restoreState);
         return new ZoomInResult(ZoomInStatus.Applied, restoreState);

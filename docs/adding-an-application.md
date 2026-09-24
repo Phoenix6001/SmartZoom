@@ -11,7 +11,8 @@ Most applications zoom with Ctrl and the mouse wheel. If yours does, it needs no
 "Apps": { "notepad": "CtrlWheel" }
 ```
 
-The key is the process image name, with or without `.exe`, case-insensitive. Restart SmartZoom afterwards.
+The key is the process image name, with or without `.exe`, case-insensitive. Then choose **Reload settings
+file** from the tray menu; nothing needs a restart.
 
 The strategies you can name are the ids the adapters in your build declare:
 
@@ -93,8 +94,8 @@ applies to every window and does not come back.
 `SmartZoom.Core` must not reference Win32. If your adapter needs to talk to the application, declare an
 interface in Core and implement it in `SmartZoom.Interop`. Word is the worked example:
 
-- `src/SmartZoom.Core/Zoom/Office/IWordAutomation.cs` declares `IWordAutomation`, `IWordWindow` and the
-  `WordViewState` record that carries the zoom and scroll position.
+- `src/SmartZoom.Core/Zoom/Office/IWordAutomation.cs`, `IWordWindow.cs` and `WordViewState.cs` declare the
+  automation entry point, the attached window, and the record that carries the zoom and scroll position.
 - `src/SmartZoom.Interop/Office/WordAutomation.cs` implements them with late-bound COM on a dedicated STA
   thread, and never leaks a COM type back to Core.
 
@@ -137,8 +138,9 @@ looked right.
 
 ## PowerPoint, if you are looking for somewhere to start
 
-PowerPoint is not supported. It used to be listed in the default routing with no adapter behind it, which is
-the failure this design exists to prevent, and it has been removed rather than left to disappoint. The sketch:
+PowerPoint is not supported, and it is deliberately absent from the default routing: an application routed
+to a strategy with no adapter behind it is exactly the silent failure this design exists to prevent. The
+sketch:
 `AccessibleObjectFromWindow(OBJID_NATIVEOM)` on the slide window gives you a `DocumentWindow`, whose
 `View.Zoom` is the zoom and whose `Selection` reaches the shapes; the block is the shape under the cursor.
 `WordComAdapter` is the closest model to copy.

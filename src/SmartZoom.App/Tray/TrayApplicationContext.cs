@@ -14,18 +14,26 @@ using SmartZoom.Core.Zoom;
 namespace SmartZoom.App.Tray;
 
 /// <summary>Owns the notification-area icon and its menu; runs on the UI thread for the app's lifetime.</summary>
-internal sealed partial class TrayApplicationContext : ApplicationContext
+internal sealed partial class TrayApplicationContext : ApplicationContext, ISettingsWindowOpener
 {
+    /// <summary>How long a balloon stays up; the shell treats it as a hint and may show it for less.</summary>
+    private const int BalloonMs = 5000;
+
+    /// <summary>The notification area truncates a tooltip silently past this many characters on older shells.</summary>
+    private const int MaxTooltipLength = 63;
+
     private readonly ITriggerSource _triggerSource;
     private readonly SettingsApplier _applier;
     private readonly SettingsHolder _holder;
     private readonly ZoomEngine _engine;
+    private readonly ISystemInput _systemInput;
     private readonly AppPaths _paths;
     private readonly DiagnosticRecorder _recorder;
     private readonly IMachineFacts _facts;
     private SettingsForm? _settingsWindow;
     private readonly ZoomActivity _activity;
     private readonly ILogger<TrayApplicationContext> _logger;
+    private readonly Font _menuBold = new(SystemFonts.MenuFont!, FontStyle.Bold);
     private readonly NotifyIcon _notifyIcon;
     private readonly ContextMenuStrip _menu;
     private readonly ToolStripMenuItem _enabledItem;
@@ -39,6 +47,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext
         SettingsApplier applier,
         SettingsHolder holder,
         ZoomEngine engine,
+        ISystemInput systemInput,
         AppPaths paths,
         DiagnosticRecorder recorder,
         IMachineFacts facts,
@@ -50,21 +59,24 @@ internal sealed partial class TrayApplicationContext : ApplicationContext
         _applier = applier;
         _holder = holder;
         _engine = engine;
+        _systemInput = systemInput;
         _paths = paths;
         _recorder = recorder;
         _facts = facts;
         _activity = activity;
         _logger = logger;
 
-        _enabledItem = new ToolStripMenuItem("&Enabled") { CheckOnClick = true, Checked = triggerSource.Enabled };
-        _enabledItem.CheckedChanged += OnEnabledChanged;
+        // The trigger source is the truth about whether zooming is on; the item only shows it. Settings applied
+        // from the window or the file change it too, so the check mark is re-read whenever it is about to be seen.
+        _enabledItem = new ToolStripMenuItem("&Enabled") { Checked = triggerSource.Enabled };
+        _enabledItem.Click += (_, _) => ToggleEnabled();
 
         _menu = new ContextMenuStrip();
         _menu.Items.AddRange(
         [
             _enabledItem,
             new ToolStripSeparator(),
-            new ToolStripMenuItem("&Settings…", image: null, (_, _) => OpenSettings()) { Font = new Font(SystemFonts.MenuFont!, FontStyle.Bold) },
+            new ToolStripMenuItem("&Settings…", image: null, (_, _) => OpenSettings()) { Font = _menuBold },
             new ToolStripMenuItem("Open &settings file", image: null, (_, _) => OpenWithShell(_paths.SettingsFile)),
             new ToolStripMenuItem("&Reload settings file", image: null, (_, _) => ReloadSettings()),
             new ToolStripMenuItem("Open &log folder", image: null, (_, _) => OpenWithShell(_paths.LogDirectory)),
@@ -75,6 +87,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext
             new ToolStripSeparator(),
             new ToolStripMenuItem("E&xit", image: null, (_, _) => ExitThread()),
         ]);
+        _menu.Opening += (_, _) => UpdateTooltip();
 
         _notifyIcon = new NotifyIcon
         {
@@ -113,32 +126,41 @@ internal sealed partial class TrayApplicationContext : ApplicationContext
             _hostStoppingRegistration.Dispose();
             _notifyIcon.Dispose();
             _menu.Dispose();
+            _menuBold.Dispose();
         }
 
         base.Dispose(disposing);
     }
 
-    private void OnEnabledChanged(object? sender, EventArgs e)
-    {
-        // Through the applier, because it is the only thing that may write the settings file: a second writer
-        // holding its own copy is how the file ends up describing settings the app is not running.
-        _applier.SetEnabled(_enabledItem.Checked);
-        UpdateTooltip();
-    }
-
-    /// <summary>Asks for the settings window from any thread; the window itself belongs to the UI thread.</summary>
+    /// <inheritdoc />
     public void RequestSettings() => _uiContext.Post(_ => OpenSettings(), null);
 
     /// <summary>
-    /// Opens the settings window on the given tab, or brings it to the front if it is already open.
+    /// Flips the switch through the applier, the only writer of the settings file. Off the UI thread, because
+    /// the applier's gate may be held by a settings change that is waiting for a zoom.
     /// </summary>
+    private void ToggleEnabled()
+    {
+        var enabled = !_triggerSource.Enabled;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _applier.SetEnabledAsync(enabled).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                LogChangeFailed(ex);
+            }
+
+            _uiContext.Post(_ => UpdateTooltip(), null);
+        });
+    }
+
+    /// <summary>Opens the settings window on the given tab, or brings it to the front if it is already open.</summary>
     /// <param name="tab">
-    /// The tab to show, or null for "wherever it is". A menu item that names a page (the diagnostic report)
-    /// passes one and gets that page even on an already-open window: it used to return early, so pressing
-    /// the trigger, seeing nothing zoom and choosing "Diagnostic report…" left the window sitting on
-    /// Triggers and the item appeared to do nothing. A plain "Settings…" or a double-click on the icon
-    /// passes null, because that window was opened for a reason and must not be switched out from under
-    /// whatever the user is doing on it.
+    /// The tab to show, even on an already-open window, or null to leave an open window on whatever tab the
+    /// user has it.
     /// </param>
     private void OpenSettings(SettingsTab? tab = null)
     {
@@ -155,7 +177,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext
         }
 
         _settingsWindow = new SettingsForm(
-            _applier, _holder, _engine, _triggerSource, _paths, _recorder, _facts, tab ?? SettingsTab.Triggers);
+            _applier, _holder, _engine, _triggerSource, _systemInput, _paths, _recorder, _facts, tab ?? SettingsTab.Triggers);
         _settingsWindow.FormClosed += (_, _) => _settingsWindow = null;
         _settingsWindow.Show();
         _settingsWindow.Activate();
@@ -163,17 +185,34 @@ internal sealed partial class TrayApplicationContext : ApplicationContext
 
     /// <summary>
     /// Applies the settings file as it stands, for people who edit the JSON rather than use the window.
-    /// Runs off the UI thread: applying waits for any zoom in flight.
+    /// Runs off the UI thread: applying waits for any zoom in flight. Whatever happens, the user hears about it.
     /// </summary>
     private void ReloadSettings() => _ = Task.Run(async () =>
     {
-        var result = await _applier.ReloadAsync().ConfigureAwait(false);
-        var summary = result.InForce
-            ? "Settings reloaded."
-            : "The settings file was not applied:" + Environment.NewLine + Environment.NewLine
-                + string.Join(Environment.NewLine, result.Problems.Select(p => p.ToString()));
+        string summary;
+        var good = false;
+        try
+        {
+            var result = await _applier.ReloadAsync().ConfigureAwait(false);
+            good = result.InForce;
+            summary = good
+                ? "Settings reloaded."
+                : "The settings file was not applied:" + Environment.NewLine + Environment.NewLine
+                    + string.Join(Environment.NewLine, result.Problems.Select(p => p.ToString()));
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            LogChangeFailed(ex);
+            summary = "The settings file was not applied: " + ex.Message;
+        }
 
-        _uiContext.Post(_ => Notify(summary, result.InForce), null);
+        _uiContext.Post(
+            _ =>
+            {
+                Notify(summary, good);
+                UpdateTooltip();
+            },
+            null);
     });
 
     /// <summary>How long ago a press last arrived, or nothing at all before the first one.</summary>
@@ -191,7 +230,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext
     }
 
     private void Notify(string text, bool good) =>
-        _notifyIcon.ShowBalloonTip(5000, "SmartZoom", text, good ? ToolTipIcon.Info : ToolTipIcon.Warning);
+        _notifyIcon.ShowBalloonTip(BalloonMs, "SmartZoom", text, good ? ToolTipIcon.Info : ToolTipIcon.Warning);
 
     private void OnZoomHappened(object? sender, ZoomOutcome outcome) =>
         _uiContext.Post(
@@ -204,12 +243,14 @@ internal sealed partial class TrayApplicationContext : ApplicationContext
 
     private void UpdateTooltip()
     {
-        var header = _enabledItem.Checked ? "SmartZoom" : "SmartZoom (disabled)";
+        var enabled = _triggerSource.Enabled;
+        _enabledItem.Checked = enabled;
+
+        var header = enabled ? "SmartZoom" : "SmartZoom (disabled)";
         var text = header + Environment.NewLine + _lastAction + Since();
 
-        // The notification area truncates silently past 63 characters on older shells, and a sentence that
-        // ends in an ellipsis reads better than one that simply stops.
-        _notifyIcon.Text = text.Length <= 63 ? text : string.Concat(text.AsSpan(0, 62), "\u2026");
+        // A sentence that ends in an ellipsis reads better than one that simply stops.
+        _notifyIcon.Text = text.Length <= MaxTooltipLength ? text : string.Concat(text.AsSpan(0, MaxTooltipLength - 1), "…");
     }
 
     private void OpenWithShell(string path)
@@ -226,4 +267,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to open {Path}.")]
     private partial void LogOpenFailed(Exception exception, string path);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "A settings change from the tray failed.")]
+    private partial void LogChangeFailed(Exception exception);
 }

@@ -9,14 +9,23 @@ namespace SmartZoom.App.Diagnostics;
 /// </remarks>
 internal static class Crash
 {
+    /// <summary>
+    /// The slot that marks an unhandled exception on the UI thread, which the process survives. Kept apart in
+    /// the record so a report can tell those from the crashes that took the process down.
+    /// </summary>
+    public const string UiThread = "UiThread";
+
     /// <summary>Records an unhandled exception and flushes it to disk immediately.</summary>
     /// <param name="recorder">The diagnostics recorder.</param>
-    /// <param name="ex">The exception that is about to take the process down.</param>
-    public static void Record(DiagnosticRecorder recorder, Exception ex)
+    /// <param name="ex">The exception nothing else caught.</param>
+    /// <param name="thread">
+    /// <see cref="UiThread"/> for an exception the process survives; null for one that is about to take it down.
+    /// </param>
+    public static void Record(DiagnosticRecorder recorder, Exception ex, string? thread = null)
     {
         try
         {
-            var key = new DiagnosticKey(DiagnosticKind.Crashed, null, null, ex.GetType().Name);
+            var key = new DiagnosticKey(DiagnosticKind.Crashed, null, thread, ex.GetType().Name);
             recorder.Note(key);
             recorder.Sample(new DiagnosticSample(
                 key,

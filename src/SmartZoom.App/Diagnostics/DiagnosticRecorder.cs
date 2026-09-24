@@ -14,6 +14,10 @@ namespace SmartZoom.App.Diagnostics;
 internal sealed class DiagnosticRecorder(DiagnosticStore store, TimeProvider time, string version) : IGesturePacingSink
 {
     private readonly Lock _gate = new();
+
+    // Held across snapshot, save and mark, so that two flushes (the timer's and a crash's) can never write an
+    // older snapshot last. Never taken on the zoom path, so the disk still waits for nobody but the flusher.
+    private readonly Lock _flushing = new();
     private DiagnosticRecord _record = store.Load(version);
 
     // A version rather than a bool. "Dirty" cannot express "saved what existed at the moment the write
@@ -95,32 +99,32 @@ internal sealed class DiagnosticRecorder(DiagnosticStore store, TimeProvider tim
 
     /// <summary>Writes the record if anything has changed.</summary>
     /// <remarks>
-    /// The record is marked written only once the store says it wrote it. Clearing the flag first meant a
-    /// single transient failure - Save swallows IOException - left nothing on disk and nothing to flush,
-    /// so the whole session's record was silently discarded. The file I/O deliberately happens outside
-    /// <c>_gate</c>: that lock is taken on the zoom path, and diagnostics may never make a zoom wait for a disk.
+    /// The record is marked written only once the store says it wrote it, so a failed write leaves it pending
+    /// for the next flush. The file I/O deliberately happens outside <c>_gate</c>: that lock is taken on the
+    /// zoom path, and diagnostics may never make a zoom wait for a disk.
     /// </remarks>
     public void Flush()
     {
-        DiagnosticRecord snapshot;
-        long changes;
-        lock (_gate)
+        lock (_flushing)
         {
-            if (_changes == _written)
+            DiagnosticRecord snapshot;
+            long changes;
+            lock (_gate)
+            {
+                if (_changes == _written)
+                    return;
+
+                snapshot = new DiagnosticRecord(_record);
+                changes = _changes;
+            }
+
+            if (!store.Save(snapshot))
                 return;
 
-            snapshot = new DiagnosticRecord(_record);
-            changes = _changes;
-        }
-
-        if (!store.Save(snapshot))
-            return;
-
-        lock (_gate)
-        {
-            // Only forward: a write that overtook a later one must not mark the later one's work as saved.
-            if (changes > _written)
+            lock (_gate)
+            {
                 _written = changes;
+            }
         }
     }
 }

@@ -15,7 +15,7 @@ public sealed class SettingsValidatorTests
     [
         CtrlWheelAdapter.Descriptor,
         BrowserAdapter.Descriptor,
-        ReaderAdapter.Descriptor,
+        ReaderStrategy.Descriptor,
         WordComAdapter.Descriptor,
         ExcelComAdapter.Descriptor,
     ];
@@ -24,7 +24,7 @@ public sealed class SettingsValidatorTests
     public void The_shipped_defaults_are_valid() =>
         Assert.Empty(Validate(new SmartZoomSettings()));
 
-    public sealed class Triggers
+    public sealed class Validating_triggers
     {
         [Fact]
         public void A_file_with_no_triggers_is_an_error()
@@ -141,7 +141,7 @@ public sealed class SettingsValidatorTests
         }
     }
 
-    public sealed class Routing
+    public sealed class Validating_routing
     {
         [Fact]
         public void An_application_routed_to_a_strategy_this_build_lacks_is_a_warning_not_an_error()
@@ -172,7 +172,7 @@ public sealed class SettingsValidatorTests
         }
     }
 
-    public sealed class Zoom
+    public sealed class Validating_zoom
     {
         [Theory]
         [InlineData(1.0)]

@@ -24,6 +24,9 @@ indent_size = 2
 
 #### Core EditorConfig Options ####
 
+# Encoding: UTF-8 without a byte order mark, like every other file in the repository.
+charset = utf-8
+
 # Indentation and spacing
 indent_size = 4
 tab_width = 4

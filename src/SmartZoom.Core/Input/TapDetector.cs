@@ -205,8 +205,10 @@ public sealed class TapDetector
             case State.PassUp:
                 if (isDown)
                 {
+                    // The application has seen the replayed Down and is still owed its Up, which was lost.
+                    // Hand the Up back before holding this press, so the app never sees a stuck input.
                     Begin(timeMs);
-                    return Swallowed;
+                    return new HookDecision(Swallow: true, Triggered: false, ReplayAction.Up);
                 }
                 _state = State.Idle;
                 return default;

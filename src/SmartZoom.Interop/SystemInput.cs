@@ -1,10 +1,12 @@
+using SmartZoom.Core.Input;
+
 using Windows.Win32;
 
 namespace SmartZoom.Interop;
 
-/// <summary>System-wide input settings.</summary>
-public static class SystemInput
+/// <summary>System-wide input settings, read from Windows.</summary>
+public sealed class SystemInput : ISystemInput
 {
-    /// <summary>The user's configured double-click time in milliseconds (Control Panel, Mouse).</summary>
-    public static uint DoubleClickTimeMs => PInvoke.GetDoubleClickTime();
+    /// <inheritdoc />
+    public uint DoubleClickTimeMs => PInvoke.GetDoubleClickTime();
 }

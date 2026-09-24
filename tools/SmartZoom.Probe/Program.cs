@@ -61,25 +61,34 @@ internal static class Program
                 return Wheel(Point(args, 1), Integer(args, 3, 0));
 
             case "keys":
-                return Keys(Point(args, 1), args[3]);
+                return Arg(args, 3, "combination") is { } combination && Keys(Point(args, 1), combination);
 
             case "excel":
                 return Excel(Point(args, 1));
 
             case "shot":
-                Screen.Shoot(Region(args, 2) ?? Under(Point(args, 2)), args[1]);
+                if (Arg(args, 1, "file.png") is not { } shot)
+                    return false;
+
+                Screen.Shoot(Region(args, 2) ?? Under(Point(args, 2)), shot);
                 return true;
 
             case "diff":
-                Screen.Diff(args[1], args[2], Region(args, 3));
+                if (Arg(args, 1, "a.png") is not { } diffFirst || Arg(args, 2, "b.png") is not { } diffSecond)
+                    return false;
+
+                Screen.Diff(diffFirst, diffSecond, Region(args, 3));
                 return true;
 
             case "scale":
-                Screen.Scale(args[1], args[2], Integer(args, 3, 0), Integer(args, 4, 4000), Number(args, 5, 0.5), Number(args, 6, 3.0));
+                if (Arg(args, 1, "a.png") is not { } scaleFirst || Arg(args, 2, "b.png") is not { } scaleSecond)
+                    return false;
+
+                Screen.Scale(scaleFirst, scaleSecond, Integer(args, 3, 0), Integer(args, 4, 4000), Number(args, 5, 0.5), Number(args, 6, 3.0));
                 return true;
 
             case "track":
-                return Track(args[1]);
+                return Arg(args, 1, "prefix") is { } prefix && Track(prefix);
 
             default:
                 Console.Error.WriteLine($"unknown command \"{args[0]}\"");
@@ -219,8 +228,8 @@ internal static class Program
         if (new WindowInspector().GetTargetAt(point) is not { } target)
             return false;
 
-        using var window = new ExcelAutomation(NullLogger<ExcelAutomation>.Instance)
-            .AttachAsync(target, CancellationToken.None).GetAwaiter().GetResult();
+        using var excel = new ExcelAutomation(NullLogger<ExcelAutomation>.Instance);
+        using var window = excel.AttachAsync(target, CancellationToken.None).GetAwaiter().GetResult();
 
         if (window is null)
         {
@@ -284,6 +293,17 @@ internal static class Program
 
         return new ReaderView(NullLogger<ReaderView>.Instance).Bounds(target)
             ?? throw new InvalidOperationException("that window has no usable content area");
+    }
+
+    /// <summary>A required argument, or null after saying which one is missing and printing the usage.</summary>
+    private static string? Arg(string[] args, int index, string name)
+    {
+        if (args.Length > index)
+            return args[index];
+
+        Console.Error.WriteLine($"missing <{name}>");
+        Help();
+        return null;
     }
 
     private static ScreenPoint Point(string[] args, int index) =>
