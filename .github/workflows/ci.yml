@@ -43,7 +43,7 @@ jobs:
 
       - name: Upload coverage
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage
           path: '**/TestResults/**/coverage.cobertura.xml'
@@ -62,7 +62,7 @@ jobs:
       # Framework-dependent: this one needs the .NET 10 Desktop Runtime on the machine that runs it. The
       # installer below carries its own.
       - name: Upload SmartZoom.exe
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: SmartZoom-${{ steps.version.outputs.version }}-win-x64-framework-dependent
           path: publish/SmartZoom.exe
@@ -79,7 +79,7 @@ jobs:
         run: pwsh install/build.ps1
 
       - name: Upload installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: SmartZoom-setup
           path: install/output/*-setup.exe
