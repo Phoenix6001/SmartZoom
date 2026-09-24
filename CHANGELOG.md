@@ -6,6 +6,10 @@ All notable changes to SmartZoom are recorded here. The format follows
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.3.0] - 2026-09-24
+
 ### Added
 
 - **A new settings window, and a panel in the tray.** Left-click the tray icon and a panel drops out of it
@@ -174,7 +178,8 @@ All notable changes to SmartZoom are recorded here. The format follows
 - Double-tap swallow: a press arriving while a replayed release is still owed replays that release first.
 - `smartzoom-probe`: a missing argument prints which one is missing; capture analysis is faster.
 
-[Unreleased]: https://github.com/Phoenix6001/SmartZoom/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Phoenix6001/SmartZoom/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Phoenix6001/SmartZoom/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Phoenix6001/SmartZoom/releases/tag/v0.2.0
 [0.1.1]: https://github.com/Phoenix6001/SmartZoom/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Phoenix6001/SmartZoom/releases/tag/v0.1.0
