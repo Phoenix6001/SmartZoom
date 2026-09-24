@@ -4,6 +4,8 @@
 cursor zooms its *content* to fit the element you're pointing at. Press again to return to exactly
 where you were.
 
+![One press zooms the paragraph under the cursor to the window; the next press puts the page back exactly as it was.](docs/media/smart-zoom.gif)
+
 Windows has no system gesture for this, so SmartZoom is a small tray app that captures a mouse or keyboard
 trigger and routes it to a per-application zoom strategy:
 
