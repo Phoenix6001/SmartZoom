@@ -25,6 +25,7 @@ internal static class PipelineFixtures
     public static ZoomPipelineFactory CreateFactory(WindowZoomStateStore? state = null) => new(
         new NoContentHitTester(),
         new AcceptingPinch(),
+        new BlindScreen(),
         new EmptyReaderView(),
         new AcceptingInjector(),
         new NoWordAutomation(),
@@ -50,6 +51,11 @@ internal static class PipelineFixtures
     {
         public Task<ContentHit?> HitTestAsync(TargetInfo target, ScreenPoint point, CancellationToken cancellationToken) =>
             Task.FromResult<ContentHit?>(null);
+    }
+
+    private sealed class BlindScreen : IScreenSampler
+    {
+        public ScreenSample? Sample(PixelRect region) => null;
     }
 
     private sealed class AcceptingPinch : IPinchInjector

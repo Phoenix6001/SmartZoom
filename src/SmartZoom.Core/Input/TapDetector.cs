@@ -69,6 +69,12 @@ public sealed class TapDetector
     public bool Swallows => _swallow;
 
     /// <summary>
+    /// True when nothing is in progress: no press is held back, swallowed or awaiting a second tap. In pass-through
+    /// double-tap mode the first press is remembered until the next press, so this stays false after its release.
+    /// </summary>
+    public bool IsIdle => _state == State.Idle;
+
+    /// <summary>
     /// When a swallowed press is pending, the tick at which <see cref="OnTimeout"/> should be called.
     /// Always false for single tap and in pass-through mode (nothing to replay, so no timer needed).
     /// </summary>

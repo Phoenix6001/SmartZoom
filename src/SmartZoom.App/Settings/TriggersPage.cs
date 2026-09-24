@@ -148,6 +148,16 @@ internal sealed class TriggersPage : UserControl
     }
 
     /// <summary>What the trigger is, in the words the recorder used, or the raw text when it cannot be read.</summary>
-    private static string Describe(TriggerSettings trigger) =>
-        trigger.Mouse is { } button and not MouseButton.None ? button.ToString() : trigger.Keys ?? "(not set)";
+    private static string Describe(TriggerSettings trigger)
+    {
+        if (trigger.Mouse is not { } button || button == MouseButton.None)
+            return trigger.Keys ?? "(not set)";
+
+        if (string.IsNullOrWhiteSpace(trigger.Modifiers))
+            return button.ToString();
+
+        return KeyCombo.TryParseModifiers(trigger.Modifiers, out var modifiers)
+            ? MouseButtonTrigger.Describe(button, modifiers)
+            : $"{trigger.Modifiers}+{button}";
+    }
 }

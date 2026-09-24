@@ -107,7 +107,10 @@ reverses exactly those, leaves Control alone if the user is physically holding i
 
 **Browsers never fall back to Ctrl+wheel.** In a browser that is page zoom: it applies per site across every
 window and does not come back. An adapter that cannot act in a browser reports that it handled the trigger
-rather than let the fallback run.
+rather than let the fallback run. The one exception is a page that blocks the pinch itself (`touch-action:
+none`): the gesture went in and the page kept it, which SmartZoom can only tell by comparing the screen before
+and after, and page zoom is then the only zoom that page allows. `Zoom.Browser.CtrlWheelWhenPinchBlocked`
+turns that exception off.
 
 **A shortcut is re-aimed immediately before it is sent.** The target window is brought to the front, then
 SmartZoom waits up to a second and a half for the user to let go of the trigger's modifiers. If the foreground

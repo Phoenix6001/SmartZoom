@@ -139,6 +139,90 @@ public sealed class SettingsValidatorTests
 
             Assert.Empty(Validate(settings));
         }
+
+        [Fact]
+        public void The_same_button_with_and_without_modifiers_are_two_triggers()
+        {
+            var settings = With(s => s.Triggers =
+            [
+                new TriggerSettings { Mouse = MouseButton.Middle },
+                new TriggerSettings { Mouse = MouseButton.Middle, Modifiers = "Ctrl", TapCount = 1 },
+            ]);
+
+            Assert.Empty(Validate(settings));
+        }
+
+        [Fact]
+        public void The_same_button_with_the_same_modifiers_is_an_error_however_they_were_spelled()
+        {
+            var settings = With(s => s.Triggers =
+            [
+                new TriggerSettings { Mouse = MouseButton.Middle, Modifiers = "Ctrl+Alt" },
+                new TriggerSettings { Mouse = MouseButton.Middle, Modifiers = "alt+control", TapCount = 1 },
+            ]);
+
+            var problem = Assert.Single(Validate(settings));
+
+            Assert.Equal(SettingsProblemSeverity.Error, problem.Severity);
+            Assert.Equal("Triggers[1]", problem.Section);
+            Assert.Contains("Ctrl+Alt+Middle is already used by trigger 1", problem.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void A_left_or_right_click_without_modifiers_is_an_error()
+        {
+            // MouseButtonTrigger's constructor owns this rule; the validator reports what it threw.
+            var problem = Assert.Single(Validate(With(s => s.Triggers = [new TriggerSettings { Mouse = MouseButton.Right }])));
+
+            Assert.Equal(SettingsProblemSeverity.Error, problem.Severity);
+            Assert.Equal("Triggers[0]", problem.Section);
+            Assert.Contains("needs a modifier key", problem.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void Modifiers_that_are_not_modifier_keys_are_an_error()
+        {
+            var trigger = new TriggerSettings { Mouse = MouseButton.Left, Modifiers = "Ctrl+Z" };
+
+            var problem = Assert.Single(Validate(With(s => s.Triggers = [trigger])));
+
+            Assert.Equal(SettingsProblemSeverity.Error, problem.Severity);
+            Assert.Contains("Ctrl+Z", problem.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void Modifiers_on_a_hotkey_are_an_error()
+        {
+            var trigger = new TriggerSettings { Keys = "F9", Modifiers = "Ctrl" };
+
+            var problem = Assert.Single(Validate(With(s => s.Triggers = [trigger])));
+
+            Assert.Equal(SettingsProblemSeverity.Error, problem.Severity);
+            Assert.Contains("belongs to a \"Mouse\" trigger", problem.Message, StringComparison.Ordinal);
+        }
+
+        [Theory]
+        [InlineData("Ctrl")]
+        [InlineData("Shift")]
+        [InlineData("Ctrl+Alt")]
+        public void A_left_click_with_ctrl_or_shift_is_a_warning_not_an_error(string modifiers)
+        {
+            // It works; it just takes multi-select and range-select away from every other application.
+            var trigger = new TriggerSettings { Mouse = MouseButton.Left, Modifiers = modifiers };
+
+            var problem = Assert.Single(Validate(With(s => s.Triggers = [trigger])));
+
+            Assert.Equal(SettingsProblemSeverity.Warning, problem.Severity);
+            Assert.Equal("Triggers[0]", problem.Section);
+            Assert.Contains("Alt+click", problem.Message, StringComparison.Ordinal);
+        }
+
+        [Theory]
+        [InlineData(MouseButton.Left, "Alt")]
+        [InlineData(MouseButton.Right, "Ctrl")]
+        [InlineData(MouseButton.Middle, "Shift")]
+        public void Other_modified_clicks_pass_without_comment(MouseButton button, string modifiers) =>
+            Assert.Empty(Validate(With(s => s.Triggers = [new TriggerSettings { Mouse = button, Modifiers = modifiers }])));
     }
 
     public sealed class Validating_routing

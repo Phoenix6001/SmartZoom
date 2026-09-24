@@ -87,7 +87,8 @@ one of them win.
 Return `Unhandled` when the application is in a state you cannot work with and a crude zoom would still be
 better than nothing. Return `Handled` when a crude zoom would be *worse* than nothing —
 `BrowserAdapter` does this, because the Ctrl+wheel fallback in a browser is page zoom, which is per site,
-applies to every window and does not come back.
+applies to every window and does not come back. Its one `Unhandled` is a page that blocked the pinch, where
+page zoom is the only zoom left.
 
 ### The rule about Win32
 

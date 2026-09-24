@@ -100,17 +100,22 @@ public static class SettingsValidator
     /// </summary>
     private static void CheckForSharedInputs(List<TriggerDefinition?> definitions, List<SettingsProblem> problems)
     {
-        var buttons = new Dictionary<MouseButton, int>();
+        // Keyed by button and modifiers together: "Middle" and "Ctrl+Middle" are two inputs.
+        var buttons = new Dictionary<(MouseButton Button, KeyModifiers Modifiers), int>();
         var combos = new Dictionary<KeyCombo, int>();
 
         for (var i = 0; i < definitions.Count; i++)
         {
             switch (definitions[i])
             {
-                case MouseButtonTrigger mouse when !buttons.TryAdd(mouse.Button, i):
+                case MouseButtonTrigger mouse when !buttons.TryAdd((mouse.Button, mouse.Modifiers), i):
                     problems.Add(SettingsProblem.Error(
                         $"Triggers[{i}]",
-                        $"{mouse.Button} is already used by trigger {buttons[mouse.Button] + 1}. Each button can only start one trigger."));
+                        $"{MouseButtonTrigger.Describe(mouse.Button, mouse.Modifiers)} is already used by trigger {buttons[(mouse.Button, mouse.Modifiers)] + 1}. Each button can only start one trigger."));
+                    break;
+
+                case MouseButtonTrigger mouse when MouseButtonTrigger.CautionFor(mouse.Button, mouse.Modifiers) is { } caution:
+                    problems.Add(SettingsProblem.Warning($"Triggers[{i}]", caution));
                     break;
 
                 case HotkeyTrigger hotkey when !combos.TryAdd(hotkey.Keys, i):

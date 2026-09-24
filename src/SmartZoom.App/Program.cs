@@ -184,6 +184,7 @@ internal static class Program
         builder.Services.AddSingleton<IPinchInjector, TouchPinchInjector>();
         builder.Services.AddSingleton<IWindowActivator, WindowActivator>();
         builder.Services.AddSingleton<IReaderView, ReaderView>();
+        builder.Services.AddSingleton<IScreenSampler, ScreenSampler>();
         builder.Services.AddSingleton<ShortcutSender>();
         builder.Services.AddSingleton<IWordAutomation, WordAutomation>();
         builder.Services.AddSingleton<IExcelAutomation, ExcelAutomation>();

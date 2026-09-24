@@ -58,6 +58,52 @@ public sealed class TriggerCommandTests
             Assert.Equal("Ctrl+Alt+Z", trigger.Keys);
         }
 
+        [Theory]
+        [InlineData("Ctrl+LeftClick", MouseButton.Left, "Ctrl")]
+        [InlineData("alt+rightclick", MouseButton.Right, "Alt")]
+        [InlineData("Shift + Ctrl + MiddleClick", MouseButton.Middle, "Ctrl+Shift")]
+        [InlineData("Ctrl+Middle", MouseButton.Middle, "Ctrl")]
+        [InlineData("Ctrl+XButton2", MouseButton.XButton2, "Ctrl")]
+        public void Reads_a_click_with_modifiers(string spec, MouseButton button, string modifiers)
+        {
+            var trigger = TriggerCommand.Parse(spec);
+
+            Assert.NotNull(trigger);
+            Assert.Equal(button, trigger.Mouse);
+            Assert.Equal(modifiers, trigger.Modifiers);
+            Assert.Null(trigger.Keys);
+        }
+
+        [Fact]
+        public void Reads_a_click_suffix_alone_as_that_button_with_no_modifiers()
+        {
+            // Persist refuses it later, because a bare left click can't be a trigger; parsing is not where that is decided.
+            var trigger = TriggerCommand.Parse("LeftClick");
+
+            Assert.NotNull(trigger);
+            Assert.Equal(MouseButton.Left, trigger.Mouse);
+            Assert.Null(trigger.Modifiers);
+        }
+
+        [Theory]
+        [InlineData("Left")]
+        [InlineData("Ctrl+Right")]
+        public void Reads_left_and_right_without_the_click_suffix_as_arrow_keys(string spec)
+        {
+            var trigger = TriggerCommand.Parse(spec);
+
+            Assert.NotNull(trigger);
+            Assert.Null(trigger.Mouse);
+            Assert.Equal(spec, trigger.Keys);
+        }
+
+        [Theory]
+        [InlineData("Z+LeftClick")]
+        [InlineData("Ctrl+Ctrl+LeftClick")]
+        [InlineData("+LeftClick")]
+        public void Refuses_a_click_preceded_by_anything_but_modifiers(string spec) =>
+            Assert.Null(TriggerCommand.Parse(spec));
+
         [Fact]
         public void Refuses_the_button_that_means_no_button()
         {
@@ -146,6 +192,32 @@ public sealed class TriggerCommandTests
 
             Assert.Equal(1, exitCode);
             Assert.False(File.Exists(DiagnosticFixtures.Paths(temp.Path).SettingsFile));
+        }
+
+        [Fact]
+        public void Refuses_a_bare_left_click_and_writes_nothing()
+        {
+            using var temp = new TempDirectory();
+            var store = CreateStore(temp);
+
+            var exitCode = TriggerCommand.Persist(new TriggerSettings { Mouse = MouseButton.Left, TapCount = 1 }, store, SystemDoubleClickMs);
+
+            Assert.Equal(1, exitCode);
+            Assert.False(File.Exists(DiagnosticFixtures.Paths(temp.Path).SettingsFile));
+        }
+
+        [Fact]
+        public void Writes_a_click_with_its_modifiers()
+        {
+            using var temp = new TempDirectory();
+            var store = CreateStore(temp);
+
+            var exitCode = TriggerCommand.Persist(new TriggerSettings { Mouse = MouseButton.Left, Modifiers = "Ctrl", TapCount = 1 }, store, SystemDoubleClickMs);
+
+            Assert.Equal(0, exitCode);
+            var trigger = Assert.Single(store.Load().Triggers);
+            Assert.Equal(MouseButton.Left, trigger.Mouse);
+            Assert.Equal("Ctrl", trigger.Modifiers);
         }
     }
 

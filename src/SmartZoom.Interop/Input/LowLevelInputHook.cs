@@ -176,7 +176,8 @@ public sealed partial class LowLevelInputHook : ITriggerSource, IDisposable
         var mouse = all.OfType<MouseTriggerState>().ToArray();
         var hotkeys = all.OfType<HotkeyTriggerState>().ToArray();
 
-        if (mouse.Select(t => t.Button).Distinct().Count() != mouse.Length)
+        // A button with modifiers and the same button without are two inputs: "Middle" and "Ctrl+Middle" may coexist.
+        if (mouse.Select(t => (t.Button, t.Modifiers)).Distinct().Count() != mouse.Length)
             throw new ArgumentException("Each mouse button can only be used by one trigger.", nameof(triggers));
         if (hotkeys.Select(t => t.Matcher.Combo).Distinct().Count() != hotkeys.Length)
             throw new ArgumentException("Each key combination can only be used by one trigger.", nameof(triggers));
@@ -307,17 +308,18 @@ public sealed partial class LowLevelInputHook : ITriggerSource, IDisposable
             try
             {
                 var info = (MSLLHOOKSTRUCT*)lParam.Value;
+
+                // A bare left or right click can never match here: MouseButtonTrigger refuses to exist for those
+                // buttons without modifiers, so nothing in the arrays answers to them and no special case is needed.
+                var ours = info->dwExtraInfo == InputInjection.Tag;
                 if (HookMessages.TryMapButton((uint)wParam.Value, info->mouseData, out var button, out var isDown)
-                    && TryFindMouseTrigger(button, out var trigger))
+                    && TryFindMouseTrigger(button, isDown, ours, out var trigger))
                 {
                     if (_observe)
-                        _observations.Writer.TryWrite(new InputObservation(trigger.Definition.DisplayName, isDown, info->time, (info->flags & HookMessages.MouseInjectedMask) != 0, Ours: info->dwExtraInfo == InputInjection.Tag));
+                        _observations.Writer.TryWrite(new InputObservation(trigger.Definition.DisplayName, isDown, info->time, (info->flags & HookMessages.MouseInjectedMask) != 0, ours));
 
-                    if (info->dwExtraInfo != InputInjection.Tag
-                        && Process(trigger, isDown, info->time, new ScreenPoint(info->pt.X, info->pt.Y)))
-                    {
+                    if (!ours && Process(trigger, isDown, info->time, new ScreenPoint(info->pt.X, info->pt.Y)))
                         return new LRESULT(1);
-                    }
                 }
             }
             catch (Exception ex) when (ReportCallbackFault(ex))
@@ -480,19 +482,60 @@ public sealed partial class LowLevelInputHook : ITriggerSource, IDisposable
         _modifiers.Reset();
     }
 
-    private bool TryFindMouseTrigger(MouseButton button, out MouseTriggerState trigger)
+    /// <summary>
+    /// The trigger a button event belongs to. A press goes to the trigger whose modifiers are exactly the ones
+    /// held, or failing that to the trigger with none (which keeps firing whatever is held, as it always has). A
+    /// release goes to the trigger that took the press, whatever is held now: the user may well lift Ctrl before
+    /// the button, and a swallowed press and its release must stay together.
+    /// </summary>
+    /// <remarks>
+    /// Runs on the hook thread, which is also the only writer of <see cref="_modifiers"/>, so the held set is read
+    /// without a lock. Two linear passes over a handful of triggers, no allocation. Our own replays are only
+    /// attributed (for the diagnostics log), never made owners: the physical press they stand in for already is.
+    /// </remarks>
+    private bool TryFindMouseTrigger(MouseButton button, bool isDown, bool ours, out MouseTriggerState trigger)
     {
-        foreach (var candidate in _mouseTriggers)
+        var triggers = _mouseTriggers;
+
+        if (!isDown && !ours)
         {
-            if (candidate.Button == button)
+            foreach (var candidate in triggers)
             {
-                trigger = candidate;
-                return true;
+                if (candidate.Button == button && candidate.Pressed)
+                {
+                    candidate.Pressed = false;
+                    trigger = candidate;
+                    return true;
+                }
             }
         }
 
-        trigger = null!;
-        return false;
+        var held = _modifiers.Held;
+        MouseTriggerState? fallback = null;
+        MouseTriggerState? found = null;
+        foreach (var candidate in triggers)
+        {
+            if (candidate.Button != button)
+                continue;
+
+            if (candidate.Modifiers == held)
+            {
+                found = candidate;
+                break;
+            }
+
+            if (candidate.Modifiers == KeyModifiers.None)
+                fallback = candidate;
+        }
+
+        trigger = (found ?? fallback)!;
+        if (trigger is null)
+            return false;
+
+        if (isDown && !ours)
+            trigger.Pressed = true;
+
+        return true;
     }
 
     private async Task ReplayLoopAsync()
@@ -573,8 +616,15 @@ public sealed partial class LowLevelInputHook : ITriggerSource, IDisposable
     {
         public MouseButton Button { get; } = definition.Button;
 
+        public KeyModifiers Modifiers { get; } = definition.Modifiers;
+
+        /// <summary>Whether the last press of <see cref="Button"/> was routed here and its release has not arrived yet. Hook thread only.</summary>
+        public bool Pressed { get; set; }
+
         public override bool TryReplay(ReplayAction action, out int error) =>
             InputInjection.TrySendMouseButton(Button, action, out error);
+
+        public override void ResetMatcher() => Pressed = false;
     }
 
     private sealed class HotkeyTriggerState(HotkeyTrigger definition) : TriggerState(definition)

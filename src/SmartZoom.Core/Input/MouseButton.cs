@@ -4,8 +4,9 @@ namespace SmartZoom.Core.Input;
 /// Buttons that can act as a SmartZoom trigger.
 /// </summary>
 /// <remarks>
-/// Left and Right are deliberately absent: a global hook that delays or swallows primary clicks
-/// would break ordinary use of the machine.
+/// <see cref="Left"/> and <see cref="Right"/> are allowed only together with at least one modifier key
+/// (see <see cref="MouseButtonTrigger"/>): a global hook that swallows or delays bare primary clicks would
+/// make the machine unusable.
 /// </remarks>
 public enum MouseButton : byte
 {
@@ -20,4 +21,10 @@ public enum MouseButton : byte
 
     /// <summary>Second extended button, usually "Forward".</summary>
     XButton2,
+
+    /// <summary>Left (primary) button; a trigger only with a modifier key held.</summary>
+    Left,
+
+    /// <summary>Right (secondary) button; a trigger only with a modifier key held.</summary>
+    Right,
 }

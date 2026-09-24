@@ -66,4 +66,40 @@ public sealed class KeyComboTests
     [Fact]
     public void Unknown_key_codes_format_as_hex() =>
         Assert.Equal("0xFF", VirtualKeys.GetName(0xFF));
+
+    public sealed class Modifiers_alone
+    {
+        [Theory]
+        [InlineData("Ctrl", KeyModifiers.Control)]
+        [InlineData("ctrl + alt", KeyModifiers.Control | KeyModifiers.Alt)]
+        [InlineData("Shift+Control+Win", KeyModifiers.Control | KeyModifiers.Shift | KeyModifiers.Win)]
+        public void Parse_the_same_names_a_combination_accepts(string text, KeyModifiers expected)
+        {
+            Assert.True(KeyCombo.TryParseModifiers(text, out var modifiers));
+            Assert.Equal(expected, modifiers);
+            Assert.Equal(expected, KeyCombo.ParseModifiers(text));
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("Ctrl+")]
+        [InlineData("+Ctrl")]
+        [InlineData("Ctrl+Ctrl")]
+        [InlineData("Ctrl+Z")]
+        [InlineData("Z")]
+        public void Reject_anything_that_is_not_only_modifiers(string? text)
+        {
+            Assert.False(KeyCombo.TryParseModifiers(text, out _));
+            Assert.Throws<FormatException>(() => KeyCombo.ParseModifiers(text!));
+        }
+
+        [Fact]
+        public void Format_in_the_same_order_as_a_combination()
+        {
+            Assert.Equal("Ctrl+Alt+Shift+Win", KeyCombo.FormatModifiers(KeyModifiers.Win | KeyModifiers.Shift | KeyModifiers.Alt | KeyModifiers.Control));
+            Assert.Equal("Alt", KeyCombo.FormatModifiers(KeyModifiers.Alt));
+            Assert.Equal(string.Empty, KeyCombo.FormatModifiers(KeyModifiers.None));
+        }
+    }
 }

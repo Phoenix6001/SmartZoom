@@ -18,8 +18,10 @@ namespace SmartZoom.App.Settings;
 internal static class TriggerCommand
 {
     /// <summary>
-    /// Handles <c>--trigger &lt;button-or-keys&gt; [--taps 1|2] [--swallow]</c> and
-    /// <c>--record-trigger</c>.
+    /// Handles <c>--trigger &lt;spec&gt; [--taps 1|2] [--swallow]</c> and <c>--record-trigger</c>. The spec is a
+    /// mouse button (<c>Middle</c>, <c>XButton1</c>, <c>XButton2</c>), a click with modifiers
+    /// (<c>Ctrl+LeftClick</c>, <c>Alt+RightClick</c>, <c>Ctrl+MiddleClick</c>) or a key combination
+    /// (<c>Ctrl+Alt+Z</c>, <c>F9</c>); a bare <c>Left</c> or <c>Right</c> is the arrow key.
     /// </summary>
     /// <param name="args">The process arguments.</param>
     /// <param name="exitCode">0 when a trigger was written, 1 when it was not.</param>
@@ -89,13 +91,43 @@ internal static class TriggerCommand
         return index >= 0 && index + 1 < args.Length && int.TryParse(args[index + 1], out var taps) ? taps : 1;
     }
 
-    /// <summary>A mouse button by name, or anything else read as a key combination.</summary>
+    /// <summary>
+    /// The buttons a spec can end in. <c>Left</c> and <c>Right</c> on their own are deliberately absent: they are
+    /// arrow keys, and a click on those buttons is asked for as <c>LeftClick</c> / <c>RightClick</c> so the
+    /// hotkey form keeps meaning what it always has.
+    /// </summary>
+    private static readonly Dictionary<string, MouseButton> ClickTokens = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["LeftClick"] = MouseButton.Left,
+        ["RightClick"] = MouseButton.Right,
+        ["MiddleClick"] = MouseButton.Middle,
+        ["Middle"] = MouseButton.Middle,
+        ["XButton1"] = MouseButton.XButton1,
+        ["XButton2"] = MouseButton.XButton2,
+    };
+
+    /// <summary>
+    /// A mouse button by name, a click with modifiers (<c>Ctrl+LeftClick</c>, <c>Ctrl+Middle</c>), or anything
+    /// else read as a key combination.
+    /// </summary>
     /// <param name="spec">The text after <c>--trigger</c>.</param>
-    /// <returns>Null when the text names neither.</returns>
+    /// <returns>Null when the text names none of these.</returns>
     internal static TriggerSettings? Parse(string spec)
     {
-        if (Enum.TryParse<MouseButton>(spec, ignoreCase: true, out var button) && button != MouseButton.None)
-            return new TriggerSettings { Mouse = button };
+        ArgumentNullException.ThrowIfNull(spec);
+
+        var plus = spec.LastIndexOf('+');
+        var last = spec[(plus + 1)..].Trim();
+        if (ClickTokens.TryGetValue(last, out var button))
+        {
+            if (plus < 0)
+                return new TriggerSettings { Mouse = button };
+
+            // Everything before the button must be modifiers, by the same rules as a hotkey's.
+            return KeyCombo.TryParseModifiers(spec[..plus], out var modifiers)
+                ? new TriggerSettings { Mouse = button, Modifiers = KeyCombo.FormatModifiers(modifiers) }
+                : null;
+        }
 
         return KeyCombo.TryParse(spec, out var combo) ? new TriggerSettings { Keys = combo.ToString() } : null;
     }

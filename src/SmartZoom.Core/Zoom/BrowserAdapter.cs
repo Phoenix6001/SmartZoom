@@ -40,8 +40,25 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
     // ~600 ms of wake-up retries per look, so a second look would keep the user waiting longer than a press is worth.
     private static readonly TimeSpan ResetSettle = TimeSpan.FromMilliseconds(200);
 
+    // Whether the page took the pinch is read from the screen: Chromium hands the gesture to the page's own scripts
+    // on an element with touch-action: none, and its accessibility rects never reflect visual zoom, so an injected
+    // pinch that changed nothing looks exactly like one that worked. The region compared is this much either side
+    // of the anchor, clipped to the viewport: wide enough that a zoom around the anchor moves most of it, small
+    // enough to read and compare in well under a frame.
+    internal const int VerifyHalfWidth = 300;
+    internal const int VerifyHalfHeight = 200;
+
+    // Below this fraction of changed cells the screen is "the same": a caret blink or a hover highlight moves a
+    // cell or two, a zoom moves most of them.
+    internal const double PinchTakenThreshold = 0.02;
+
+    // The injector returns when its last contact lifts; the browser needs a frame or two to draw the final scale.
+    private static readonly TimeSpan VerifySettle = TimeSpan.FromMilliseconds(60);
+
     private readonly IContentHitTester _hitTester;
     private readonly IPinchInjector _pinch;
+    private readonly IScreenSampler _screen;
+    private readonly bool _ctrlWheelWhenPinchBlocked;
     private readonly BlockSelector _blocks;
     private readonly SmartZoomPlanner _planner;
     private readonly AnchorInsets _insets;
@@ -51,15 +68,18 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
     /// <summary>Creates the adapter.</summary>
     /// <param name="hitTester">Finds content under the cursor.</param>
     /// <param name="pinch">Performs the zoom gesture.</param>
+    /// <param name="screen">Reads the screen, to tell whether the page took the gesture.</param>
     /// <param name="zoom">Zoom limits and animation preference.</param>
     /// <param name="logger">Logger.</param>
-    public BrowserAdapter(IContentHitTester hitTester, IPinchInjector pinch, ZoomSettings zoom, ILogger<BrowserAdapter> logger)
+    public BrowserAdapter(IContentHitTester hitTester, IPinchInjector pinch, IScreenSampler screen, ZoomSettings zoom, ILogger<BrowserAdapter> logger)
         : base(Descriptor)
     {
         ArgumentNullException.ThrowIfNull(zoom);
 
         _hitTester = hitTester ?? throw new ArgumentNullException(nameof(hitTester));
         _pinch = pinch ?? throw new ArgumentNullException(nameof(pinch));
+        _screen = screen ?? throw new ArgumentNullException(nameof(screen));
+        _ctrlWheelWhenPinchBlocked = zoom.Browser.CtrlWheelWhenPinchBlocked;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _blocks = new BlockSelector();
         _planner = new SmartZoomPlanner(zoom.MinScale, zoom.MaxScale, zoom.Smart.MarginPx);
@@ -81,7 +101,8 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
     {
         // Every "can't" below is reported as handled-with-nothing-to-undo rather than Unhandled: the
         // coordinator's Ctrl+wheel fallback is browser page zoom, which is per site across all windows and
-        // drifts when steps get coalesced, so for a browser it is worse than doing nothing.
+        // drifts when steps get coalesced, so for a browser it is worse than doing nothing. The one exception
+        // is a page that blocks the pinch outright, where page zoom is the only zoom there is (see the end).
         var hit = await _hitTester.HitTestAsync(target, point, cancellationToken).ConfigureAwait(false);
         if (hit is null)
         {
@@ -133,14 +154,88 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
 
         // The first gesture is the zoom itself: Edge renders a pinch-out below 1.0 as a visible shrink-and-rebound,
         // so no preparatory gesture may precede it (see docs/decisions.md, "Browsers").
+        var region = VerifyRegion(p.Anchor, hit.Viewport);
+        var before = _screen.Sample(region);
         if (!await _pinch.PinchAsync(p.Anchor, p.Scale, _animation, bounds, cancellationToken).ConfigureAwait(false))
         {
             LogPinchRejected(target.ProcessName);
             return ZoomInResult.Handled(ZoomReason.GestureRefused);
         }
 
-        return Applied(new RestoreState(p, bounds));
+        var restore = new RestoreState(p, bounds);
+        if (before is null)
+        {
+            LogVerificationSkipped(target.ProcessName);
+            return Applied(restore);
+        }
+
+        await Task.Delay(VerifySettle, cancellationToken).ConfigureAwait(false);
+        var after = _screen.Sample(region);
+        if (after is null)
+        {
+            LogVerificationSkipped(target.ProcessName);
+            return Applied(restore);
+        }
+
+        var changed = before.Difference(after);
+        if (changed >= PinchTakenThreshold)
+            return Applied(restore);
+
+        // The gesture went in cleanly and nothing moved: the block under the cursor kept it (touch-action: none).
+        // The rest of the page usually does not, and a pinch scales the whole visual viewport around its anchor,
+        // so the same zoom is available from an anchor outside the blocking element. At most two such retries —
+        // a refused press costs three gestures and nothing more.
+        var candidates = RetryAnchor.Candidates(block.Bounds, hit.Viewport, p.Anchor);
+        foreach (var candidate in candidates)
+        {
+            var retryRegion = VerifyRegion(candidate, hit.Viewport);
+            var retryBefore = _screen.Sample(retryRegion);
+            if (!await _pinch.PinchAsync(candidate, p.Scale, _animation, bounds, cancellationToken).ConfigureAwait(false))
+            {
+                LogPinchRejected(target.ProcessName);
+                return ZoomInResult.Handled(ZoomReason.GestureRefused);
+            }
+
+            // The zoom-out has to reverse the gesture that actually happened, not the one that was refused.
+            var retried = new RestoreState(p with { Anchor = candidate }, bounds);
+            if (retryBefore is null)
+            {
+                LogVerificationSkipped(target.ProcessName);
+                return Applied(retried);
+            }
+
+            await Task.Delay(VerifySettle, cancellationToken).ConfigureAwait(false);
+            var retryAfter = _screen.Sample(retryRegion);
+            if (retryAfter is null)
+            {
+                LogVerificationSkipped(target.ProcessName);
+                return Applied(retried);
+            }
+
+            if (retryBefore.Difference(retryAfter) >= PinchTakenThreshold)
+            {
+                LogPinchRetried(target.ProcessName, p.Anchor.X, p.Anchor.Y, candidate.X, candidate.Y);
+                return Applied(retried);
+            }
+        }
+
+        // Every anchor was refused, so the whole window blocks the pinch. There is no zoom to remember, and the
+        // page's own zoom is the only one it will allow, so this is the one case where a browser may fall back.
+        LogPinchBlocked(
+            target.ProcessName,
+            changed,
+            candidates.Count,
+            _ctrlWheelWhenPinchBlocked
+                ? "Falling back to Ctrl+wheel page zoom."
+                : "Set Zoom.Browser.CtrlWheelWhenPinchBlocked to fall back to Ctrl+wheel.");
+        return _ctrlWheelWhenPinchBlocked
+            ? ZoomInResult.Unhandled
+            : ZoomInResult.Handled(ZoomReason.GestureRefused, "pinch blocked by the page");
     }
+
+    // The part of the screen a zoom around the anchor must visibly change.
+    internal static PixelRect VerifyRegion(ScreenPoint anchor, PixelRect viewport) =>
+        new PixelRect(anchor.X - VerifyHalfWidth, anchor.Y - VerifyHalfHeight, anchor.X + VerifyHalfWidth, anchor.Y + VerifyHalfHeight).Intersect(viewport);
 
     private static ScreenPoint ClampInto(ScreenPoint point, PixelRect rect) => new(
         PixelRect.ClampWithInset(point.X, rect.Left, rect.Right - 1, EdgeInset),
@@ -188,4 +283,13 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Pinch injection was rejected for {Process}; is the window elevated?")]
     private partial void LogPinchRejected(string? process);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "The element under the cursor in {Process} blocks pinch gestures (touch-action), so the same zoom was retried around ({RetryX}, {RetryY}), outside it, instead of around ({AnchorX}, {AnchorY}), and the page took it.")]
+    private partial void LogPinchRetried(string? process, int anchorX, int anchorY, int retryX, int retryY);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The page did not zoom: it blocks pinch gestures across the window (touch-action), so the gesture reached the page's own scripts instead ({Changed:P0} of the screen around the cursor changed in {Process}, and {Retries} other anchors were tried). {Fallback}")]
+    private partial void LogPinchBlocked(string? process, double changed, int retries, string fallback);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Could not read the screen around the cursor in {Process}, so whether the page took the pinch was not checked.")]
+    private partial void LogVerificationSkipped(string? process);
 }

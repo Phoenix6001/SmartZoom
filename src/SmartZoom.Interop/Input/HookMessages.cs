@@ -41,6 +41,16 @@ internal static class HookMessages
     {
         switch (message)
         {
+            case PInvoke.WM_LBUTTONDOWN or PInvoke.WM_LBUTTONUP:
+                button = MouseButton.Left;
+                isDown = message == PInvoke.WM_LBUTTONDOWN;
+                return true;
+
+            case PInvoke.WM_RBUTTONDOWN or PInvoke.WM_RBUTTONUP:
+                button = MouseButton.Right;
+                isDown = message == PInvoke.WM_RBUTTONDOWN;
+                return true;
+
             case PInvoke.WM_MBUTTONDOWN or PInvoke.WM_MBUTTONUP:
                 button = MouseButton.Middle;
                 isDown = message == PInvoke.WM_MBUTTONDOWN;

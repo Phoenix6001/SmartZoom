@@ -6,7 +6,27 @@ All notable changes to SmartZoom are recorded here. The format follows
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- Mouse triggers can require modifier keys: Ctrl+left click, Alt+right click, Ctrl+middle click. Hold the
+  modifiers while you click in the recorder, set `"Modifiers": "Ctrl"` on a `Mouse` trigger in the file, or
+  pass `--trigger Ctrl+LeftClick`. The left and right buttons are triggers only with a modifier, so a plain
+  click is never taken over, and the settings window warns that Ctrl+click and Shift+click already have jobs
+  in browsers, Explorer and Excel.
+
+### Fixed
+
+- **A page that blocks the pinch no longer reports a zoom that never happened.** On an element with
+  `touch-action: none` (Jira's task dialogs, most drag-and-drop UIs) Chromium hands the gesture to the page's
+  own scripts: the pinch went in cleanly, SmartZoom logged "Zoomed in", remembered a zoom to undo, and
+  nothing on screen changed. The screen around the cursor is now compared before and after the gesture, and
+  a pinch that changed nothing is tried again — the same zoom, around an anchor outside the blocking
+  element (beside it, then at the middle of the window), since the rest of the page usually takes the
+  gesture and a pinch scales the whole viewport anyway. The result on such a page is a visual zoom of the
+  page centred near the cursor rather than a fit of the element, and the second press still restores it
+  exactly. Only when every anchor is refused does SmartZoom fall back to Ctrl+wheel page zoom — the only
+  zoom such a page allows — or, with the new `Zoom.Browser.CtrlWheelWhenPinchBlocked` off, report it and
+  leave the page alone.
 
 ## [0.1.1] - 2026-09-24
 

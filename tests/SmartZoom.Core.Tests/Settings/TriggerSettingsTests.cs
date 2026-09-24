@@ -39,6 +39,67 @@ public sealed class TriggerSettingsTests
     }
 
     [Fact]
+    public void Modifiers_produce_a_mouse_trigger_that_needs_them_held()
+    {
+        var settings = new TriggerSettings { Mouse = MouseButton.Left, Modifiers = "ctrl + alt", TapCount = 1 };
+
+        var mouse = Assert.IsType<MouseButtonTrigger>(settings.ToDefinition(SystemDoubleClick));
+        Assert.Equal(MouseButton.Left, mouse.Button);
+        Assert.Equal(KeyModifiers.Control | KeyModifiers.Alt, mouse.Modifiers);
+        Assert.Equal("Ctrl+Alt+Left x1", mouse.DisplayName);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  ")]
+    public void Absent_modifiers_mean_none(string? modifiers)
+    {
+        var mouse = Assert.IsType<MouseButtonTrigger>(new TriggerSettings { Mouse = MouseButton.Middle, Modifiers = modifiers }.ToDefinition(SystemDoubleClick));
+
+        Assert.Equal(KeyModifiers.None, mouse.Modifiers);
+    }
+
+    [Theory]
+    [InlineData(MouseButton.Left)]
+    [InlineData(MouseButton.Right)]
+    public void A_left_or_right_click_without_modifiers_is_an_error(MouseButton button) =>
+        Assert.Throws<InvalidOperationException>(() => new TriggerSettings { Mouse = button }.ToDefinition(SystemDoubleClick));
+
+    [Fact]
+    public void Modifiers_with_keys_is_an_error()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() => new TriggerSettings { Keys = "F9", Modifiers = "Ctrl" }.ToDefinition(SystemDoubleClick));
+
+        Assert.Contains("\"Modifiers\" belongs to a \"Mouse\" trigger", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("Ctrl+Z")]
+    [InlineData("Banana")]
+    [InlineData("Ctrl+")]
+    [InlineData("Ctrl+Ctrl")]
+    public void Modifiers_that_are_not_modifier_keys_are_a_format_error(string modifiers) =>
+        Assert.Throws<FormatException>(() => new TriggerSettings { Mouse = MouseButton.Middle, Modifiers = modifiers }.ToDefinition(SystemDoubleClick));
+
+    [Fact]
+    public void Modifiers_round_trip_through_json_and_are_left_out_when_there_are_none()
+    {
+        var triggers = new List<TriggerSettings>
+        {
+            new() { Mouse = MouseButton.Left, Modifiers = "Ctrl", TapCount = 1 },
+            new() { Mouse = MouseButton.XButton2 },
+        };
+
+        var json = JsonSerializer.Serialize(triggers, Json);
+        var read = JsonSerializer.Deserialize<List<TriggerSettings>>(json, Json)!;
+
+        Assert.Equal(1, json.Split("\"Modifiers\"").Length - 1);
+        Assert.Equal("Ctrl", read[0].Modifiers);
+        Assert.Null(read[1].Modifiers);
+    }
+
+    [Fact]
     public void Both_mouse_and_keys_is_an_error() =>
         Assert.Throws<InvalidOperationException>(() => new TriggerSettings { Mouse = MouseButton.Middle, Keys = "F9" }.ToDefinition(SystemDoubleClick));
 

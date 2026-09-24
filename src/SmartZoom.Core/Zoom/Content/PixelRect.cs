@@ -30,6 +30,14 @@ public readonly record struct PixelRect(int Left, int Top, int Right, int Bottom
     /// <summary>Creates a rectangle from an origin and size.</summary>
     public static PixelRect FromSize(int left, int top, int width, int height) => new(left, top, left + width, top + height);
 
+    /// <summary>The overlap of this rectangle and another; empty (see <see cref="IsEmpty"/>) when they do not meet.</summary>
+    /// <param name="other">The rectangle to clip to.</param>
+    public PixelRect Intersect(PixelRect other) => new(
+        Math.Max(Left, other.Left),
+        Math.Max(Top, other.Top),
+        Math.Min(Right, other.Right),
+        Math.Min(Bottom, other.Bottom));
+
     /// <summary>
     /// Clamps a coordinate into <c>[min + inset, max - inset]</c>, rounded to a whole pixel. A range narrower than
     /// two insets (a tiny viewport) has no such interval, and yields its middle instead.

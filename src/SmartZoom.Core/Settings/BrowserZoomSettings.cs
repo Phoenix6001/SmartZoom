@@ -8,4 +8,12 @@ public sealed class BrowserZoomSettings
     /// the gesture orients its contacts to stay inside the window on its own.
     /// </summary>
     public int AnchorInsetPx { get; set; }
+
+    /// <summary>
+    /// What to do on a page that blocks the pinch (<c>touch-action: none</c>, common in dialogs and drag-and-drop
+    /// UIs such as Jira's): fall back to Ctrl+wheel page zoom when true, or report the refusal and leave the page
+    /// alone when false. Page zoom is coarser and applies per site across every window, but it is the only zoom
+    /// such a page allows. Takes effect only when <see cref="ZoomSettings.FallbackToCtrlWheel"/> is also on.
+    /// </summary>
+    public bool CtrlWheelWhenPinchBlocked { get; set; } = true;
 }

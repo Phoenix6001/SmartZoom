@@ -12,7 +12,7 @@ namespace SmartZoom.App.Settings;
 /// SmartZoom's own trigger is switched off for as long as this is open. Otherwise pressing the button you are
 /// trying to record would zoom the settings window.
 /// </remarks>
-internal sealed class TriggerRecorderDialog : Form
+internal sealed class TriggerRecorderDialog : Form, IMessageFilter
 {
     // One for every dialog rather than one per dialog: a control does not dispose a Font it was handed.
     private static readonly Font CapturedFont = new(SystemFonts.MessageBoxFont!.FontFamily, 12f, FontStyle.Bold);
@@ -41,7 +41,15 @@ internal sealed class TriggerRecorderDialog : Form
     private readonly Button _cancel = new() { Text = "Cancel", DialogResult = DialogResult.Cancel, AutoSize = true };
 
     private MouseButton? _button;
+    private KeyModifiers _modifiers;
     private KeyCombo? _combo;
+
+    /// <summary>
+    /// A modifier that is down but not yet recorded. A held modifier can be the start of a modifier + click
+    /// trigger or a trigger on its own ("double-tap Ctrl"); which one is known only when the next thing
+    /// happens: a click while it is held, or its release.
+    /// </summary>
+    private KeyCombo? _heldModifier;
 
     /// <summary>
     /// The handful of triggers most people settle on, as one click each. Pressing your own is still the point of
@@ -97,8 +105,11 @@ internal sealed class TriggerRecorderDialog : Form
         _window.Value = systemDoubleClickMs;
         _everyPress.Checked = true;
         _everyPress.CheckedChanged += (_, _) => UpdateWindowEnabled();
-        _captured.MouseDown += OnCaptureMouseDown;
+        // Mouse presses are taken from the message stream rather than from one control, so a click anywhere on the
+        // dialog counts except on the controls that are meant to be clicked (the buttons, the radios, the spinner).
+        Application.AddMessageFilter(this);
         KeyDown += OnCaptureKeyDown;
+        KeyUp += OnCaptureKeyUp;
 
         if (existing is not null)
             Restore(existing, systemDoubleClickMs);
@@ -108,22 +119,71 @@ internal sealed class TriggerRecorderDialog : Form
     }
 
     /// <summary>What was recorded. Only meaningful after <see cref="DialogResult.OK"/>.</summary>
-    public TriggerSettings Result => new()
+    public TriggerSettings Result =>
+        Compose(_button, _modifiers, _combo, _doubleTap.Checked, (uint)_window.Value, _swallow.Checked);
+
+    /// <summary>
+    /// The settings entry for what was recorded. Modifiers are written only for a mouse trigger that has them;
+    /// a hotkey carries its own inside <see cref="TriggerSettings.Keys"/>.
+    /// </summary>
+    /// <param name="button">The recorded button, or null for a hotkey.</param>
+    /// <param name="modifiers">The modifiers held with the button.</param>
+    /// <param name="combo">The recorded combination, or null for a mouse trigger.</param>
+    /// <param name="doubleTap">Whether two presses make a trigger.</param>
+    /// <param name="windowMs">The double-tap window; only written for a double tap.</param>
+    /// <param name="swallow">Whether to hide the press from the application.</param>
+    internal static TriggerSettings Compose(MouseButton? button, KeyModifiers modifiers, KeyCombo? combo, bool doubleTap, uint windowMs, bool swallow) => new()
     {
-        Mouse = _button,
-        Keys = _combo?.ToString(),
-        TapCount = _doubleTap.Checked ? 2 : 1,
-        DoubleTapWindowMs = _doubleTap.Checked ? (uint)_window.Value : null,
-        SwallowClicks = _swallow.Checked,
+        Mouse = button,
+        Modifiers = button is not null && modifiers != KeyModifiers.None ? KeyCombo.FormatModifiers(modifiers) : null,
+        Keys = combo?.ToString(),
+        TapCount = doubleTap ? 2 : 1,
+        DoubleTapWindowMs = doubleTap ? windowMs : null,
+        SwallowClicks = swallow,
     };
 
     /// <inheritdoc />
     protected override void Dispose(bool disposing)
     {
-        if (disposing && _triggers is not null)
-            _triggers.Enabled = _triggersWereEnabled;
+        if (disposing)
+        {
+            Application.RemoveMessageFilter(this);
+            if (_triggers is not null)
+                _triggers.Enabled = _triggersWereEnabled;
+        }
 
         base.Dispose(disposing);
+    }
+
+    /// <inheritdoc />
+    bool IMessageFilter.PreFilterMessage(ref Message m)
+    {
+        const int WmKeyDown = 0x0100, WmSysKeyDown = 0x0104;
+        const int WmLButtonDown = 0x0201, WmRButtonDown = 0x0204, WmMButtonDown = 0x0207, WmXButtonDown = 0x020B;
+
+        // Bit 30 of a key-down message's lParam says the key was already down: the keyboard's auto-repeat. A held
+        // modifier repeats every few tens of milliseconds, and each repeat would otherwise look like a new press
+        // and turn a click that was just recorded back into "holding Ctrl".
+        if (m.Msg is WmKeyDown or WmSysKeyDown)
+            return ((long)m.LParam & (1L << 30)) != 0;
+
+        if (m.Msg is not (WmLButtonDown or WmRButtonDown or WmMButtonDown or WmXButtonDown))
+            return false;
+
+        var control = FromHandle(m.HWnd);
+        if (control is null || control.FindForm() != this || control is ButtonBase or NumericUpDown or TextBoxBase)
+            return false;
+
+        var button = m.Msg switch
+        {
+            WmLButtonDown => MouseButtons.Left,
+            WmRButtonDown => MouseButtons.Right,
+            WmMButtonDown => MouseButtons.Middle,
+            _ => ((long)m.WParam >> 16) == 1 ? MouseButtons.XButton1 : MouseButtons.XButton2,
+        };
+
+        OnCaptureMouseDown(this, new MouseEventArgs(button, 1, 0, 0, 0));
+        return true;
     }
 
     private TableLayoutPanel BuildLayout()
@@ -157,8 +217,8 @@ internal sealed class TriggerRecorderDialog : Form
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.Controls.Add(new Label
         {
-            Text = "Press the mouse button or key combination you want to use. Mouse buttons other than the middle "
-                + "and side buttons are left alone, so SmartZoom can never take over a normal click.",
+            Text = "Press the mouse button or key combination you want to use. A left or right click counts only "
+                + "with Ctrl, Alt or Shift held, so SmartZoom can never take over a normal click.",
             Dock = DockStyle.Fill,
             AutoSize = false,
             Height = 56,
@@ -181,20 +241,51 @@ internal sealed class TriggerRecorderDialog : Form
     }
 
     /// <summary>
-    /// The button and the combination a trigger stands for, exactly one of them set: whichever the trigger
-    /// does not name is cleared, so restoring a trigger over another leaves nothing of the first behind.
+    /// The button (with its modifiers) and the combination a trigger stands for, exactly one of them set:
+    /// whichever the trigger does not name is cleared, so restoring a trigger over another leaves nothing of
+    /// the first behind. Modifiers that cannot be read count as none.
     /// </summary>
     /// <param name="trigger">The trigger to show.</param>
-    internal static (MouseButton? Button, KeyCombo? Combo) Recorded(TriggerSettings trigger)
+    internal static (MouseButton? Button, KeyModifiers Modifiers, KeyCombo? Combo) Recorded(TriggerSettings trigger)
     {
         ArgumentNullException.ThrowIfNull(trigger);
 
-        return (trigger.Mouse, KeyCombo.TryParse(trigger.Keys, out var combo) ? combo : null);
+        var modifiers = trigger.Mouse is not null && KeyCombo.TryParseModifiers(trigger.Modifiers, out var held) ? held : KeyModifiers.None;
+        return (trigger.Mouse, modifiers, KeyCombo.TryParse(trigger.Keys, out var combo) ? combo : null);
+    }
+
+    /// <summary>The trigger button a WinForms button stands for, or <see cref="MouseButton.None"/>.</summary>
+    /// <param name="button">The button WinForms reported.</param>
+    internal static MouseButton ButtonOf(MouseButtons button) => button switch
+    {
+        MouseButtons.Left => MouseButton.Left,
+        MouseButtons.Right => MouseButton.Right,
+        MouseButtons.Middle => MouseButton.Middle,
+        MouseButtons.XButton1 => MouseButton.XButton1,
+        MouseButtons.XButton2 => MouseButton.XButton2,
+        _ => MouseButton.None,
+    };
+
+    /// <summary>
+    /// The modifiers in a WinForms key state. Only Ctrl, Alt and Shift: WinForms does not report the Windows key
+    /// there, so a click with it is not something this dialog can record.
+    /// </summary>
+    /// <param name="keys">The key state, usually <see cref="Control.ModifierKeys"/>.</param>
+    internal static KeyModifiers ModifiersOf(Keys keys)
+    {
+        var modifiers = KeyModifiers.None;
+        if ((keys & Keys.Control) != 0)
+            modifiers |= KeyModifiers.Control;
+        if ((keys & Keys.Alt) != 0)
+            modifiers |= KeyModifiers.Alt;
+        if ((keys & Keys.Shift) != 0)
+            modifiers |= KeyModifiers.Shift;
+        return modifiers;
     }
 
     private void Restore(TriggerSettings existing, uint systemDoubleClickMs)
     {
-        (_button, _combo) = Recorded(existing);
+        (_button, _modifiers, _combo) = Recorded(existing);
 
         _doubleTap.Checked = existing.TapCount == 2;
         _everyPress.Checked = existing.TapCount != 2;
@@ -205,25 +296,30 @@ internal sealed class TriggerRecorderDialog : Form
 
     private void OnCaptureMouseDown(object? sender, MouseEventArgs e)
     {
-        var button = e.Button switch
-        {
-            MouseButtons.Middle => MouseButton.Middle,
-            MouseButtons.XButton1 => MouseButton.XButton1,
-            MouseButtons.XButton2 => MouseButton.XButton2,
-            _ => MouseButton.None,
-        };
-
+        var button = ButtonOf(e.Button);
         if (button == MouseButton.None)
         {
-            // Left and right are deliberately not available: a global hook that can delay or swallow the
-            // primary buttons would make the machine unusable when SmartZoom misbehaves.
             Show("That button can't be a trigger. Try the wheel click or a side button.");
             return;
         }
 
+        // Left and right count only with a modifier held: a global hook that can delay or swallow bare primary
+        // clicks would make the machine unusable when SmartZoom misbehaves. MouseButtonTrigger refuses them too.
+        var modifiers = ModifiersOf(Control.ModifierKeys);
+        if (button is MouseButton.Left or MouseButton.Right && modifiers == KeyModifiers.None)
+        {
+            Show("A left or right click needs a modifier key: hold Ctrl, Alt or Shift while you click.");
+            return;
+        }
+
+        _heldModifier = null;
         _button = button;
+        _modifiers = modifiers;
         _combo = null;
-        Show(Describe());
+
+        // Accepted, with the same caution the settings check gives: Ctrl+click and Shift+click are spoken for elsewhere.
+        var caution = MouseButtonTrigger.CautionFor(button, modifiers);
+        Show(caution is null ? Describe() : $"{Describe()}\n{caution}");
     }
 
     private void OnCaptureKeyDown(object? sender, KeyEventArgs e)
@@ -254,8 +350,33 @@ internal sealed class TriggerRecorderDialog : Form
             return;
         }
 
+        if (VirtualKeys.TryGetModifier(key, out _))
+        {
+            // Not recorded yet: a click while it is held makes a modifier + click trigger; releasing it makes
+            // the bare modifier the trigger. Either way the user is not asked to race the keyboard.
+            _heldModifier = combo;
+            Show($"Holding {combo}: click a mouse button to combine them, or let go to use {combo} on its own.");
+            return;
+        }
+
+        _heldModifier = null;
         _combo = combo;
         _button = null;
+        _modifiers = KeyModifiers.None;
+        Show(Describe());
+    }
+
+    private void OnCaptureKeyUp(object? sender, KeyEventArgs e)
+    {
+        e.Handled = true;
+        if (_heldModifier is not { } held || !VirtualKeys.TryGetModifier(VirtualKeys.Fold((ushort)e.KeyValue), out _))
+            return;
+
+        // The modifier came back up with nothing clicked while it was down: it is the trigger by itself.
+        _heldModifier = null;
+        _combo = held;
+        _button = null;
+        _modifiers = KeyModifiers.None;
         Show(Describe());
     }
 
@@ -276,7 +397,8 @@ internal sealed class TriggerRecorderDialog : Form
         return modifiers;
     }
 
-    private string Describe() => _button is { } button ? button.ToString() : _combo?.ToString() ?? string.Empty;
+    private string Describe() =>
+        _button is { } button ? MouseButtonTrigger.Describe(button, _modifiers) : _combo?.ToString() ?? string.Empty;
 
     private void Show(string text)
     {

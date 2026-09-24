@@ -257,4 +257,74 @@ public sealed class TapDetectorTests
         public void Reset_when_idle_returns_nothing() =>
             Assert.Equal(ReplayAction.None, _detector.Reset());
     }
+
+    public sealed class Idleness
+    {
+        [Theory]
+        [InlineData(1, false)]
+        [InlineData(1, true)]
+        [InlineData(2, false)]
+        [InlineData(2, true)]
+        public void A_new_detector_is_idle(int tapCount, bool swallow) =>
+            Assert.True(Create(tapCount, swallow).IsIdle);
+
+        [Fact]
+        public void Single_tap_swallow_is_busy_between_the_press_and_its_release()
+        {
+            var detector = Create(1, swallow: true);
+
+            detector.OnInput(true, 1000);
+            Assert.False(detector.IsIdle);
+
+            detector.OnInput(false, 1050);
+            Assert.True(detector.IsIdle);
+        }
+
+        [Fact]
+        public void Single_tap_pass_through_never_becomes_busy()
+        {
+            var detector = Create(1, swallow: false);
+
+            detector.OnInput(true, 1000);
+
+            Assert.True(detector.IsIdle);
+        }
+
+        [Fact]
+        public void Double_tap_swallow_is_busy_while_a_press_is_held_back_and_idle_once_it_is_replayed()
+        {
+            var detector = Create(2, swallow: true);
+
+            detector.OnInput(true, 1000);
+            detector.OnInput(false, 1050);
+            Assert.False(detector.IsIdle);
+
+            detector.OnTimeout(1000 + Window + 1);
+            Assert.True(detector.IsIdle);
+        }
+
+        [Fact]
+        public void Double_tap_pass_through_stays_busy_after_a_first_press_until_the_next()
+        {
+            var detector = Create(2, swallow: false);
+
+            detector.OnInput(true, 1000);
+            detector.OnInput(false, 1050);
+            Assert.False(detector.IsIdle);
+
+            detector.OnInput(true, 1100);
+            Assert.True(detector.IsIdle);
+        }
+
+        [Fact]
+        public void Reset_makes_it_idle()
+        {
+            var detector = Create(2, swallow: true);
+            detector.OnInput(true, 1000);
+
+            detector.Reset();
+
+            Assert.True(detector.IsIdle);
+        }
+    }
 }

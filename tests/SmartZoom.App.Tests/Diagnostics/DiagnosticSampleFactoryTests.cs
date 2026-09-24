@@ -39,6 +39,7 @@ public sealed class DiagnosticSampleFactoryTests
         IZoomAdapter browser = new BrowserAdapter(
             new FakeHitTester { Result = NothingToZoom },
             new FakePinch(),
+            new FakeScreenSampler(),
             new ZoomSettings { Animate = false, Smart = new SmartZoomTuning { AnimationMs = 0 }, Browser = new BrowserZoomSettings { AnchorInsetPx = 0 } },
             NullLogger<BrowserAdapter>.Instance);
 
@@ -110,6 +111,19 @@ public sealed class DiagnosticSampleFactoryTests
     {
         public Task<bool> PinchAsync(ScreenPoint anchor, double factor, TimeSpan duration, PixelRect bounds, CancellationToken cancellationToken) =>
             Task.FromResult(true);
+    }
+
+    // Every sample looks different from the last, so a pinch always reads as taken.
+    private sealed class FakeScreenSampler : IScreenSampler
+    {
+        private byte _luma;
+
+        public ScreenSample? Sample(PixelRect region)
+        {
+            var pixels = new byte[region.Width * region.Height];
+            Array.Fill(pixels, _luma += 100);
+            return ScreenSample.FromLuma(region, pixels);
+        }
     }
 
     private sealed class FakeWindowInspector : IWindowInspector

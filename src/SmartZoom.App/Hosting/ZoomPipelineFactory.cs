@@ -28,6 +28,7 @@ namespace SmartZoom.App.Hosting;
 internal sealed class ZoomPipelineFactory(
     IContentHitTester hitTester,
     IPinchInjector pinch,
+    IScreenSampler screen,
     IReaderView readerView,
     IInputInjector injector,
     IWordAutomation word,
@@ -63,7 +64,7 @@ internal sealed class ZoomPipelineFactory(
     private IReadOnlyList<IZoomAdapter> Adapters(ZoomSettings zoom) =>
     [
         new CtrlWheelAdapter(injector, zoom.CtrlWheel, time),
-        new BrowserAdapter(hitTester, pinch, zoom, loggers.CreateLogger<BrowserAdapter>()),
+        new BrowserAdapter(hitTester, pinch, screen, zoom, loggers.CreateLogger<BrowserAdapter>()),
         Reader(zoom),
         new WordComAdapter(word, zoom, time, loggers.CreateLogger<WordComAdapter>()),
         new ExcelComAdapter(excel, zoom, loggers.CreateLogger<ExcelComAdapter>()),

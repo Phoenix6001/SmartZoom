@@ -92,7 +92,8 @@ restart, exactly as Save does.
   "Enabled": true,
   "Triggers": [                    // any of these fires SmartZoom
     {
-      "Mouse": "XButton2",         // Middle | XButton1 | XButton2
+      "Mouse": "XButton2",         // Middle | XButton1 | XButton2 | Left | Right
+      "Modifiers": null,           // e.g. "Ctrl" or "Ctrl+Alt"; required for Left and Right
       "TapCount": 2,               // 2 = double-tap (safe for a shared button), 1 = every press
       "DoubleTapWindowMs": null,   // null = system double-click time
       "SwallowClicks": false       // see below
@@ -128,7 +129,8 @@ restart, exactly as Save does.
       "TopGapPx": 16                       // gap left above it
     },
     "Browser": {
-      "AnchorInsetPx": 0           // extra keep-out from window edges; normally not needed
+      "AnchorInsetPx": 0,          // extra keep-out from window edges; normally not needed
+      "CtrlWheelWhenPinchBlocked": true   // on a page that blocks the pinch, use page zoom instead of nothing
     }
   },
   "Logging": {
@@ -169,6 +171,18 @@ double-tap, SmartZoom can't know at the first press whether a second is coming, 
 back and replays it once the double-tap window expires; with `XButton1`/`XButton2` that delays
 Back/Forward by the window length. With the default (`false`), presses reach the app immediately and it
 also sees them.
+
+**Ctrl+click and friends.** A mouse trigger can require modifier keys: in the recorder, hold Ctrl (or Alt,
+or Shift) while you click, or write `{ "Mouse": "Left", "Modifiers": "Ctrl", "TapCount": 1 }` in the file.
+`Modifiers` must match exactly, like a hotkey's, and `Ctrl+Middle` and a bare `Middle` can be two different
+triggers. A bare left or right click is refused — a global hook that delayed or swallowed those would make
+the machine unusable — so `Left` and `Right` always need at least one modifier. Note that Ctrl+click and
+Shift+click have jobs in browsers, Explorer and Excel (open in a new tab, multi-select, range-select), and
+while such a trigger is set those stop working; Alt+click or Ctrl+middle click are safer choices, and both
+the recorder and the settings check say so when you pick Ctrl+click or Shift+click anyway. For scripted
+setups, `--trigger Ctrl+LeftClick`
+(also `Alt+RightClick`, `Ctrl+MiddleClick`, `Ctrl+XButton2`) writes the same thing; a bare `--trigger Left`
+still means the Left arrow key.
 
 **Laptop touchpad.** Windows has no API for custom touchpad gestures, and the Mac gesture (two-finger
 double-tap) collides with Windows' own two-finger-tap-is-right-click. The reliable route is Windows
@@ -234,8 +248,15 @@ depending on which window is focused.
 - Browser smart zoom: the achieved scale can differ from the planned one by a few percent (the
   gesture recognizer's slop is compensated with a measured constant). Blocks very close to the
   window's left or right edge can't be placed exactly, because the gesture's contacts must stay
-  inside the window. Pages that disable pinch zoom (`user-scalable=no`) can't be smart-zoomed and
-  fall back to Ctrl+wheel.
+  inside the window. An element that blocks the pinch (`touch-action: none`, common in dialogs and
+  drag-and-drop UIs such as Jira's) hands the gesture to the page's own scripts; SmartZoom notices because the
+  screen does not change, and immediately tries the same zoom again from an anchor outside that element —
+  first beside it, then at the middle of the window. What you get then is a **visual zoom of the whole page
+  centred near the cursor rather than a fit of the element**: the browser scales the viewport around the new
+  anchor, so what you pointed at is magnified and still in view, but not sized to the window. The second
+  press restores the page exactly, as always. Only when every anchor is refused — the page blocks pinch
+  gestures across the window — does SmartZoom fall back to Ctrl+wheel page zoom, or, with
+  `Zoom.Browser.CtrlWheelWhenPinchBlocked` off, report it and do nothing.
 - Word smart zoom changes the document zoom level in steps, so the motion is not as fluid as the
   browsers' pinch: Word re-lays out the page at every level. Word's own status-bar zoom slider shows
   the change and the value returns to the original on the second trigger.

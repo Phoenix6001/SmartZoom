@@ -55,6 +55,10 @@ instead of reversing the gesture. See [decisions.md](decisions.md).
 | `ResizeBorderAllowance` | 24 | same | A touch contact 8 px inside a window grabbed its resize border and dragged the edge 150 px inward during a zoom-out. 12 px did not |
 | `EdgeInset` | 28 | same | `ResizeBorderAllowance + 4`. Pushing content past the layout viewport scrolls the page, and zooming back out does not undo it; an 8 px residual was measured |
 | `RestoreOvershoot` | 0.9 | same | Pinch slightly past 1.0 so rounding cannot leave the page at 1.02× |
+| `VerifyHalfWidth` / `VerifyHalfHeight` | 300 / 200 px | same | Chosen, not measured. The screen either side of the anchor that a zoom must visibly change; at the smallest useful scale (1.1×) content 300 px from the anchor moves 30 px, which is many cells of the comparison grid, and a 600×400 read costs well under a frame |
+| `VerifySettle` | 60 ms | same | Chosen, not measured. The injector returns when its last contact lifts; a frame or two lets the browser draw the final scale before the screen is read again. Matches `PanSettleMs`, which serves the same purpose |
+| `PinchTakenThreshold` | 0.02 | same | Chosen, not measured. Fewer than 2% of the grid's cells changing is a caret blink or a hover highlight; a zoom around the anchor moves most of them. `ScreenSample.LumaTolerance` (12 of 255) below which a cell does not count is chosen the same way |
+| `OutsideGap` | 24 px | `Core/Zoom/Content/RetryAnchor.cs` | Chosen, not measured. How far outside the element that refused a pinch the retry anchor sits: far enough that the contacts and the recognizer's slop start clear of its edge, close enough that the retry still zooms the part of the page the user pointed at |
 
 Timing note: `Thread.Sleep` alone quantises to 15.6 ms on Windows, which makes a gesture look steppy. The
 frame pacer sleeps in 1 ms steps while more than 2 ms remain and spins the last stretch.

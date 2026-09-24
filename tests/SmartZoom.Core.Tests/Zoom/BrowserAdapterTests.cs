@@ -25,9 +25,20 @@ public sealed class BrowserAdapterTests
 
     private readonly FakeHitTester _hits = new();
     private readonly FakePinch _pinch = new();
+    private readonly FakeScreenSampler _screen = new();
 
-    private IZoomAdapter Create(bool animate = true) =>
-        new BrowserAdapter(_hits, _pinch, new ZoomSettings { Animate = animate, Smart = new SmartZoomTuning { AnimationMs = 180 }, Browser = new BrowserZoomSettings { AnchorInsetPx = 0 } }, NullLogger<BrowserAdapter>.Instance);
+    private IZoomAdapter Create(bool animate = true, bool ctrlWheelWhenPinchBlocked = true) =>
+        new BrowserAdapter(
+            _hits,
+            _pinch,
+            _screen,
+            new ZoomSettings
+            {
+                Animate = animate,
+                Smart = new SmartZoomTuning { AnimationMs = 180 },
+                Browser = new BrowserZoomSettings { AnchorInsetPx = 0, CtrlWheelWhenPinchBlocked = ctrlWheelWhenPinchBlocked },
+            },
+            NullLogger<BrowserAdapter>.Instance);
 
     [Fact]
     public async Task Zooms_the_paragraph_and_remembers_the_plan()
@@ -158,6 +169,174 @@ public sealed class BrowserAdapterTests
     }
 
     [Fact]
+    public async Task A_pinch_that_changed_the_screen_is_applied_after_comparing_the_area_around_the_anchor()
+    {
+        _hits.Result = ParagraphHit;
+        _screen.Frames.Enqueue(40);
+        _screen.Frames.Enqueue(200);
+
+        var result = await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None);
+
+        Assert.Equal(ZoomInStatus.Applied, result.Status);
+        Assert.Equal(2, _screen.Regions.Count);
+        Assert.Equal(_screen.Regions[0], _screen.Regions[1]);
+
+        // ±300 × ±200 around the anchor, and no wider than the viewport.
+        var anchor = _pinch.Calls[0].Anchor;
+        var expected = new PixelRect(anchor.X - 300, anchor.Y - 200, anchor.X + 300, anchor.Y + 200).Intersect(Viewport);
+        Assert.Equal(expected, _screen.Regions[0]);
+        Assert.False(expected.IsEmpty);
+    }
+
+    [Fact]
+    public async Task A_page_that_took_the_first_pinch_is_never_pinched_twice()
+    {
+        _hits.Result = ParagraphHit;
+        _screen.Frames.Enqueue(40);
+        _screen.Frames.Enqueue(200);
+
+        var result = await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None);
+
+        Assert.Equal(ZoomInStatus.Applied, result.Status);
+        Assert.Single(_pinch.Calls);
+        Assert.Equal(2, _screen.Regions.Count);
+    }
+
+    [Fact]
+    public async Task A_pinch_the_element_kept_is_retried_around_an_anchor_outside_that_element()
+    {
+        // The pinch went in cleanly (Jira's dialogs: touch-action none hands the gesture to the page's own
+        // scripts), but the screen looks exactly as it did. The rest of the page does take it.
+        _hits.Result = ParagraphHit;
+        _screen.Frames.Enqueue(90);
+        _screen.Frames.Enqueue(90);
+        _screen.Frames.Enqueue(40);
+        _screen.Frames.Enqueue(200);
+
+        var adapter = Create();
+        var result = await adapter.ZoomInAsync(Brave, Cursor, CancellationToken.None);
+
+        Assert.Equal(ZoomInStatus.Applied, result.Status);
+        Assert.Equal(2, _pinch.Calls.Count);
+
+        // The same zoom, only aimed above the block that refused it and on the original anchor's column.
+        var first = _pinch.Calls[0];
+        var retry = _pinch.Calls[1];
+        Assert.Equal(first.Factor, retry.Factor);
+        Assert.Equal(first.Duration, retry.Duration);
+        Assert.Equal(first.Bounds, retry.Bounds);
+        Assert.Equal(first.Anchor.X, retry.Anchor.X);
+        Assert.Equal(1133 - RetryAnchor.OutsideGap, retry.Anchor.Y);
+
+        // The restore has to reverse the gesture that happened, not the one the page refused.
+        var state = Assert.IsType<BrowserAdapter.RestoreState>(result.RestoreState);
+        Assert.Equal(retry.Anchor, state.Plan.Anchor);
+        Assert.Equal(first.Factor, state.Plan.Scale);
+
+        await adapter.ZoomOutAsync(Brave, result.RestoreState!, CancellationToken.None);
+        Assert.Equal(retry.Anchor, _pinch.Calls[2].Anchor);
+    }
+
+    [Fact]
+    public async Task A_second_refusal_is_retried_around_the_viewport_centre()
+    {
+        _hits.Result = ParagraphHit;
+        _screen.Frames.Enqueue(90);
+        _screen.Frames.Enqueue(90);
+        _screen.Frames.Enqueue(90);
+        _screen.Frames.Enqueue(90);
+        _screen.Frames.Enqueue(40);
+        _screen.Frames.Enqueue(200);
+
+        var result = await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None);
+
+        Assert.Equal(ZoomInStatus.Applied, result.Status);
+        Assert.Equal(3, _pinch.Calls.Count);
+        Assert.Equal(new ScreenPoint(1392, 1184), _pinch.Calls[2].Anchor);
+        Assert.Equal(_pinch.Calls[2].Anchor, Assert.IsType<BrowserAdapter.RestoreState>(result.RestoreState).Plan.Anchor);
+    }
+
+    [Fact]
+    public async Task A_page_that_blocks_every_anchor_is_unhandled_so_the_coordinator_can_page_zoom_instead()
+    {
+        _hits.Result = ParagraphHit;
+        for (var i = 0; i < 6; i++)
+            _screen.Frames.Enqueue(90);
+
+        var result = await Create(ctrlWheelWhenPinchBlocked: true).ZoomInAsync(Brave, Cursor, CancellationToken.None);
+
+        Assert.Equal(ZoomInStatus.Unhandled, result.Status);
+        Assert.Null(result.RestoreState);
+
+        // The zoom and its two retries, and nothing more: a refused press costs three gestures.
+        Assert.Equal(3, _pinch.Calls.Count);
+    }
+
+    [Fact]
+    public async Task A_page_that_blocks_every_anchor_is_reported_and_left_alone_when_page_zoom_is_not_wanted()
+    {
+        _hits.Result = ParagraphHit;
+        for (var i = 0; i < 6; i++)
+            _screen.Frames.Enqueue(90);
+
+        var result = await Create(ctrlWheelWhenPinchBlocked: false).ZoomInAsync(Brave, Cursor, CancellationToken.None);
+
+        Assert.Equal(ZoomInStatus.Handled, result.Status);
+        Assert.Equal(ZoomReason.GestureRefused, result.Reason);
+        Assert.Equal("pinch blocked by the page", result.Detail);
+        Assert.Null(result.RestoreState);
+        Assert.Equal(3, _pinch.Calls.Count);
+    }
+
+    [Fact]
+    public async Task A_screen_that_cannot_be_read_skips_the_check_and_trusts_the_gesture()
+    {
+        _hits.Result = ParagraphHit;
+        _screen.Frames.Enqueue(null);
+
+        var result = await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None);
+
+        Assert.Equal(ZoomInStatus.Applied, result.Status);
+        Assert.NotNull(result.RestoreState);
+
+        // Nothing to compare against, so no second read either.
+        Assert.Single(_screen.Regions);
+    }
+
+    [Fact]
+    public async Task A_screen_that_stops_being_readable_after_the_pinch_is_trusted_too()
+    {
+        _hits.Result = ParagraphHit;
+        _screen.Frames.Enqueue(90);
+        _screen.Frames.Enqueue(null);
+
+        var result = await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None);
+
+        Assert.Equal(ZoomInStatus.Applied, result.Status);
+        Assert.NotNull(result.RestoreState);
+    }
+
+    [Fact]
+    public async Task A_rejected_pinch_is_not_verified()
+    {
+        _hits.Result = ParagraphHit;
+        _pinch.Succeeds = false;
+
+        await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None);
+
+        Assert.Single(_screen.Regions);
+    }
+
+    [Fact]
+    public void The_verified_region_is_clipped_to_the_viewport()
+    {
+        var viewport = PixelRect.FromSize(1000, 500, 800, 300);
+
+        Assert.Equal(new PixelRect(1000, 500, 1400, 750), BrowserAdapter.VerifyRegion(new ScreenPoint(1100, 550), viewport));
+        Assert.Equal(new PixelRect(1100, 500, 1700, 800), BrowserAdapter.VerifyRegion(new ScreenPoint(1400, 650), viewport));
+    }
+
+    [Fact]
     public async Task Animation_can_be_turned_off()
     {
         _hits.Result = ParagraphHit;
@@ -232,6 +411,29 @@ public sealed class BrowserAdapterTests
 
         public Task<ContentHit?> HitTestAsync(TargetInfo target, ScreenPoint point, CancellationToken cancellationToken) =>
             Task.FromResult(++Calls == 1 || Next is null ? Result : Next);
+    }
+
+    // Each read returns a flat sample of the next scripted luma (null: the screen could not be read); after the
+    // script runs out, every read differs from the last, so a pinch reads as taken unless a test says otherwise.
+    private sealed class FakeScreenSampler : IScreenSampler
+    {
+        private byte _luma;
+
+        public Queue<byte?> Frames { get; } = new();
+
+        public List<PixelRect> Regions { get; } = [];
+
+        public ScreenSample? Sample(PixelRect region)
+        {
+            Regions.Add(region);
+            var luma = Frames.Count > 0 ? Frames.Dequeue() : _luma += 100;
+            if (luma is not { } value)
+                return null;
+
+            var pixels = new byte[region.Width * region.Height];
+            Array.Fill(pixels, value);
+            return ScreenSample.FromLuma(region, pixels);
+        }
     }
 
     private sealed class FakePinch : IPinchInjector
