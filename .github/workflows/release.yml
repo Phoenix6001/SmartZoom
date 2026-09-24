@@ -21,7 +21,7 @@ jobs:
       DOTNET_CLI_TELEMETRY_OPTOUT: true
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # A tag that does not match the version compiled into the binaries would publish "v0.2.0" with 0.1.0
       # inside. The version lives in one place, Directory.Build.props, and the tag must agree with it.
