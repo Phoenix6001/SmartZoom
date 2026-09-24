@@ -15,7 +15,7 @@
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
 
     <!-- Nothing is released yet; the installer stamps this into the executable and its own filename. -->
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
 
     <Authors>SmartZoom contributors</Authors>
     <Product>SmartZoom</Product>

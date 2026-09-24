@@ -8,6 +8,22 @@ All notable changes to SmartZoom are recorded here. The format follows
 
 Nothing yet.
 
+## [0.1.1] - 2026-09-24
+
+### Fixed
+
+- **Chromium builds whose accessibility tree never reaches a document node can be zoomed.** Some Chrome and
+  Edge installations (seen with Chromium's native UI Automation provider switched on) answer the hit-test
+  with a chain of elements that has no document at its top, and every press ended in "no accessible
+  content". The render window's own rectangle is the page in every build, so it now stands in for the
+  missing document.
+
+### Changed
+
+- The debug log line for a press that found no accessible content now includes the path SmartZoom did get
+  back (roles, sizes and raw role numbers), so a diagnostic report from a machine where nothing zooms says
+  what the browser's tree looks like there.
+
 ## [0.1.0] - 2026-09-24
 
 ### Added
@@ -108,5 +124,6 @@ Nothing yet.
 - Double-tap swallow: a press arriving while a replayed release is still owed replays that release first.
 - `smartzoom-probe`: a missing argument prints which one is missing; capture analysis is faster.
 
-[Unreleased]: https://github.com/Phoenix6001/SmartZoom/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Phoenix6001/SmartZoom/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/Phoenix6001/SmartZoom/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Phoenix6001/SmartZoom/releases/tag/v0.1.0

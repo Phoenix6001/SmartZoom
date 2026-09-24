@@ -167,8 +167,21 @@ public sealed partial class MsaaContentHitTester(ChromiumAccessibilityWake wake,
             wake.Forget(render);
             if (document is null)
             {
-                LogNoDocument(target.ProcessName);
-                return HitTestAttempt.Nothing;
+                // Some Chromium builds answer with a chain that never reaches a document node (seen with the
+                // native UI Automation provider enabled). The render window's rectangle is the page in every
+                // build, so it stands in for the document rather than the press doing nothing.
+                var window = WindowInspector.Bounds(render);
+                // Once per failed press, so the description is cheap enough to build unconditionally.
+                var path = ContentPath.Describe(chain);
+                if (chain.Count == 0 || window is null)
+                {
+                    LogNoDocument(target.ProcessName, path);
+                    return HitTestAttempt.Nothing;
+                }
+
+                LogDocumentFromWindow(target.ProcessName, path);
+                var page = new ContentNode(ContentRole.Document, window.Value);
+                return HitTestAttempt.Found(new ContentHit([.. chain, page], Viewport(window.Value, render)));
             }
 
             return HitTestAttempt.Found(new ContentHit(chain, Viewport(document.Bounds, render)));
@@ -390,8 +403,11 @@ public sealed partial class MsaaContentHitTester(ChromiumAccessibilityWake wake,
         return PixelRect.FromSize(left, top, width, height);
     }
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "No document node on the accessibility path in {Process}.")]
-    private partial void LogNoDocument(string? process);
+    [LoggerMessage(Level = LogLevel.Debug, Message = "No document node on the accessibility path in {Process}; the path was: {Path}")]
+    private partial void LogNoDocument(string? process, string path);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "{Process} exposed no document node; using the render window as the page. Path under the cursor: {Path}")]
+    private partial void LogDocumentFromWindow(string? process, string path);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Accessibility bounds in {Process} are stale (element at ({Left}, {Top}) does not contain the cursor at ({X}, {Y})); skipping this press rather than zooming the wrong place.")]
     private partial void LogStaleBounds(string? process, int left, int top, int x, int y);
