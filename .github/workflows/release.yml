@@ -1,0 +1,94 @@
+name: Release
+
+# Pushing a tag such as v0.1.0 builds exactly what CI builds, then opens a DRAFT GitHub Release with the
+# CHANGELOG section for that version as its notes and the installer, the framework-dependent executable
+# and their checksums attached. Nothing is public until someone reads the draft and clicks Publish.
+# docs/releasing.md walks through the whole ritual.
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+
+# Creating the release and uploading assets is the only write this workflow makes.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # A tag that does not match the version compiled into the binaries would publish "v0.2.0" with 0.1.0
+      # inside. The version lives in one place, Directory.Build.props, and the tag must agree with it.
+      - name: Check the tag against Directory.Build.props
+        id: version
+        run: |
+          $tag = '${{ github.ref_name }}'.TrimStart('v')
+          $props = [xml](Get-Content Directory.Build.props)
+          $version = $props.Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1
+          if ($tag -ne $version) { throw "Tag v$tag does not match <Version>$version</Version> in Directory.Build.props." }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      # The notes are the CHANGELOG section for this version. Its absence fails the release on purpose:
+      # moving Unreleased under a version heading is part of cutting a release, not an afterthought.
+      - name: Extract release notes
+        run: pwsh .github/scripts/release-notes.ps1 -Version '${{ steps.version.outputs.version }}' -OutFile release-notes.md
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Check formatting
+        run: dotnet format --verify-no-changes --no-restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test --no-build --configuration Release --logger "console;verbosity=normal"
+
+      # Framework-dependent single file: needs the .NET 10 Desktop Runtime on the machine that runs it.
+      - name: Publish SmartZoom.exe
+        run: dotnet publish src/SmartZoom.App --configuration Release --runtime win-x64 --no-self-contained --output publish
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress --yes
+
+      # Self-contained and uncompressed, packed by Inno Setup; the same script contributors run locally.
+      - name: Build installer
+        run: pwsh install/build.ps1
+
+      # Everything that goes on the release page, named so a download makes sense on its own, plus a
+      # checksum file so a download can be verified against what CI produced.
+      - name: Collect assets
+        run: |
+          New-Item -ItemType Directory release | Out-Null
+          $v = '${{ steps.version.outputs.version }}'
+          Copy-Item (Get-ChildItem install/output -Filter '*-setup.exe' | Select-Object -First 1).FullName "release/SmartZoom-$v-setup.exe"
+          Copy-Item publish/SmartZoom.exe "release/SmartZoom-$v-win-x64-framework-dependent.exe"
+          Get-ChildItem release -File | ForEach-Object {
+              "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)"
+          } | Set-Content release/SHA256SUMS.txt -Encoding ascii
+          Get-Content release/SHA256SUMS.txt
+
+      # gh is preinstalled on the runners and the workflow token is enough to publish a release; no
+      # third-party action and no secret to manage.
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create '${{ github.ref_name }}'
+          --draft
+          --title 'SmartZoom ${{ steps.version.outputs.version }}'
+          --notes-file release-notes.md
+          release/SmartZoom-${{ steps.version.outputs.version }}-setup.exe
+          release/SmartZoom-${{ steps.version.outputs.version }}-win-x64-framework-dependent.exe
+          release/SHA256SUMS.txt
