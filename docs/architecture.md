@@ -115,6 +115,46 @@ malformed or unreadable file is reported to the user and the running settings ar
 A file written by an older version still loads; keys it carries for shapes that no longer exist are ignored,
 and the defaults take over.
 
+## The settings window
+
+WPF, under `App/Ui`, owned by `SettingsShell` — which also owns the tray panel and the WPF `Application`
+object both of them need. Neither exists until the tray is asked for one, so a user who never opens either
+never pays for WPF; both are then created once and kept, so the window comes back on the page it was left on.
+
+```
+Ui/Shell/     ShellWindow (frameless chrome, the rail), ShellViewModel, ShellPages (the one place a view
+              is constructed), NavigationSection
+Ui/Pages/     Overview, Triggers, Applications, Advanced, About — a XAML UserControl and a view model each
+Ui/Recorder/  TriggerRecorderWindow: the trigger is performed, not named
+Ui/Panel/     The tray panel: the same few facts, for someone who only wants to flip a switch
+Ui/Themes/    Light.xaml and Dark.xaml declare the same keys and nothing else names a colour, so
+              ThemeManager swaps one for the other and the open window repaints
+Ui/Mvvm/      ObservableObject and RelayCommand; no MVVM framework
+```
+
+Three rules hold the window together, and they are the reason it cannot drift out of step with the app:
+
+- **No page holds a copy of the settings.** Each one reads `SettingsHolder.Current` in its `Refresh`, and
+  `ShellViewModel.Refresh` calls every page's (`IPageModel`) whenever the window is shown. A change made in
+  the tray panel, in the tray menu, on another page or by hand in the file is therefore visible at once.
+- **Every change goes through `SettingsApplier`**, off the UI thread — its gate can be held by a zoom in
+  flight — and the page re-reads afterwards, so what is on screen is what took effect rather than what was
+  asked for. There is no Save button, and so nothing can be left unsaved.
+- **The validator's findings are shown, not discarded.** `SettingsApplyResult.Problems` becomes a list of
+  `ProblemLine` under the page, errors in `Brush.Error` and warnings in `Brush.Warn`: a change that went
+  through with a caveat must not look like one that was refused.
+
+What each page offers comes from the running application rather than from a list in the UI. Applications
+builds its strategy picker and its "built in" rows from `ZoomRouter.Adapters`, so a strategy added later
+offers itself — with its own name and its own sentence — without this code being touched. Triggers names
+each entry with `TriggerSettings.ToDefinition(...).DisplayName`, which is what the hook is actually built
+from. Advanced's two sliders wait for the dragging to stop before applying, because a slider that applied on
+every pixel would rebuild the zoom pipeline a hundred times on the way across.
+
+Removing the last trigger is refused in the page, with a message, rather than left to the validator: an
+application with no trigger cannot be started by anything, and a list that silently emptied itself would
+read as a bug.
+
 ## Adding support for an application
 
 See [adding-an-application.md](adding-an-application.md).

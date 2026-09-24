@@ -28,7 +28,7 @@ namespace SmartZoom.App.Ui.Recorder;
 /// trying to record would zoom the window behind it.
 /// </para>
 /// <para>
-/// The rules about what may be recorded are not restated here: <see cref="TriggerRecorderDialog"/> holds them
+/// The rules about what may be recorded are not restated here: <see cref="TriggerRecording"/> holds them
 /// as pure statics with tests of their own, and this window calls those. What is here is the surface — the
 /// capture area, the presets, and the tap and swallow settings — plus the two things that can only be done
 /// where the input arrives: ignoring auto-repeat, and telling a click on the dialog's own controls apart from
@@ -106,7 +106,7 @@ internal sealed partial class TriggerRecorderWindow : Window
     }
 
     /// <summary>What was recorded. Only meaningful after the window closed with a true dialog result.</summary>
-    public TriggerSettings Result => TriggerRecorderDialog.Compose(
+    public TriggerSettings Result => TriggerRecording.Compose(
         _button,
         _modifiers,
         _combo,
@@ -242,7 +242,7 @@ internal sealed partial class TriggerRecorderWindow : Window
     /// </summary>
     private static KeyModifiers HeldModifiers()
     {
-        var modifiers = TriggerRecorderDialog.ModifiersOf(Control.ModifierKeys);
+        var modifiers = TriggerRecording.ModifiersOf(Control.ModifierKeys);
         if ((Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Windows) != 0)
             modifiers |= KeyModifiers.Win;
 
@@ -250,7 +250,7 @@ internal sealed partial class TriggerRecorderWindow : Window
     }
 
     /// <summary>The trigger button a WPF mouse button stands for, through the tested WinForms mapping.</summary>
-    private static MouseButton ButtonOf(WpfMouseButton button) => TriggerRecorderDialog.ButtonOf(button switch
+    private static MouseButton ButtonOf(WpfMouseButton button) => TriggerRecording.ButtonOf(button switch
     {
         WpfMouseButton.Left => MouseButtons.Left,
         WpfMouseButton.Right => MouseButtons.Right,
@@ -290,7 +290,7 @@ internal sealed partial class TriggerRecorderWindow : Window
 
     private void Restore(TriggerSettings existing)
     {
-        (_button, _modifiers, _combo) = TriggerRecorderDialog.Recorded(existing);
+        (_button, _modifiers, _combo) = TriggerRecording.Recorded(existing);
 
         DoubleTap.IsChecked = existing.TapCount == 2;
         EveryPress.IsChecked = existing.TapCount != 2;

@@ -1,14 +1,121 @@
-<!-- Placeholder. The triggers editor is ported onto this shell in the second wave; see Settings/TriggersPage.cs. -->
 <UserControl x:Class="SmartZoom.App.Ui.Pages.TriggersPage"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:ClassModifier="internal">
-    <StackPanel Margin="40,36,40,36">
-        <TextBlock Style="{StaticResource Text.Hero}" FontSize="30" Text="Triggers" />
-        <TextBlock Style="{StaticResource Text.Muted}"
-                   Margin="0,10,0,0"
-                   MaxWidth="560"
+    <UserControl.Resources>
+
+        <!-- One configured trigger: what it is, what it does, and the two things you can do to it. -->
+        <DataTemplate x:Key="TriggerTemplate">
+            <Border Style="{StaticResource Card}" Margin="0,0,0,10" Padding="20,16,16,16">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0"
+                            Width="38"
+                            Height="38"
+                            VerticalAlignment="Center"
+                            Background="{DynamicResource Brush.AccentTint}"
+                            CornerRadius="19">
+                        <TextBlock Style="{StaticResource Glyph}"
+                                   FontSize="16"
+                                   Foreground="{DynamicResource Brush.Accent}"
+                                   Text="&#xE765;" />
+                    </Border>
+
+                    <StackPanel Grid.Column="1" Margin="14,0,16,0" VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource Text.Base}"
+                                   FontFamily="{StaticResource Font.Display}"
+                                   FontSize="19"
+                                   FontWeight="SemiBold"
+                                   TextWrapping="Wrap"
+                                   Text="{Binding DisplayName}" />
+                        <TextBlock Style="{StaticResource Text.Muted}"
+                                   Margin="0,4,0,0"
+                                   FontSize="12.5"
+                                   Text="{Binding Behaviour}" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2" VerticalAlignment="Center" Orientation="Horizontal">
+                        <Button Style="{StaticResource Button.Quiet}"
+                                Margin="0,0,8,0"
+                                Padding="18,0"
+                                Command="{Binding DataContext.EditTrigger, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                CommandParameter="{Binding}"
+                                Content="Edit"
+                                ToolTip="Press the button or keys you want instead." />
+                        <Button Style="{StaticResource Button.Quiet}"
+                                Padding="18,0"
+                                Command="{Binding DataContext.RemoveTrigger, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                CommandParameter="{Binding}"
+                                Content="Remove" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </DataTemplate>
+
+    </UserControl.Resources>
+
+    <Grid Margin="40,34,34,34">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- 1. Heading -->
+        <StackPanel Grid.Row="0">
+            <TextBlock Style="{StaticResource Text.Hero}" FontSize="30" Text="Triggers" />
+            <TextBlock Style="{StaticResource Text.Muted}"
+                       Margin="1,8,0,0"
+                       MaxWidth="620"
+                       HorizontalAlignment="Left"
+                       Text="Any of these starts a zoom. A mouse button and a keyboard shortcut can both be active, which is useful when the same settings are shared between a desktop and a laptop." />
+        </StackPanel>
+
+        <!-- 2. Add -->
+        <Button Grid.Row="1"
+                Style="{StaticResource Button.Pill}"
+                Margin="0,22,0,0"
+                HorizontalAlignment="Left"
+                Command="{Binding AddTrigger}"
+                Content="Add a trigger…" />
+
+        <!-- 3. The triggers -->
+        <ItemsControl Grid.Row="2"
+                      Margin="0,20,0,0"
+                      ItemTemplate="{StaticResource TriggerTemplate}"
+                      ItemsSource="{Binding Triggers}" />
+
+        <!-- 4. What the last change was told about itself -->
+        <ItemsControl Grid.Row="3"
+                      Margin="0,6,0,0"
+                      ItemTemplate="{StaticResource Problem.Line}"
+                      ItemsSource="{Binding Problems}">
+            <ItemsControl.Style>
+                <Style TargetType="ItemsControl">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding HasProblems}" Value="True">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </ItemsControl.Style>
+        </ItemsControl>
+
+        <!-- 5. Footer -->
+        <TextBlock Grid.Row="4"
+                   Style="{StaticResource Text.Muted}"
+                   Margin="0,16,0,0"
+                   MaxWidth="620"
                    HorizontalAlignment="Left"
-                   Text="The gestures that start a zoom. This page still lives in the old settings window; it moves here next." />
-    </StackPanel>
+                   FontSize="12.5"
+                   Text="A trigger the application never sees is best on a button you do not otherwise use. One you share with the application — the wheel click, say — is better as a double-tap, so a single click still does what it always did." />
+    </Grid>
 </UserControl>

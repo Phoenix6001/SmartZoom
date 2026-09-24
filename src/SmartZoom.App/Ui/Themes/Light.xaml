@@ -19,6 +19,7 @@
     <SolidColorBrush x:Key="Brush.AccentTint" Color="#E8F0FE" />
     <SolidColorBrush x:Key="Brush.Good" Color="#16A34A" />
     <SolidColorBrush x:Key="Brush.Warn" Color="#B45309" />
+    <SolidColorBrush x:Key="Brush.Error" Color="#C42B1C" />
 
     <!-- Cards are lifted off a light ground with a shadow; in the dark palette the border does that job. -->
     <DropShadowEffect x:Key="Effect.Card" BlurRadius="18" ShadowDepth="2" Direction="270" Opacity="0.08" Color="#0B1B33" />

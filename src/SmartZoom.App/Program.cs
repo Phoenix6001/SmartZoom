@@ -215,9 +215,23 @@ internal static class Program
         builder.Services.AddSingleton<ThemeManager>();
         builder.Services.AddSingleton<PanelViewModel>();
         builder.Services.AddSingleton<OverviewViewModel>();
+        builder.Services.AddSingleton<TriggersViewModel>();
+        builder.Services.AddSingleton<ApplicationsViewModel>();
+        builder.Services.AddSingleton<AdvancedViewModel>();
         builder.Services.AddSingleton<AboutViewModel>();
         builder.Services.AddSingleton(sp => new ShellViewModel(
-            ShellPages.Build(sp.GetRequiredService<OverviewViewModel>(), sp.GetRequiredService<AboutViewModel>()),
+            ShellPages.Build(
+                sp.GetRequiredService<OverviewViewModel>(),
+                sp.GetRequiredService<TriggersViewModel>(),
+                sp.GetRequiredService<ApplicationsViewModel>(),
+                sp.GetRequiredService<AdvancedViewModel>(),
+                sp.GetRequiredService<AboutViewModel>()),
+            [
+                sp.GetRequiredService<OverviewViewModel>(),
+                sp.GetRequiredService<TriggersViewModel>(),
+                sp.GetRequiredService<ApplicationsViewModel>(),
+                sp.GetRequiredService<AdvancedViewModel>(),
+            ],
             sp.GetRequiredService<OverviewViewModel>(),
             sp.GetRequiredService<AboutViewModel>(),
             sp.GetRequiredService<ITriggerSource>(),

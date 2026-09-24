@@ -3,7 +3,8 @@ using UserControl = System.Windows.Controls.UserControl;
 
 namespace SmartZoom.App.Ui.Pages;
 
-/// <summary>Placeholder for the applications table; filled in the second wave.</summary>
+/// <summary>The Applications page: which application is zoomed by which strategy.</summary>
+/// <remarks>Everything it shows comes from <see cref="ApplicationsViewModel"/> in its data context.</remarks>
 internal sealed partial class ApplicationsPage : UserControl
 {
     /// <summary>Creates the page.</summary>

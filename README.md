@@ -43,11 +43,15 @@ dotnet test
 dotnet run --project src/SmartZoom.App
 ```
 
-SmartZoom runs in the notification area. Double-click the icon — or right-click it and choose
-**Settings…** — for the settings window: triggers you record by pressing them, which application is handled
-how, and the zoom settings worth turning. Saving applies at once; nothing needs a restart. The rest of the
-right-click menu is **Enabled**, **Open settings file**, **Reload settings file**,
-**Open log folder**, **Diagnostic report…** (opens Settings on the Diagnostics tab — see below), and **Exit**.
+SmartZoom runs in the notification area. A left click drops a small panel out of the tray with the few
+things people change most; a double-click — or right-click and **Settings…** — opens the settings window.
+It has five pages: **Overview** (what SmartZoom is doing, and a card for each setting people change),
+**Triggers** (recorded by pressing them, not by naming them), **Applications** (which application is handled
+by which strategy, alongside the ones that already are), **Advanced** (zoom tuning, PDF readers, the logging
+level and the diagnostic report) and **About**. There is no Save button: every change applies as you make
+it, and nothing needs a restart. The rest of the right-click menu is **Enabled**, **Change trigger…**,
+**Zoom amount**, **Open settings file**, **Reload settings file**, **Open log folder**,
+**Diagnostic report…** (opens Settings on the Advanced page — see below), **About SmartZoom** and **Exit**.
 
 Publish a single-file executable:
 
@@ -85,7 +89,7 @@ otherwise, so reinstalling does not cost you your triggers.
 
 Most of this is in the settings window. The file is still there for the tuning the window leaves out, and
 editing it by hand is a first-class path: **Reload settings file** in the tray menu applies it without a
-restart, exactly as Save does.
+restart, exactly as a change made in the window does.
 
 ```jsonc
 {
@@ -192,12 +196,12 @@ four-finger tap can instead be a *Custom shortcut*, which you point at one of yo
 
 Logs are written to `%LOCALAPPDATA%\SmartZoom\logs` (rolling daily, 14 days kept).
 
-Settings → Diagnostics keeps a small local record of what SmartZoom failed to do — presses that zoomed
-nothing, adapters that threw, and crashes — at `%LOCALAPPDATA%\SmartZoom\diagnostics.json`, and renders it on
-demand as a report you can copy into a bug report. It's on by default; the same page has a switch to turn it
-off — saved with the rest of your settings when you press Save, so it stays off — and a button to clear what's
-recorded. Nothing in it is sent anywhere — see [SECURITY.md](SECURITY.md) for exactly what it holds and what
-it never does.
+Settings → Advanced → Diagnostics keeps a small local record of what SmartZoom failed to do — presses that
+zoomed nothing, adapters that threw, and crashes — at `%LOCALAPPDATA%\SmartZoom\diagnostics.json`, and renders
+it on demand as a report you can copy into a bug report. It's on by default; the same section has a switch to
+turn it off — written to your settings file at once, so it stays off — and a button to clear what's recorded.
+Nothing in it is sent anywhere — see [SECURITY.md](SECURITY.md) for exactly what it holds and what it never
+does.
 
 ## Architecture
 

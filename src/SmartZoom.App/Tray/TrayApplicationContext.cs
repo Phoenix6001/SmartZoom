@@ -26,13 +26,9 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
     private readonly ITriggerSource _triggerSource;
     private readonly SettingsApplier _applier;
     private readonly SettingsHolder _holder;
-    private readonly ZoomEngine _engine;
     private readonly ISystemInput _systemInput;
     private readonly AppPaths _paths;
-    private readonly DiagnosticRecorder _recorder;
-    private readonly IMachineFacts _facts;
     private readonly SettingsShell _shell;
-    private SettingsForm? _settingsWindow;
     private readonly ZoomActivity _activity;
     private readonly ILogger<TrayApplicationContext> _logger;
     private readonly Font _menuBold = new(SystemFonts.MenuFont!, FontStyle.Bold);
@@ -52,11 +48,8 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
         ITriggerSource triggerSource,
         SettingsApplier applier,
         SettingsHolder holder,
-        ZoomEngine engine,
         ISystemInput systemInput,
         AppPaths paths,
-        DiagnosticRecorder recorder,
-        IMachineFacts facts,
         ZoomActivity activity,
         SettingsShell shell,
         IHostApplicationLifetime lifetime,
@@ -65,11 +58,8 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
         _triggerSource = triggerSource;
         _applier = applier;
         _holder = holder;
-        _engine = engine;
         _systemInput = systemInput;
         _paths = paths;
-        _recorder = recorder;
-        _facts = facts;
         _activity = activity;
         _shell = shell;
         _logger = logger;
@@ -98,15 +88,13 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
             _lastAppItem,
             new ToolStripSeparator(),
             new ToolStripMenuItem("&Settings…", image: null, (_, _) => OpenShell()) { Font = _menuBold },
-            // The old window, kept until the new one has every page. Both read the same live state.
-            new ToolStripMenuItem("Settings (&old)…", image: null, (_, _) => OpenSettings()),
             new ToolStripMenuItem("Open &settings file", image: null, (_, _) => OpenWithShell(_paths.SettingsFile)),
             new ToolStripMenuItem("&Reload settings file", image: null, (_, _) => ReloadSettings()),
             new ToolStripMenuItem("Open &log folder", image: null, (_, _) => OpenWithShell(_paths.LogDirectory)),
             new ToolStripSeparator(),
             // Opens the page rather than copying silently: a tray item that filled the clipboard unread would
             // defeat the point of showing the report at all.
-            new ToolStripMenuItem("&Diagnostic report…", image: null, (_, _) => OpenSettings(SettingsTab.Diagnostics)),
+            new ToolStripMenuItem("&Diagnostic report…", image: null, (_, _) => ShowDiagnostics()),
             new ToolStripSeparator(),
             new ToolStripMenuItem("&About SmartZoom", image: null, (_, _) => ShowAbout()),
             new ToolStripMenuItem("E&xit", image: null, (_, _) => ExitThread()),
@@ -166,7 +154,11 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
     }
 
     /// <inheritdoc />
-    public void RequestSettings() => _uiContext.Post(_ => OpenSettings(), null);
+    /// <remarks>
+    /// Called by the second-instance listener: starting SmartZoom while it is already running is somebody
+    /// looking for its window, so the running instance shows one.
+    /// </remarks>
+    public void RequestSettings() => _uiContext.Post(_ => OpenShell(), null);
 
     /// <summary>
     /// Flips the switch through the applier, the only writer of the settings file. Off the UI thread, because
@@ -231,25 +223,22 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
     private void ChangeTrigger()
     {
         var settings = _holder.Current;
-        TriggerSettings captured;
+        TriggerSettings? captured;
 
-        // The recorder listens for the very input that would otherwise zoom whatever is behind it.
-        var wasEnabled = _triggerSource.Enabled;
         try
         {
-            _triggerSource.Enabled = false;
-            using var recorder = new TriggerRecorderDialog(
+            captured = _shell.RecordTrigger(
                 _triggerSource, _systemInput.DoubleClickTimeMs, TrayQuickSettings.FirstTrigger(settings));
-
-            if (recorder.ShowDialog() != DialogResult.OK)
-                return;
-
-            captured = recorder.Result;
         }
-        finally
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            _triggerSource.Enabled = wasEnabled;
+            LogShellFailed(ex);
+            Notify("The trigger recorder could not be opened.", good: false);
+            return;
         }
+
+        if (captured is null)
+            return;
 
         Apply(
             TrayQuickSettings.WithFirstTrigger(settings, captured),
@@ -312,6 +301,9 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
     /// <summary>Opens the settings window, or brings it to the front when it is already open.</summary>
     private void OpenShell() => Shell(_shell.ShowSettings);
 
+    /// <summary>Opens the Advanced page, where the diagnostic report is read and copied.</summary>
+    private void ShowDiagnostics() => Shell(_shell.ShowAdvanced);
+
     /// <summary>Runs one of the window's entry points; a UI that will not open must not take the tray with it.</summary>
     private void Shell(Action show)
     {
@@ -322,34 +314,8 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             LogShellFailed(ex);
-            Notify("The settings window could not be opened. The old one is still there under \"Settings…\".", good: false);
+            Notify("The settings window could not be opened. Details are in the log.", good: false);
         }
-    }
-
-    /// <summary>Opens the settings window on the given tab, or brings it to the front if it is already open.</summary>
-    /// <param name="tab">
-    /// The tab to show, even on an already-open window, or null to leave an open window on whatever tab the
-    /// user has it.
-    /// </param>
-    private void OpenSettings(SettingsTab? tab = null)
-    {
-        if (_settingsWindow is { IsDisposed: false } open)
-        {
-            if (open.WindowState == FormWindowState.Minimized)
-                open.WindowState = FormWindowState.Normal;
-
-            if (tab is { } requested)
-                open.ShowTab(requested);
-
-            open.Activate();
-            return;
-        }
-
-        _settingsWindow = new SettingsForm(
-            _applier, _holder, _engine, _triggerSource, _systemInput, _paths, _recorder, _facts, tab ?? SettingsTab.Triggers);
-        _settingsWindow.FormClosed += (_, _) => _settingsWindow = null;
-        _settingsWindow.Show();
-        _settingsWindow.Activate();
     }
 
     /// <summary>

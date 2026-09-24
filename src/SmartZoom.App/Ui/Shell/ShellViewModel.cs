@@ -31,7 +31,7 @@ internal sealed partial class ShellViewModel : ObservableObject
     private readonly ZoomActivity _activity;
     private readonly SettingsApplier _applier;
     private readonly ThemeManager _theme;
-    private readonly OverviewViewModel _overview;
+    private readonly IReadOnlyList<IPageModel> _pages;
     private readonly ILogger<ShellViewModel> _logger;
     private readonly Dispatcher _dispatcher = Dispatcher.CurrentDispatcher;
 
@@ -43,6 +43,11 @@ internal sealed partial class ShellViewModel : ObservableObject
 
     /// <summary>Creates the shell over the pages it shows.</summary>
     /// <param name="sections">The rail's rows, in order, each carrying its page.</param>
+    /// <param name="pages">
+    /// The view models behind those rows, so the window can re-read every page at once. A page that showed
+    /// what it was built with rather than what the app is running would disagree with the tray panel, the
+    /// tray menu and the settings file as soon as any of them changed something.
+    /// </param>
     /// <param name="overview">The landing page's view model; its chevrons navigate this rail.</param>
     /// <param name="about">The About page's view model; its links navigate this rail.</param>
     /// <param name="triggers">The truth about whether zooming is on.</param>
@@ -53,6 +58,7 @@ internal sealed partial class ShellViewModel : ObservableObject
     /// <param name="logger">Logger.</param>
     public ShellViewModel(
         IReadOnlyList<NavigationItem> sections,
+        IReadOnlyList<IPageModel> pages,
         OverviewViewModel overview,
         AboutViewModel about,
         ITriggerSource triggers,
@@ -63,11 +69,13 @@ internal sealed partial class ShellViewModel : ObservableObject
         ILogger<ShellViewModel> logger)
     {
         ArgumentNullException.ThrowIfNull(sections);
+        ArgumentNullException.ThrowIfNull(pages);
         ArgumentNullException.ThrowIfNull(overview);
         ArgumentNullException.ThrowIfNull(about);
         ArgumentNullException.ThrowIfNull(theme);
 
         Sections = sections;
+        _pages = pages;
         _selected = sections[0];
         _triggers = triggers;
         _recorder = recorder;
@@ -76,7 +84,6 @@ internal sealed partial class ShellViewModel : ObservableObject
         _theme = theme;
         _logger = logger;
 
-        _overview = overview;
         overview.NavigationRequested += (_, section) => GoTo(section);
         about.NavigationRequested += (_, section) => GoTo(section);
 
@@ -165,7 +172,8 @@ internal sealed partial class ShellViewModel : ObservableObject
     /// <summary>Re-reads everything the window shows. Called whenever the window is shown or comes back.</summary>
     public void Refresh()
     {
-        _overview.Refresh();
+        foreach (var page in _pages)
+            page.Refresh();
 
         var record = _recorder.Snapshot();
         var issues = record.Counters.Sum(c => c.Count);

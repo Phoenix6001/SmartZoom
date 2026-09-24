@@ -173,7 +173,7 @@ Following the existing split, and adding no new plumbing through the zoom pipeli
 
 ## The user interface
 
-A fourth page in the settings window beside Triggers, Applications and Zoom, containing:
+A section of the settings window's Advanced page, below Zoom, PDF readers and Logging, containing:
 
 - The report itself in a read-only box. **Showing it is the consent mechanism** — "the user reads it before
   pasting" is only true if it is put in front of them.
@@ -181,7 +181,7 @@ A fourth page in the settings window beside Triggers, Applications and Zoom, con
 - The "include recent log lines" checkbox.
 
 The tray menu gains one **Diagnostic report…** item, because the tray is where people go when something is
-wrong. It *opens this page* rather than copying to the clipboard directly: a tray item that silently filled
+wrong. It *opens the Advanced page* rather than copying to the clipboard directly: a tray item that silently filled
 the clipboard would defeat the principle in the paragraph above it, which is that nothing is handed over
 before it has been read.
 

@@ -1,22 +1,382 @@
-<!--
-    Placeholder. Advanced is where the zoom tuning, the diagnostics record and the logging level land in the
-    second wave; see Settings/ZoomPage.cs and Settings/DiagnosticsPage.cs for what moves here.
--->
 <UserControl x:Class="SmartZoom.App.Ui.Pages.AdvancedPage"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:ClassModifier="internal">
-    <StackPanel Margin="40,36,40,36">
+    <UserControl.Resources>
+
+        <!-- The heading over each card: a tinted glyph and a name, as on the Overview page. -->
+        <Style x:Key="SectionHead" TargetType="StackPanel">
+            <Setter Property="Orientation" Value="Horizontal" />
+            <Setter Property="Margin" Value="0,30,0,0" />
+        </Style>
+
+        <Style x:Key="SectionGlyph" TargetType="Border">
+            <Setter Property="Width" Value="28" />
+            <Setter Property="Height" Value="28" />
+            <Setter Property="Background" Value="{DynamicResource Brush.AccentTint}" />
+            <Setter Property="CornerRadius" Value="8" />
+        </Style>
+
+        <Style x:Key="SectionLabel" TargetType="TextBlock" BasedOn="{StaticResource Text.Section}">
+            <Setter Property="Margin" Value="10,0,0,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <!-- The name and explanation on the left of a settings row. -->
+        <Style x:Key="RowTitle" TargetType="TextBlock" BasedOn="{StaticResource Text.CardTitle}">
+            <Setter Property="FontSize" Value="14" />
+        </Style>
+
+        <Style x:Key="RowNote" TargetType="TextBlock" BasedOn="{StaticResource Text.Muted}">
+            <Setter Property="Margin" Value="0,4,0,0" />
+            <Setter Property="FontSize" Value="12.5" />
+        </Style>
+
+        <!-- The value a slider is showing, in the display face so it reads as a number, not a label. -->
+        <Style x:Key="RowValue" TargetType="TextBlock" BasedOn="{StaticResource Text.Base}">
+            <Setter Property="FontFamily" Value="{StaticResource Font.Display}" />
+            <Setter Property="FontSize" Value="19" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="HorizontalAlignment" Value="Right" />
+        </Style>
+
+        <DataTemplate x:Key="LogLevelName">
+            <TextBlock Style="{StaticResource Text.Base}" FontSize="13" Text="{Binding DisplayName}" />
+        </DataTemplate>
+
+    </UserControl.Resources>
+
+    <StackPanel Margin="40,34,34,36">
+
+        <!-- 1. Heading -->
         <TextBlock Style="{StaticResource Text.Hero}" FontSize="30" Text="Advanced" />
         <TextBlock Style="{StaticResource Text.Muted}"
-                   Margin="0,10,0,0"
-                   MaxWidth="560"
+                   Margin="1,8,0,0"
+                   MaxWidth="620"
                    HorizontalAlignment="Left"
-                   Text="How far and how quickly a zoom goes, how much PDFs zoom, what SmartZoom writes to its log, and the record of anything that went wrong. These still live in the old settings window; they move here next." />
+                   Text="How far a zoom goes, how PDFs are zoomed, what SmartZoom writes down, and the record of anything that did not work. Every change here takes effect at once." />
 
-        <TextBlock Style="{StaticResource Text.Section}" Margin="0,30,0,0" FontSize="16" Text="Sections coming here" />
-        <TextBlock Style="{StaticResource Text.Muted}" Margin="0,8,0,0" Text="Zoom" />
-        <TextBlock Style="{StaticResource Text.Muted}" Margin="0,4,0,0" Text="Diagnostics" />
-        <TextBlock Style="{StaticResource Text.Muted}" Margin="0,4,0,0" Text="Logging and the settings file" />
+        <!-- 2. Zoom -->
+        <StackPanel Style="{StaticResource SectionHead}">
+            <Border Style="{StaticResource SectionGlyph}">
+                <TextBlock Style="{StaticResource Glyph}"
+                           FontSize="14"
+                           Foreground="{DynamicResource Brush.Accent}"
+                           Text="&#xE71E;" />
+            </Border>
+            <TextBlock Style="{StaticResource SectionLabel}" Text="Zoom" />
+        </StackPanel>
+
+        <Border Style="{StaticResource Card}" Margin="0,14,0,0" Padding="24,20,24,20">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="240" />
+                        <ColumnDefinition Width="100" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,20,0">
+                        <TextBlock Style="{StaticResource RowTitle}" Text="Largest zoom" />
+                        <TextBlock Style="{StaticResource RowNote}" Text="Nothing is ever zoomed more than this, however small the block under the cursor is." />
+                    </StackPanel>
+                    <Slider Grid.Column="1"
+                            Style="{StaticResource Slider.Setting}"
+                            VerticalAlignment="Center"
+                            LargeChange="0.5"
+                            Maximum="5"
+                            Minimum="1.5"
+                            SmallChange="0.1"
+                            TickFrequency="0.1"
+                            IsSnapToTickEnabled="True"
+                            Value="{Binding MaxScale}" />
+                    <TextBlock Grid.Column="2" Style="{StaticResource RowValue}" Text="{Binding MaxScaleLabel}" />
+                </Grid>
+
+                <Border Style="{StaticResource Rule}" Margin="0,18,0,0" />
+
+                <Grid Margin="0,18,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="240" />
+                        <ColumnDefinition Width="100" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,20,0">
+                        <TextBlock Style="{StaticResource RowTitle}" Text="Smallest zoom worth doing" />
+                        <TextBlock Style="{StaticResource RowNote}" Text="A block that would only grow by less than this is left alone, because the motion would cost more than it gained." />
+                    </StackPanel>
+                    <Slider Grid.Column="1"
+                            Style="{StaticResource Slider.Setting}"
+                            VerticalAlignment="Center"
+                            LargeChange="0.1"
+                            Maximum="2"
+                            Minimum="1.05"
+                            SmallChange="0.05"
+                            TickFrequency="0.05"
+                            IsSnapToTickEnabled="True"
+                            Value="{Binding MinScale}" />
+                    <TextBlock Grid.Column="2" Style="{StaticResource RowValue}" Text="{Binding MinScaleLabel}" />
+                </Grid>
+
+                <Border Style="{StaticResource Rule}" Margin="0,18,0,0" />
+
+                <Grid Margin="0,18,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,20,0">
+                        <TextBlock Style="{StaticResource RowTitle}" Text="Animate the zoom" />
+                        <TextBlock Style="{StaticResource RowNote}" Text="Zooms glide instead of jumping. Turn this off if the motion is distracting." />
+                    </StackPanel>
+                    <Button Grid.Column="1"
+                            Style="{StaticResource Switch}"
+                            VerticalAlignment="Center"
+                            Command="{Binding ToggleAnimate}"
+                            Tag="{Binding Animate}" />
+                </Grid>
+
+                <Border Style="{StaticResource Rule}" Margin="0,18,0,0" />
+
+                <Grid Margin="0,18,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,20,0">
+                        <TextBlock Style="{StaticResource RowTitle}" Text="Use Ctrl+wheel where smart zoom can't work" />
+                        <TextBlock Style="{StaticResource RowNote}" Text="A crude whole-window zoom, but better than a press that does nothing. Turn this off to know when a strategy could not act." />
+                    </StackPanel>
+                    <Button Grid.Column="1"
+                            Style="{StaticResource Switch}"
+                            VerticalAlignment="Center"
+                            Command="{Binding ToggleCtrlWheelFallback}"
+                            Tag="{Binding CtrlWheelFallback}" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- 3. PDF readers -->
+        <StackPanel Style="{StaticResource SectionHead}">
+            <Border Style="{StaticResource SectionGlyph}">
+                <TextBlock Style="{StaticResource Glyph}"
+                           FontSize="14"
+                           Foreground="{DynamicResource Brush.Accent}"
+                           Text="&#xE8A5;" />
+            </Border>
+            <TextBlock Style="{StaticResource SectionLabel}" Text="PDF readers" />
+        </StackPanel>
+
+        <Border Style="{StaticResource Card}" Margin="0,14,0,0" Padding="24,20,24,20">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="240" />
+                        <ColumnDefinition Width="100" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,20,0">
+                        <TextBlock Style="{StaticResource RowTitle}" Text="How much PDFs zoom" />
+                        <TextBlock Style="{StaticResource RowNote}" Text="A reader is magnified by a fixed amount rather than by fitting a block, because its pages are pictures to everything outside the reader." />
+                    </StackPanel>
+                    <Slider Grid.Column="1"
+                            Style="{StaticResource Slider.Setting}"
+                            VerticalAlignment="Center"
+                            LargeChange="0.25"
+                            Maximum="4"
+                            Minimum="1.25"
+                            SmallChange="0.25"
+                            TickFrequency="0.25"
+                            IsSnapToTickEnabled="True"
+                            Value="{Binding ReaderMagnification}" />
+                    <TextBlock Grid.Column="2" Style="{StaticResource RowValue}" Text="{Binding ReaderMagnificationLabel}" />
+                </Grid>
+
+                <Border Style="{StaticResource Rule}" Margin="0,18,0,0" />
+
+                <TextBlock Style="{StaticResource RowTitle}" Margin="0,18,0,0" Text="How a reader is zoomed" />
+                <RadioButton Style="{StaticResource Radio}"
+                             Margin="0,12,0,0"
+                             Content="Pinch around the cursor"
+                             GroupName="ReaderMode"
+                             IsChecked="{Binding ReaderPinch}" />
+                <TextBlock Style="{StaticResource RowNote}" Margin="27,3,0,0" Text="What you pointed at stays where it is and grows, the way a browser zooms. Needs a reader that accepts touch, which Acrobat and Sumatra do." />
+                <RadioButton Style="{StaticResource Radio}"
+                             Margin="0,14,0,0"
+                             Content="Use the reader's own fit-width shortcut"
+                             GroupName="ReaderMode"
+                             IsChecked="{Binding ReaderShortcuts}" />
+                <TextBlock Style="{StaticResource RowNote}" Margin="27,3,0,0" Text="The block under the cursor is scrolled to the top and the page is fitted to the width. For readers that ignore touch, where the pinch would do nothing." />
+            </StackPanel>
+        </Border>
+
+        <!-- 4. Logging -->
+        <StackPanel Style="{StaticResource SectionHead}">
+            <Border Style="{StaticResource SectionGlyph}">
+                <TextBlock Style="{StaticResource Glyph}"
+                           FontSize="14"
+                           Foreground="{DynamicResource Brush.Accent}"
+                           Text="&#xE8B7;" />
+            </Border>
+            <TextBlock Style="{StaticResource SectionLabel}" Text="Logging" />
+        </StackPanel>
+
+        <Border Style="{StaticResource Card}" Margin="0,14,0,0" Padding="24,20,24,20">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Margin="0,0,20,0">
+                    <TextBlock Style="{StaticResource RowTitle}" Text="Write to the log" />
+                    <TextBlock Style="{StaticResource RowNote}" Text="{Binding Level.Description}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <ComboBox Style="{StaticResource Combo}"
+                              Width="180"
+                              VerticalAlignment="Center"
+                              ItemTemplate="{StaticResource LogLevelName}"
+                              ItemsSource="{Binding LogLevels}"
+                              SelectedItem="{Binding Level}" />
+                    <Button Style="{StaticResource Button.Quiet}"
+                            Height="34"
+                            Margin="8,0,0,0"
+                            Padding="16,0"
+                            VerticalAlignment="Center"
+                            Command="{Binding OpenLogFolder}"
+                            Content="Open log folder" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- 5. Diagnostics -->
+        <StackPanel Style="{StaticResource SectionHead}">
+            <Border Style="{StaticResource SectionGlyph}">
+                <TextBlock Style="{StaticResource Glyph}"
+                           FontSize="14"
+                           Foreground="{DynamicResource Brush.Accent}"
+                           Text="&#xE9D9;" />
+            </Border>
+            <TextBlock Style="{StaticResource SectionLabel}" Text="Diagnostics" />
+        </StackPanel>
+
+        <Border Style="{StaticResource Card}" Margin="0,14,0,0" Padding="24,20,24,20">
+            <StackPanel>
+                <TextBlock Style="{StaticResource Text.Muted}"
+                           FontSize="12.5"
+                           Text="This is everything SmartZoom would tell you about itself. Read it, then copy it into a bug report. Nothing here is sent anywhere." />
+
+                <Border Margin="0,14,0,0"
+                        Background="{DynamicResource Brush.Ground}"
+                        BorderBrush="{DynamicResource Brush.CardBorder}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                    <TextBox Height="280"
+                             Padding="12"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             FontFamily="Consolas, Cascadia Mono, Courier New"
+                             FontSize="12"
+                             Foreground="{DynamicResource Brush.Ink}"
+                             HorizontalScrollBarVisibility="Auto"
+                             IsReadOnly="True"
+                             SelectionBrush="{DynamicResource Brush.Accent}"
+                             Text="{Binding Report, Mode=OneWay}"
+                             TextWrapping="NoWrap"
+                             VerticalScrollBarVisibility="Auto" />
+                </Border>
+
+                <WrapPanel Margin="0,14,-8,0">
+                    <Button Style="{StaticResource Button.Quiet}"
+                            Margin="0,0,8,8"
+                            Padding="18,0"
+                            Command="{Binding RefreshReport}"
+                            Content="Refresh" />
+                    <Button Style="{StaticResource Button.Quiet}"
+                            Margin="0,0,8,8"
+                            Padding="18,0"
+                            Command="{Binding CopyReport}"
+                            Content="Copy" />
+                    <Button Style="{StaticResource Button.Quiet}"
+                            Margin="0,0,8,8"
+                            Padding="18,0"
+                            Command="{Binding SaveReport}"
+                            Content="Save…" />
+                    <Button Style="{StaticResource Button.Quiet}"
+                            Margin="0,0,8,8"
+                            Padding="18,0"
+                            Command="{Binding ClearRecord}"
+                            Content="Clear recorded data" />
+                    <CheckBox Style="{StaticResource Check}"
+                              Margin="8,0,8,8"
+                              VerticalAlignment="Center"
+                              Content="Include recent log lines"
+                              IsChecked="{Binding IncludeLog}" />
+                </WrapPanel>
+
+                <TextBlock Margin="0,2,0,0" FontSize="12.5" Text="{Binding Status}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Muted}">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasStatus}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding StatusFailed}" Value="True">
+                                    <Setter Property="Foreground" Value="{DynamicResource Brush.Error}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+
+                <Border Style="{StaticResource Rule}" Margin="0,16,0,0" />
+
+                <Grid Margin="0,16,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,20,0">
+                        <TextBlock Style="{StaticResource RowTitle}" Text="Record what doesn't work" />
+                        <TextBlock Style="{StaticResource RowNote}" Text="Counts presses that zoomed nothing, adapters that failed and crashes, so a problem can be described without reading a log file. It never leaves this machine." />
+                    </StackPanel>
+                    <Button Grid.Column="1"
+                            Style="{StaticResource Switch}"
+                            VerticalAlignment="Center"
+                            Command="{Binding ToggleRecording}"
+                            Tag="{Binding RecordEnabled}" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- 6. What the last change was told about itself -->
+        <ItemsControl Margin="0,14,0,0"
+                      ItemTemplate="{StaticResource Problem.Line}"
+                      ItemsSource="{Binding Problems}">
+            <ItemsControl.Style>
+                <Style TargetType="ItemsControl">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding HasProblems}" Value="True">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </ItemsControl.Style>
+        </ItemsControl>
+
+        <!-- 7. Footer -->
+        <StackPanel Margin="0,20,0,0" HorizontalAlignment="Left" Orientation="Horizontal">
+            <TextBlock Style="{StaticResource Text.Muted}"
+                       VerticalAlignment="Center"
+                       FontSize="13"
+                       Text="The measured tuning — contact spreads, wheel detents, animation lengths — lives in the settings file." />
+            <Button Style="{StaticResource Button.Link}"
+                    Margin="6,0,0,0"
+                    VerticalAlignment="Center"
+                    Command="{Binding OpenSettingsFile}"
+                    Content="Open it" />
+        </StackPanel>
     </StackPanel>
 </UserControl>

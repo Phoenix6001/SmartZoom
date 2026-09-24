@@ -4,7 +4,10 @@ using Microsoft.Extensions.Logging;
 
 using SmartZoom.App.Settings;
 using SmartZoom.App.Ui.Panel;
+using SmartZoom.App.Ui.Recorder;
 using SmartZoom.App.Ui.Theming;
+using SmartZoom.Core.Input;
+using SmartZoom.Core.Settings;
 
 using WpfApplication = System.Windows.Application;
 
@@ -73,6 +76,51 @@ internal sealed partial class SettingsShell(
     {
         ShowSettings();
         _shell?.GoTo(NavigationSection.About);
+    }
+
+    /// <summary>
+    /// Shows the settings window on the Advanced page, where the diagnostic report lives.
+    /// </summary>
+    /// <remarks>
+    /// The report is rebuilt on the way in, because it is a snapshot and the press the user is asking about
+    /// is the one they made a moment ago. Must be called on the UI thread.
+    /// </remarks>
+    public void ShowAdvanced()
+    {
+        ShowSettings();
+        _shell?.GoTo(NavigationSection.Advanced);
+    }
+
+    /// <summary>
+    /// Shows the trigger recorder on its own, for the tray's "Change trigger…" item.
+    /// </summary>
+    /// <remarks>
+    /// It lives here rather than in the tray because the recorder is a WPF window and only this class knows
+    /// when the WPF application object and its palette have to exist. Must be called on the UI thread;
+    /// <c>ShowDialog</c> runs its own message loop, so nothing has to be started or stopped around it.
+    /// </remarks>
+    /// <param name="triggers">Silenced while the recorder is open, and put back the way it was afterwards.</param>
+    /// <param name="systemDoubleClickMs">The default double-tap window, when the trigger does not set one.</param>
+    /// <param name="existing">The trigger to start from, or null to record a new one.</param>
+    /// <returns>What was pressed, or null when the recorder was cancelled.</returns>
+    public TriggerSettings? RecordTrigger(ITriggerSource triggers, uint systemDoubleClickMs, TriggerSettings? existing)
+    {
+        ArgumentNullException.ThrowIfNull(triggers);
+
+        EnsureApplication();
+
+        // The recorder listens for the very input that would otherwise zoom whatever is behind it. It silences
+        // the source itself; this puts back whatever it found, even if showing it threw.
+        var wasEnabled = triggers.Enabled;
+        try
+        {
+            var recorder = new TriggerRecorderWindow(triggers, systemDoubleClickMs, existing);
+            return recorder.ShowDialog() == true ? recorder.Result : null;
+        }
+        finally
+        {
+            triggers.Enabled = wasEnabled;
+        }
     }
 
     /// <summary>Shows the settings window, creating it the first time, and brings it to the front.</summary>

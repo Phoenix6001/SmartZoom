@@ -36,7 +36,7 @@ namespace SmartZoom.App.Ui.Pages;
 /// future appears on this page without it being edited.
 /// </para>
 /// </remarks>
-internal sealed partial class OverviewViewModel : ObservableObject
+internal sealed partial class OverviewViewModel : ObservableObject, IPageModel
 {
     private const string GlyphTrigger = "";
     private const string GlyphZoomIn = "";
