@@ -43,6 +43,8 @@ dotnet test
 dotnet run --project src/SmartZoom.App
 ```
 
+![The settings window in light and dark: a navigation rail beside the Overview page, which shows whether SmartZoom is on, a preview of a zoom, and a card for each setting people change.](docs/media/settings-window.png)
+
 SmartZoom runs in the notification area. A left click drops a small panel out of the tray with the few
 things people change most; a double-click — or right-click and **Settings…** — opens the settings window.
 It has five pages: **Overview** (what SmartZoom is doing, and a card for each setting people change),

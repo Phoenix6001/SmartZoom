@@ -22,7 +22,7 @@
                 <TextBlock Style="{StaticResource Glyph}"
                            FontSize="30"
                            Foreground="White"
-                           Text="&#xE71E;" />
+                           Text="&#xE8A3;" />
             </Border>
             <StackPanel Margin="18,0,0,0" VerticalAlignment="Center">
                 <TextBlock Style="{StaticResource Text.Hero}" FontSize="30" Text="SmartZoom" />

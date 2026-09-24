@@ -141,7 +141,7 @@
                 <TextBlock Style="{StaticResource Glyph}"
                            FontSize="46"
                            Foreground="White"
-                           Text="&#xE71E;" />
+                           Text="&#xE8A3;" />
             </Border>
 
             <StackPanel Grid.Column="1" Margin="24,6,0,0" VerticalAlignment="Center">
@@ -198,7 +198,7 @@
                         <TextBlock Style="{StaticResource Glyph}"
                                    FontSize="30"
                                    Foreground="{DynamicResource Brush.Accent}"
-                                   Text="&#xE71E;" />
+                                   Text="&#xE8A3;" />
                     </Border>
                     <TextBlock Style="{StaticResource Text.Label}" Margin="0,18,0,0" Text="SMARTZOOM" />
                     <TextBlock Style="{StaticResource Text.Value}" Margin="0,4,0,0" Text="{Binding StatusHeadline}" />

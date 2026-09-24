@@ -44,7 +44,7 @@
                     <TextBlock Style="{StaticResource Glyph}"
                                FontSize="13"
                                Foreground="White"
-                               Text="&#xE71E;" />
+                               Text="&#xE8A3;" />
                 </Border>
                 <TextBlock Grid.Column="1"
                            Style="{StaticResource Text.Base}"

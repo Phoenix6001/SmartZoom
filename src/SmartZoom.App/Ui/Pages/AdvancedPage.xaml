@@ -63,7 +63,7 @@
                 <TextBlock Style="{StaticResource Glyph}"
                            FontSize="14"
                            Foreground="{DynamicResource Brush.Accent}"
-                           Text="&#xE71E;" />
+                           Text="&#xE8A3;" />
             </Border>
             <TextBlock Style="{StaticResource SectionLabel}" Text="Zoom" />
         </StackPanel>

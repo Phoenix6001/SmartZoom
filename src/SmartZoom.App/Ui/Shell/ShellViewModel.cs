@@ -84,6 +84,7 @@ internal sealed partial class ShellViewModel : ObservableObject
         _theme = theme;
         _logger = logger;
 
+        ShowIssues = new RelayCommand(_ => GoTo(NavigationSection.Advanced));
         overview.NavigationRequested += (_, section) => GoTo(section);
         about.NavigationRequested += (_, section) => GoTo(section);
 
@@ -160,6 +161,12 @@ internal sealed partial class ShellViewModel : ObservableObject
         AppearanceMode.Dark => "Appearance: dark. Click to follow Windows.",
         _ => "Appearance: following Windows. Click for light.",
     };
+
+    /// <summary>
+    /// Opens the page that holds the record of what did not work. The status card names a number of issues,
+    /// and a number nobody can reach is not much of a report.
+    /// </summary>
+    public ICommand ShowIssues { get; }
 
     /// <summary>Shows a page.</summary>
     /// <param name="section">The page to show.</param>

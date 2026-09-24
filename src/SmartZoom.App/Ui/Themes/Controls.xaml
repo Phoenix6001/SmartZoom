@@ -97,6 +97,12 @@
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="Shell" Property="Background" Value="{DynamicResource Brush.AccentTint}" />
                         </Trigger>
+                        <!-- A card with nothing to open is still a card: it keeps its colours and loses only
+                             the hand cursor, rather than greying out the text it exists to show. -->
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Cursor" Value="Arrow" />
+                            <Setter Property="Opacity" Value="1" />
+                        </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>

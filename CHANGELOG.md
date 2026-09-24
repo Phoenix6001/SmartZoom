@@ -6,8 +6,34 @@ All notable changes to SmartZoom are recorded here. The format follows
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
 
+- **A new settings window, and a panel in the tray.** Left-click the tray icon and a panel drops out of it
+  with the things worth changing: on or off, the trigger you press with a Change button beside it, the zoom
+  amount as 1.5×, 2× or 3×, a switch to stop zooming in whatever application you last zoomed, and what
+  happened last. Double-click, or **Settings…**, opens the full window: Overview, Triggers, Applications,
+  Advanced and About. The right-click menu gained the same quick items, so nothing needs a window at all.
+- **Light and dark.** The window, the panel and the recorder follow Windows by default and can be pinned to
+  either from the title bar, frame included. Saved as `Appearance` in the settings file.
+- **An About page**: the version, links to the project, the issue tracker and the releases, what SmartZoom
+  records locally, and the licences. It makes no network call, and neither does anything else in the app.
+- The status card in the window's corner opens the record of what did not work, rather than only counting it.
+
+### Changed
+
+- **The settings window is WPF.** The tray, the hook and everything that zooms are unchanged; only the
+  windows moved, because rounded cards, shadows and a themed title bar are native there and hand-painted in
+  WinForms. It costs nothing to ship: the installer payload is byte-identical, since a self-contained build
+  already carried the desktop runtime.
+- **The trigger recorder is themed** and keeps every behaviour it had, including ignoring the keyboard's
+  auto-repeat, taking a click anywhere on the dialog, and refusing a bare left or right click.
+- **A new icon**: a magnifier with a plus, white on a blue tile, drawn separately at each of its eight sizes and stored uncompressed, because Windows' icon loader rejects a compressed frame below 256 px
+  so the plus survives at 16 px. The old outline faded into a dark taskbar, and a bare magnifier reads as
+  search rather than zoom.
+- Settings apply as you change them. There is no Save button anywhere; the sliders are debounced so dragging
+  one does not rebuild the zoom pipeline on every pixel.
+- Plainer words throughout: "Largest zoom" shown as "3× bigger", "How much PDFs zoom", "Use Ctrl+wheel where
+  smart zoom can't work", "Don't pass the press on to the app".
 ## [0.2.0] - 2026-09-24
 
 ### Added
