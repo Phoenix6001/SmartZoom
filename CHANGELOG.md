@@ -4,9 +4,11 @@ All notable changes to SmartZoom are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-Nothing has been released yet, so everything so far lives under Unreleased.
-
 ## [Unreleased]
+
+Nothing yet.
+
+## [0.1.0] - 2026-09-24
 
 ### Added
 
@@ -105,3 +107,6 @@ Nothing has been released yet, so everything so far lives under Unreleased.
 - `Routing.Apps` keys stay case-insensitive after loading from the file.
 - Double-tap swallow: a press arriving while a replayed release is still owed replays that release first.
 - `smartzoom-probe`: a missing argument prints which one is missing; capture analysis is faster.
+
+[Unreleased]: https://github.com/Phoenix6001/SmartZoom/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Phoenix6001/SmartZoom/releases/tag/v0.1.0
