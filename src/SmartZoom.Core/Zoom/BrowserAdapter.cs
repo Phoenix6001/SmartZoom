@@ -192,6 +192,12 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
         if (changed >= PinchTakenThreshold)
             return Applied(restore);
 
+        if (Blind(before, after))
+        {
+            LogVerificationBlind(target.ProcessName);
+            return Applied(restore);
+        }
+
         // The gesture went in cleanly and nothing moved: the block under the cursor kept it (touch-action: none).
         // The rest of the page usually does not, and a pinch scales the whole visual viewport around its anchor,
         // so the same zoom is available from an anchor outside the blocking element. At most two such retries —
@@ -228,6 +234,14 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
                 LogPinchRetried(target.ProcessName, p.Anchor.X, p.Anchor.Y, candidate.X, candidate.Y);
                 return Applied(retried);
             }
+
+            // A retry anchor sits outside the blocking element by design, which is often further into the
+            // margin that could not be judged in the first place.
+            if (Blind(retryBefore, retryAfter))
+            {
+                LogVerificationBlind(target.ProcessName);
+                return Applied(retried);
+            }
         }
 
         // Every anchor was refused, so the whole window blocks the pinch. There is no zoom to remember, and the
@@ -247,6 +261,19 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
     // The part of the screen a zoom around the anchor must visibly change.
     internal static PixelRect VerifyRegion(ScreenPoint anchor, PixelRect viewport) =>
         new PixelRect(anchor.X - VerifyHalfWidth, anchor.Y - VerifyHalfHeight, anchor.X + VerifyHalfWidth, anchor.Y + VerifyHalfHeight).Intersect(viewport);
+
+    /// <summary>
+    /// Whether the screen around the anchor is too plain for the before/after comparison to mean anything: a
+    /// wide margin, an empty panel, a flat image, or a window that reads back black because it is protected.
+    /// </summary>
+    /// <remarks>
+    /// Content can move anywhere inside a region with no structure without changing a cell, so a difference of
+    /// 0 there is not evidence of anything. Treating it as one is how a zoom that worked used to be read as a
+    /// page that blocks gestures — which sent two more pinches at the same scale on top of it and then a
+    /// Ctrl+wheel page zoom on top of that, leaving a page the next press could not undo. Trusting the gesture
+    /// instead costs, at worst, one wasted press on a page that really did refuse it.
+    /// </remarks>
+    private static bool Blind(ScreenSample before, ScreenSample after) => !before.HasDetail && !after.HasDetail;
 
     /// <summary>
     /// Clears a pinch zoom the page is carrying and re-reads the tree underneath it. Zooming out below 1.0 is
@@ -319,6 +346,9 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
 
     [LoggerMessage(Level = LogLevel.Information, Message = "The page in {Process} is still showing a x{Scale:F2} zoom SmartZoom does not remember making; clearing it before zooming again.")]
     private partial void LogForgottenZoom(string? process, double scale);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "The screen around the cursor in {Process} has too little in it to show whether the page took the pinch, so the gesture is trusted.")]
+    private partial void LogVerificationBlind(string? process);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Could not read the screen around the cursor in {Process}, so whether the page took the pinch was not checked.")]
     private partial void LogVerificationSkipped(string? process);

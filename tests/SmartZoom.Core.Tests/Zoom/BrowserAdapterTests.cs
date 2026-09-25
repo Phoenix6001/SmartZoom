@@ -289,6 +289,28 @@ public sealed class BrowserAdapterTests
     }
 
     [Fact]
+    public async Task A_pinch_over_a_region_with_nothing_in_it_is_trusted_rather_than_read_as_a_refusal()
+    {
+        // A wide white margin, an empty panel, a flat image. The gesture works, but no cell of a featureless
+        // region can move by more than the tolerance, so the check cannot see it. Reading that as "the page
+        // blocks gestures" used to send two more pinches at the same scale on top of the zoom that had already
+        // happened - each around an anchor placed OUTSIDE the block, i.e. further into the same emptiness - and
+        // then stack a Ctrl+wheel page zoom on all of it, of which the next press undid only the last.
+        _hits.Result = ParagraphHit;
+        _screen.Featureless = true;
+        _screen.Frames.Enqueue(90);
+        _screen.Frames.Enqueue(90);
+
+        var result = await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None);
+
+        Assert.Equal(ZoomInStatus.Applied, result.Status);
+        Assert.Single(_pinch.Calls);
+        Assert.Equal(
+            _pinch.Calls[0].Factor,
+            Assert.IsType<BrowserAdapter.RestoreState>(result.RestoreState).Plan.Scale);
+    }
+
+    [Fact]
     public async Task A_screen_that_cannot_be_read_skips_the_check_and_trusts_the_gesture()
     {
         _hits.Result = ParagraphHit;
@@ -440,8 +462,11 @@ public sealed class BrowserAdapterTests
             Task.FromResult(++Calls == 1 || Next is null ? Result : Next);
     }
 
-    // Each read returns a flat sample of the next scripted luma (null: the screen could not be read); after the
-    // script runs out, every read differs from the last, so a pinch reads as taken unless a test says otherwise.
+    // Each read returns a sample built from the next scripted luma (null: the screen could not be read); after
+    // the script runs out, every read differs from the last, so a pinch reads as taken unless a test says
+    // otherwise. The cells alternate, because a sample has to carry the structure a real page has: on a
+    // featureless one, nothing can change and "nothing changed" answers no question. Set Featureless to get
+    // that case deliberately.
     private sealed class FakeScreenSampler : IScreenSampler
     {
         private byte _luma;
@@ -449,6 +474,9 @@ public sealed class BrowserAdapterTests
         public Queue<byte?> Frames { get; } = new();
 
         public List<PixelRect> Regions { get; } = [];
+
+        /// <summary>Whether reads come back as one flat colour, the way an empty margin or a plain panel does.</summary>
+        public bool Featureless { get; set; }
 
         public ScreenSample? Sample(PixelRect region)
         {
@@ -458,7 +486,23 @@ public sealed class BrowserAdapterTests
                 return null;
 
             var pixels = new byte[region.Width * region.Height];
-            Array.Fill(pixels, value);
+            if (Featureless)
+            {
+                Array.Fill(pixels, value);
+                return ScreenSample.FromLuma(region, pixels);
+            }
+
+            var (columns, rows) = ScreenSample.GridFor(region.Width, region.Height);
+            var alternate = (byte)(value ^ 0x80);
+            for (var y = 0; y < region.Height; y++)
+            {
+                for (var x = 0; x < region.Width; x++)
+                {
+                    var cell = (x * columns / region.Width) + (y * rows / region.Height);
+                    pixels[(y * region.Width) + x] = cell % 2 == 0 ? value : alternate;
+                }
+            }
+
             return ScreenSample.FromLuma(region, pixels);
         }
     }

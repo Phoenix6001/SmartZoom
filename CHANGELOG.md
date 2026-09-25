@@ -18,6 +18,22 @@ All notable changes to SmartZoom are recorded here. The format follows
 
 ### Fixed
 
+- **A zoom over a plain part of a page is no longer mistaken for a page that blocks zooming.** Whether a pinch
+  took effect is decided by comparing the screen around the cursor before and after it. Over a wide margin, an
+  empty panel or a flat image there is nothing in that region to move, so a gesture that worked perfectly read
+  as one the page had refused — and SmartZoom then sent two more pinches at the same magnification on top of
+  the zoom that had already happened, each around a point chosen to sit *outside* the block, which is further
+  into the same emptiness, before finally stacking a Ctrl+wheel page zoom on all of it. The page ended up
+  magnified several times over and the next press took only the last of those back off. A region is now checked
+  for whether it has enough in it to show movement at all, and when it has not, the gesture is trusted rather
+  than contradicted. A page that genuinely refuses the gesture is detected exactly as before.
+
+- **The pinch is paced for the monitor it lands on, not for the window under the cursor.** The gesture's
+  thresholds are distances in real pixels, so they follow the display's scaling; they were read with
+  `GetDpiForWindow`, which answers for the window's own DPI awareness instead — the primary display's scaling
+  for an older application, and 100% for one that does not handle scaling at all. On a second monitor set to a
+  different scale, a PDF reader could therefore be pinched with thresholds meant for another display.
+
 - **A browser page that was left zoomed no longer zooms twice on the next press, and comes back properly.**
   When a page is still showing a zoom SmartZoom does not remember making — it was restarted, switched off while
   the page was zoomed, or a restore did not take — the next press used to zoom on top of it. Chromium clamps

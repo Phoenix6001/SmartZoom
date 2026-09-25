@@ -27,10 +27,34 @@ public sealed record ScreenSample(PixelRect Region, int Columns, int Rows, ReadO
     /// </summary>
     public const int LumaTolerance = 12;
 
+    /// <summary>
+    /// The least cell-scale structure a region must have before <see cref="Difference"/> can answer anything
+    /// about it. It matches the 2% of cells the browser adapter requires before it calls a pinch taken: a
+    /// region with less structure than that cannot produce that change however far its content moves.
+    /// </summary>
+    public const double MinDetail = 0.02;
+
     /// <summary>Mean luma of each cell, row-major.</summary>
     public ReadOnlyMemory<byte> Cells { get; } = Cells.Length == Columns * Rows
         ? Cells
         : throw new ArgumentException($"Expected {Columns * Rows} cells for a {Columns}x{Rows} grid, got {Cells.Length}.", nameof(Cells));
+
+    /// <summary>
+    /// The fraction of neighbouring cell pairs (0 to 1) whose luma differs by more than
+    /// <see cref="LumaTolerance"/>: how much structure the region has at the scale this grid can see.
+    /// </summary>
+    public double Detail { get; } = Structure(Cells.Span, Columns, Rows);
+
+    /// <summary>
+    /// Whether comparing two samples of this region can mean anything.
+    /// </summary>
+    /// <remarks>
+    /// False for a region whose cells are all within <see cref="LumaTolerance"/> of their neighbours — a wide
+    /// margin, an empty panel, a plain background, or a screen that read back black. Content can move anywhere
+    /// inside such a region, or not move at all, and <see cref="Difference"/> is 0 either way, so a 0 there is
+    /// not evidence that nothing happened.
+    /// </remarks>
+    public bool HasDetail => Detail >= MinDetail;
 
     /// <summary>The grid a region of the given size is reduced to: one cell per pixel up to the maximum.</summary>
     /// <param name="width">Region width in pixels.</param>
@@ -77,6 +101,41 @@ public sealed record ScreenSample(PixelRect Region, int Columns, int Rows, ReadO
         }
 
         return new ScreenSample(region, columns, rows, cells);
+    }
+
+    /// <summary>
+    /// How many neighbouring cell pairs differ by more than <see cref="LumaTolerance"/>, as a fraction of all
+    /// of them. Horizontal and vertical neighbours both count, so a region striped either way reads as
+    /// structured.
+    /// </summary>
+    private static double Structure(ReadOnlySpan<byte> cells, int columns, int rows)
+    {
+        var pairs = 0;
+        var differing = 0;
+
+        for (var row = 0; row < rows; row++)
+        {
+            for (var column = 0; column < columns; column++)
+            {
+                var here = cells[(row * columns) + column];
+
+                if (column + 1 < columns)
+                {
+                    pairs++;
+                    if (Math.Abs(here - cells[(row * columns) + column + 1]) > LumaTolerance)
+                        differing++;
+                }
+
+                if (row + 1 < rows)
+                {
+                    pairs++;
+                    if (Math.Abs(here - cells[((row + 1) * columns) + column]) > LumaTolerance)
+                        differing++;
+                }
+            }
+        }
+
+        return pairs == 0 ? 0 : (double)differing / pairs;
     }
 
     /// <summary>
