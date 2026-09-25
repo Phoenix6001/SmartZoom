@@ -102,7 +102,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
         // Everything the menu shows is read here rather than kept in step with every change behind its back.
         _menu.Opening += (_, _) =>
         {
-            UpdateTooltip();
+            UpdateTrayState();
             UpdateQuickItems();
         };
 
@@ -116,7 +116,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
         // click opens the full window for the things the panel deliberately leaves out.
         _notifyIcon.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) TogglePanel(); };
         _notifyIcon.DoubleClick += (_, _) => OpenShell();
-        UpdateTooltip();
+        UpdateTrayState();
 
         // If the host stops on its own (e.g. a hosted service faulted), don't leave a tray icon with no hook
         // behind it. Creating the menu installed the WinForms synchronization context; capture it to marshal back.
@@ -126,7 +126,8 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
 
         // Zooms are reported from the dispatcher's thread; the tooltip belongs to the UI thread.
         _activity.Happened += OnZoomHappened;
-        _tooltipClock.Tick += (_, _) => UpdateTooltip();
+        _holder.Changed += OnSettingsChanged;
+        _tooltipClock.Tick += (_, _) => UpdateTrayState();
         _tooltipClock.Start();
     }
 
@@ -142,6 +143,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
         if (disposing)
         {
             _activity.Happened -= OnZoomHappened;
+            _holder.Changed -= OnSettingsChanged;
             _tooltipClock.Dispose();
             _hostStoppingRegistration.Dispose();
             _shell.Dispose();
@@ -178,7 +180,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
                 LogChangeFailed(ex);
             }
 
-            _uiContext.Post(_ => UpdateTooltip(), null);
+            _uiContext.Post(_ => UpdateTrayState(), null);
         });
     }
 
@@ -287,7 +289,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
             _ =>
             {
                 Notify(summary, good);
-                UpdateTooltip();
+                UpdateTrayState();
             },
             null);
     });
@@ -345,7 +347,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
             _ =>
             {
                 Notify(summary, good);
-                UpdateTooltip();
+                UpdateTrayState();
             },
             null);
     });
@@ -377,14 +379,19 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
                 // Kept here rather than on ZoomActivity: the tray is the only thing that needs it, and it is
                 // already being told. Null when the process could not be identified, which hides the item.
                 _lastProcess = process;
-                UpdateTooltip();
+                UpdateTrayState();
             },
             (outcome.ToString(), outcome.Process));
 
-    private void UpdateTooltip()
+    // Switching off from the tray panel or the settings window reaches the tray only as a settings change;
+    // without this the icon would keep its colour until the clock next ticked, half a minute later.
+    private void OnSettingsChanged(object? sender, EventArgs e) => _uiContext.Post(_ => UpdateTrayState(), null);
+
+    private void UpdateTrayState()
     {
         var enabled = _triggerSource.Enabled;
         _enabledItem.Checked = enabled;
+        _notifyIcon.Icon = TrayIcon.Load(enabled);
 
         var header = enabled ? "SmartZoom" : "SmartZoom (disabled)";
         var text = header + Environment.NewLine + _lastAction + Since();

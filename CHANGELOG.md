@@ -16,6 +16,21 @@ All notable changes to SmartZoom are recorded here. The format follows
   the switch that turns recording off. Advanced keeps zoom, PDF readers and logging. Nothing about what is
   recorded, or about it never leaving the machine, has changed.
 
+- **The tray icon goes grey when SmartZoom is switched off.** Whether it is listening is the one thing its
+  place in the notification area exists to say, and it used to say it only in a tooltip. The grey icon is
+  derived from the colour one at startup rather than shipped as a second file, so the two cannot drift apart.
+  Switching off from the tray panel or the settings window greys it at once, not at the next tooltip refresh.
+
+- **The on/off button is only accent-coloured when it is the thing to press.** While SmartZoom is running the
+  button reads "Turn off", which is not the action to encourage, so it is now a neutral grey; it returns to
+  accent as "Turn on" once zooming is off. In the tray panel and on the Overview page both.
+
+- **The Overview page's "Live preview" card now previews.** Hovering it plays the zoom on the little mock
+  document: the block grows to the width of the window showing it, the way a smart zoom fits a block to a page,
+  and settles back when the pointer leaves. It was a still drawing that looked exactly like the cards beside it
+  that navigate when clicked — so it read as broken rather than decorative. It stays non-clickable and keeps the
+  arrow cursor; the motion is its whole answer to the pointer.
+
 ### Fixed
 
 - **A zoom over a plain part of a page is no longer mistaken for a page that blocks zooming.** Whether a pinch

@@ -74,12 +74,27 @@
                            FontSize="26"
                            Text="{Binding StateHeadline}" />
                 <Button Grid.Column="1"
-                        Style="{StaticResource Button.Pill}"
                         Height="34"
                         Padding="18,0"
                         VerticalAlignment="Center"
                         Command="{Binding ToggleEnabled}"
-                        Content="{Binding ToggleLabel}" />
+                        Content="{Binding ToggleLabel}">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource Button.Pill}">
+                            <Style.Triggers>
+                            <!--
+                                IsEnabled here is the view model's - whether zooming is on - not the
+                                button's. While it is on, this button says "Turn off", which is not the
+                                action to encourage, so it drops the accent and reads as grey.
+                            -->
+                            <DataTrigger Binding="{Binding IsEnabled}" Value="True">
+                                <Setter Property="Background" Value="{DynamicResource Brush.Neutral}" />
+                                <Setter Property="Foreground" Value="{DynamicResource Brush.Ink}" />
+                            </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                        </Button.Style>
+                </Button>
             </Grid>
 
             <Border Style="{StaticResource Rule}" Margin="0,16,0,0" />
