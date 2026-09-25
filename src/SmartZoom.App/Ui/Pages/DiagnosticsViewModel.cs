@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Globalization;
+using System.Text;
 using System.Windows.Input;
 using System.Windows.Threading;
 
@@ -6,6 +8,7 @@ using Microsoft.Extensions.Logging;
 
 using SmartZoom.App.Diagnostics;
 using SmartZoom.App.Settings;
+using SmartZoom.App.Ui.Applications;
 using SmartZoom.App.Ui.Mvvm;
 using SmartZoom.Core.Diagnostics;
 using SmartZoom.Core.Settings;
@@ -31,6 +34,45 @@ internal sealed partial class DiagnosticsViewModel : ObservableObject, IPageMode
     /// <summary>How many lines from the end of the log the report carries when asked to.</summary>
     private const int LogTailLines = 200;
 
+    /// <summary>
+    /// How many kinds of problem are listed before the rest go behind "show more". Grouping already bounds the
+    /// list to a handful, so this is usually not reached at all.
+    /// </summary>
+    private const int MostIssuesShown = 5;
+
+    /// <summary>
+    /// The bug form, straight to the template rather than the chooser: this button is for one kind of report.
+    /// SmartZoom opens no connection of its own — the browser does, which is what keeps SECURITY.md true.
+    /// </summary>
+    private const string BugFormUrl = "https://github.com/Phoenix6001/SmartZoom/issues/new?template=bug_report.yml";
+
+    /// <summary>
+    /// How long the pre-filled address may get. GitHub's issue forms take their initial values from the query
+    /// string, and a long enough URL is answered with 414 rather than a form — so a field that would not fit is
+    /// left out and falls back to the clipboard. The report without its log is about 2 KB, four once escaped,
+    /// which fits; the log is thirty and never will.
+    /// </summary>
+    private const int MostUrlCharacters = 8000;
+
+
+    /// <summary>
+    /// Mouse software that re-emits buttons as injected input, which the form asks about because it is the
+    /// single most common reason a press never reaches SmartZoom at all.
+    /// </summary>
+    /// <remarks>
+    /// Best effort by design: a vendor not on this list simply leaves the line out, which is no worse than the
+    /// empty box it replaces. It is never used to decide anything, only to save the reporter a question.
+    /// </remarks>
+    private static readonly (string Process, string Name)[] VendorMouseSoftware =
+    [
+        ("logioptionsplus_agent", "Logi Options+"),
+        ("LogiOptionsMgr", "Logitech Options"),
+        ("LCore", "Logitech Gaming Software"),
+        ("Razer Synapse Service Process", "Razer Synapse"),
+        ("SteelSeriesEngine", "SteelSeries GG"),
+        ("CorsairIcue", "Corsair iCUE"),
+    ];
+
     private readonly SettingsApplier _applier;
     private readonly SettingsHolder _holder;
     private readonly DiagnosticRecorder _recorder;
@@ -46,6 +88,10 @@ internal sealed partial class DiagnosticsViewModel : ObservableObject, IPageMode
     private bool _statusFailed;
     private bool _building;
     private IReadOnlyList<ProblemLine> _problems = [];
+    private IReadOnlyList<DiagnosticIssue> _all = [];
+    private IReadOnlyList<DiagnosticIssue> _issues = [];
+    private string _overflow = string.Empty;
+    private bool _expanded;
 
     /// <summary>True while the controls are being filled in, so setting one does not apply it back.</summary>
     private bool _loading;
@@ -73,10 +119,16 @@ internal sealed partial class DiagnosticsViewModel : ObservableObject, IPageMode
         _logger = logger;
 
         ToggleRecording = new RelayCommand(() => RecordEnabled = !RecordEnabled);
+        ToggleIssues = new RelayCommand(() =>
+        {
+            _expanded = !_expanded;
+            Show();
+        });
         RefreshReport = new RelayCommand(_ => Render(announce: true), _ => !_building);
         CopyReport = new RelayCommand(_ => Copy(), _ => !_building);
         SaveReport = new RelayCommand(_ => Save(), _ => !_building);
         ClearRecord = new RelayCommand(_ => Clear(), _ => !_building);
+        ReportProblem = new RelayCommand(_ => StartReport(), _ => !_building);
 
         Refresh();
         Render(announce: false);
@@ -103,6 +155,48 @@ internal sealed partial class DiagnosticsViewModel : ObservableObject, IPageMode
                 Render(announce: false);
         }
     }
+
+    /// <summary>
+    /// What has gone wrong, in sentences, above the report. The status card counts these; this is where the
+    /// count becomes something you can act on without reading a table of enum names.
+    /// </summary>
+    public IReadOnlyList<DiagnosticIssue> Issues
+    {
+        get => _issues;
+        private set
+        {
+            if (Set(ref _issues, value))
+                Raise(nameof(HasIssues));
+        }
+    }
+
+    /// <summary>Whether anything has been recorded, which is what chooses between the list and the all-clear.</summary>
+    public bool HasIssues => _issues.Count > 0;
+
+    /// <summary>
+    /// What the list above left out: kinds of problem past <see cref="MostIssuesShown"/>, and events the record
+    /// itself stopped counting once it hit its key ceiling. Empty when it left nothing out.
+    /// </summary>
+    public string Overflow
+    {
+        get => _overflow;
+        private set
+        {
+            if (Set(ref _overflow, value))
+                Raise(nameof(HasOverflow));
+        }
+    }
+
+    /// <summary>Whether there is an overflow line to show.</summary>
+    public bool HasOverflow => _overflow.Length > 0;
+
+    /// <summary>Whether there are more issues than are being shown, which is what puts the link there.</summary>
+    public bool HasMore => _all.Count > MostIssuesShown;
+
+    /// <summary>What that link says: how many are hidden, or how to fold them away again.</summary>
+    public string MoreLabel => _expanded
+        ? "Show fewer"
+        : string.Create(CultureInfo.CurrentCulture, $"Show {_all.Count - MostIssuesShown} more");
 
     /// <summary>The report as it stands, ready to be read and then pasted into a bug report.</summary>
     public string Report
@@ -164,6 +258,9 @@ internal sealed partial class DiagnosticsViewModel : ObservableObject, IPageMode
     /// <summary>Flips <see cref="RecordEnabled"/>; the switch asks rather than flipping itself.</summary>
     public ICommand ToggleRecording { get; }
 
+    /// <summary>Shows the rest of the issues, or folds them away again.</summary>
+    public ICommand ToggleIssues { get; }
+
     /// <summary>Rebuilds the report from the record as it stands now.</summary>
     public ICommand RefreshReport { get; }
 
@@ -175,6 +272,11 @@ internal sealed partial class DiagnosticsViewModel : ObservableObject, IPageMode
 
     /// <summary>Throws away everything recorded so far.</summary>
     public ICommand ClearRecord { get; }
+
+    /// <summary>
+    /// Puts the whole report, log included, on the clipboard and opens the bug form ready to paste it into.
+    /// </summary>
+    public ICommand ReportProblem { get; }
 
     /// <inheritdoc />
     public void Refresh()
@@ -191,6 +293,25 @@ internal sealed partial class DiagnosticsViewModel : ObservableObject, IPageMode
     }
 
     private static string Redact(string text) => DiagnosticText.Redact(text);
+
+    /// <summary>
+    /// The line saying what the record itself stopped counting once it hit its key ceiling, or nothing when it
+    /// counted everything. Unlike the issues behind "show more", these cannot be shown: they were never kept.
+    /// </summary>
+    /// <param name="omitted">Distinct events the record stopped counting.</param>
+    private static string Overflowed(int omitted) => omitted == 0
+        ? string.Empty
+        : string.Create(
+            CultureInfo.CurrentCulture,
+            $"{omitted} further distinct event{(omitted == 1 ? " was" : "s were")} not counted, because the record holds only so many kinds at once.");
+
+    /// <summary>Publishes as much of the list as is being shown, and the state of the link under it.</summary>
+    private void Show()
+    {
+        Issues = _expanded || _all.Count <= MostIssuesShown ? _all : [.. _all.Take(MostIssuesShown)];
+        Raise(nameof(HasMore));
+        Raise(nameof(MoreLabel));
+    }
 
     /// <summary>Makes a change on a copy of the settings in force and puts it through the applier.</summary>
     private void Write(Action<SmartZoomSettings> change)
@@ -245,7 +366,8 @@ internal sealed partial class DiagnosticsViewModel : ObservableObject, IPageMode
     /// facts are hardware queries. The buttons that act on the report wait until it is there.
     /// </summary>
     /// <param name="announce">Whether to put the build time in the status line.</param>
-    private void Render(bool announce)
+    /// <param name="then">Run on the UI thread once the report is on screen, or not at all if it failed.</param>
+    private void Render(bool announce, Action? then = null)
     {
         var includeLog = _includeLog;
         IsBuilding = true;
@@ -254,10 +376,20 @@ internal sealed partial class DiagnosticsViewModel : ObservableObject, IPageMode
         {
             string? text = null;
             string? failure = null;
+            IReadOnlyList<DiagnosticIssue> issues = [];
+            var overflow = string.Empty;
             try
             {
+                var record = _recorder.Snapshot();
+                var now = DateTimeOffset.Now;
+
+                // Grouped over the application, which is the only part of a key that grows with the machine:
+                // ten applications that all found nothing to magnify are one finding, not ten lines.
+                issues = DiagnosticIssue.Summarise(record.Counters, now);
+                overflow = Overflowed(record.OmittedKeys);
+
                 var tail = includeLog ? LogTailOrNull() : null;
-                text = DiagnosticReport.Render(_recorder.Snapshot(), _facts, ReadSettingsJson(), tail, Redact);
+                text = DiagnosticReport.Render(record, _facts, ReadSettingsJson(), tail, Redact);
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
@@ -267,9 +399,14 @@ internal sealed partial class DiagnosticsViewModel : ObservableObject, IPageMode
 
             await _dispatcher.BeginInvoke(() =>
             {
+                _all = issues;
+                _expanded = false;
+                Show();
+                Overflow = overflow;
                 if (text is not null)
                 {
                     Report = text;
+                    then?.Invoke();
                     if (announce)
                         ShowStatus($"Report built at {DateTime.Now.ToString("HH:mm:ss", CultureInfo.CurrentCulture)}.", failed: false);
                 }
@@ -313,6 +450,142 @@ internal sealed partial class DiagnosticsViewModel : ObservableObject, IPageMode
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             ShowStatus($"Couldn't save: {ex.Message}", failed: true);
+        }
+    }
+
+    /// <summary>
+    /// One click from "something is wrong" to a filled-in bug report.
+    /// </summary>
+    /// <remarks>
+    /// The log goes in, because a report without one usually costs a round trip — but it is ticked visibly and
+    /// the report on screen is rebuilt to include it BEFORE anything is copied, because showing the report is
+    /// the whole consent mechanism and a button that quietly widened what gets shared would defeat it.
+    /// </remarks>
+    private void StartReport()
+    {
+        if (_includeLog)
+        {
+            Hand();
+            return;
+        }
+
+        _includeLog = true;
+        Raise(nameof(IncludeLog));
+        Render(announce: false, then: Hand);
+    }
+
+    /// <summary>
+    /// The bug form with everything this machine already knows filled in: the build, the display, the
+    /// application the top issue names, and that issue as a starting description.
+    /// </summary>
+    /// <remarks>
+    /// The report and the log are not among them and cannot be: they are tens of kilobytes and a query string
+    /// is not. Those two are what the clipboard is for, which is also why the user sees them first.
+    /// </remarks>
+    private string FormUrl()
+    {
+        var fields = new List<(string Field, string Value)>(4);
+
+        if (_facts.AppVersion is { Length: > 0 } version)
+            fields.Add(("version", version));
+
+        if (_facts.GetDisplays().FirstOrDefault(d => d.Primary) is { } display)
+        {
+            fields.Add((
+                "display",
+                string.Create(CultureInfo.CurrentCulture, $"{display.Width}x{display.Height} at {display.Scale * 100:0}%")));
+        }
+
+        // The issue at the top of the list is the one the report is most likely about.
+        if (_issues.Count > 0)
+        {
+            var issue = _issues[0];
+            if (issue.Application is { Length: > 0 } application)
+                fields.Add(("application", InstalledApplications.Describe(application).DisplayName));
+
+            // A title somebody can scan in a list, and a description that is a starting point, not a substitute
+            // for what the user meant to say: they know what they pointed at and SmartZoom does not.
+            fields.Add(("title", issue.Headline));
+            fields.Add(("what-happened", issue.Headline + "." + Environment.NewLine + issue.Detail));
+        }
+
+        if (Context() is { Length: > 0 } context)
+            fields.Add(("anything-else", context));
+
+        var url = new StringBuilder(BugFormUrl);
+        foreach (var (field, value) in fields)
+        {
+            var addition = $"&{field}={Uri.EscapeDataString(value)}";
+
+            // Dropped rather than truncated: half a sentence in a bug report is worse than an empty box.
+            if (url.Length + addition.Length <= MostUrlCharacters)
+                url.Append(addition);
+        }
+
+        return url.ToString();
+    }
+
+    /// <summary>
+    /// The three things the form's "anything else" box asks about that this machine can answer for itself:
+    /// how many displays there are, whether they are scaled differently from one another, and whether any
+    /// vendor mouse software is running.
+    /// </summary>
+    /// <returns>A line per fact, or empty when there is nothing unusual to say.</returns>
+    private string Context()
+    {
+        var lines = new List<string>(3);
+        var displays = _facts.GetDisplays();
+
+        if (displays.Count > 1)
+        {
+            var sizes = string.Join(", ", displays.Select(d =>
+                string.Create(CultureInfo.CurrentCulture, $"{d.Width}x{d.Height} at {d.Scale * 100:0}%")));
+            lines.Add(string.Create(CultureInfo.CurrentCulture, $"{displays.Count} displays: {sizes}"));
+
+            // Called out rather than left to be noticed: several measured constants assume one scale factor.
+            if (displays.Select(d => d.Scale).Distinct().Count() > 1)
+                lines.Add("The displays are scaled differently from one another.");
+        }
+
+        var vendors = VendorMouseSoftware
+            .Where(v => Process.GetProcessesByName(v.Process).Length > 0)
+            .Select(v => v.Name)
+            .ToList();
+
+        if (vendors.Count > 0)
+            lines.Add(string.Join(" and ", vendors) + " is running.");
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    /// <summary>Copies the report as it now stands and opens the form to paste it into.</summary>
+    private void Hand()
+    {
+        var url = FormUrl();
+
+        try
+        {
+            System.Windows.Clipboard.SetText(_report);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // With nothing on the clipboard there is nothing to paste, so the browser would only confuse.
+            ShowStatus($"Couldn't copy to the clipboard: {ex.Message}", failed: true);
+            return;
+        }
+
+
+        try
+        {
+            using var browser = Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+            ShowStatus(
+                "The form is filled in. The report, log included, is on your clipboard — press Ctrl+V in the “Diagnostic report” box.",
+                failed: false);
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            LogOpenFailed(ex, BugFormUrl);
+            ShowStatus("Copied, but the browser would not open. The form is at " + BugFormUrl, failed: false);
         }
     }
 
@@ -365,4 +638,7 @@ internal sealed partial class DiagnosticsViewModel : ObservableObject, IPageMode
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The diagnostic report could not be built.")]
     private partial void LogReportFailed(Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to open {Url}.")]
+    private partial void LogOpenFailed(Exception exception, string url);
 }

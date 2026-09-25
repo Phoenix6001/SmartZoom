@@ -16,6 +16,31 @@ All notable changes to SmartZoom are recorded here. The format follows
   the switch that turns recording off. Advanced keeps zoom, PDF readers and logging. Nothing about what is
   recorded, or about it never leaving the machine, has changed.
 
+- **One click to report a problem.** The Diagnostics page has a **Report a problem** button: it ticks
+  "include recent log lines", rebuilds the report on screen so you can see what it now contains, copies it, and
+  opens the bug form with everything it can answer for you already filled in: the title, the application by its
+  real name, the build, the display, the issue itself as a starting description, and — where SmartZoom can tell
+  — whether vendor mouse software is running or your displays are scaled differently, which are the two things
+  that most often explain a press that never arrived. The report and log boxes are deliberately left empty: one
+  Ctrl+V fills the first with the whole report, log included, and a box holding only part of a log would look
+  finished when it was not. The log goes in because a report without one usually costs a round
+  trip — but the box ticks visibly and the report is rebuilt *before* anything is copied, because showing you the
+  report is the whole point and a button that quietly widened what gets shared would defeat it. SmartZoom still
+  opens no connection of its own: the address goes to your browser, none of the report travels in it, and
+  nothing is shared until you paste and submit.
+
+- **The Diagnostics page says what went wrong before it shows the report.** The status card counts issues and
+  sends you here; what greeted you was a markdown table saying `ZoomedNothing/NoBlock`. The same events are now
+  listed at the top in sentences — "A press in brave zoomed nothing", "Something was found under the cursor, but
+  nothing there was a sensible thing to magnify. Often blank page area. · last seen 47 minutes ago" — with a red
+  bar for a failure and an amber one for a press that simply found nothing to do, and a plain "nothing has gone
+  wrong" when there is nothing to show. Where there is something to do about it, the line says so.
+  **The list stays short however much is recorded**, because events are grouped by what happened rather than by
+  where: ten applications that all found nothing to magnify are one line — "75 presses in 10 applications zoomed
+  nothing", naming the busiest three — not ten copies of the same sentence. Failures come first whatever their
+  count. Past five kinds the rest go behind "show more". The report underneath is unchanged, because that is
+  the thing worth pasting into a bug report.
+
 - **The Applications page leads with what is supported, and shows each application's own icon and name.**
   It used to open on an empty "Yours" list and a box asking for a process image name — the one place the
   settings window expected you to know whether an application is called "notepad", "Notepad" or "Notepad.exe"

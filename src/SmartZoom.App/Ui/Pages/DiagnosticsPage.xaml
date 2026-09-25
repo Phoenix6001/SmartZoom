@@ -14,6 +14,60 @@
             <Setter Property="FontSize" Value="12.5" />
         </Style>
 
+        <!-- One recorded issue: an accent bar in its severity's colour, what happened, and why. -->
+        <DataTemplate x:Key="IssueLine">
+            <Border Margin="0,0,0,10"
+                    Padding="14,12,14,12"
+                    Background="{DynamicResource Brush.Ground}"
+                    CornerRadius="8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Width="3" CornerRadius="2">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="{DynamicResource Brush.Warn}" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsError}" Value="True">
+                                        <Setter Property="Background" Value="{DynamicResource Brush.Error}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                    </Border>
+
+                    <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                        <TextBlock FontSize="13.5" FontWeight="SemiBold" TextWrapping="Wrap" Text="{Binding Headline}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Base}">
+                                    <Setter Property="Foreground" Value="{DynamicResource Brush.Warn}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsError}" Value="True">
+                                            <Setter Property="Foreground" Value="{DynamicResource Brush.Error}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <TextBlock Style="{StaticResource Text.Muted}"
+                                   Margin="0,4,0,0"
+                                   FontSize="12.5"
+                                   TextWrapping="Wrap"
+                                   Text="{Binding Detail}" />
+                        <TextBlock Style="{StaticResource Text.Muted}"
+                                   Margin="0,4,0,0"
+                                   FontSize="11.5"
+                                   Opacity="0.75"
+                                   TextWrapping="Wrap"
+                                   Text="{Binding Where}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </DataTemplate>
+
     </UserControl.Resources>
 
     <StackPanel Margin="40,34,34,36">
@@ -26,7 +80,58 @@
                    HorizontalAlignment="Left"
                    Text="Everything that did not work, and what SmartZoom would tell you about itself. Read it, then copy it into a bug report. Nothing here is sent anywhere." />
 
-        <!-- 2. The report -->
+        <!-- 2. What has gone wrong, in words, before the report that says it in enum names. -->
+        <Border Style="{StaticResource Card}" Margin="0,24,0,0" Padding="24,20,24,10">
+            <StackPanel>
+                <ItemsControl ItemTemplate="{StaticResource IssueLine}" ItemsSource="{Binding Issues}" />
+
+                <!-- Only when there are more kinds than fit; grouping means there usually are not. -->
+                <Button Margin="0,2,0,10"
+                        HorizontalAlignment="Left"
+                        Command="{Binding ToggleIssues}"
+                        Content="{Binding MoreLabel}">
+                    <Button.Style>
+                        <Style TargetType="Button" BasedOn="{StaticResource Button.Link}">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasMore}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+
+                <!-- What the record itself stopped counting, which no amount of expanding can bring back. -->
+                <TextBlock Margin="0,2,0,10" FontSize="12" TextWrapping="Wrap" Text="{Binding Overflow}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Muted}">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasOverflow}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+
+                <TextBlock Margin="0,0,0,10" FontSize="13" Text="Nothing has gone wrong since the record was last cleared.">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Muted}">
+                            <Setter Property="Visibility" Value="Visible" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasIssues}" Value="True">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </StackPanel>
+        </Border>
+
+        <!-- 3. The report -->
         <Border Style="{StaticResource Card}" Margin="0,24,0,0" Padding="24,20,24,20">
             <StackPanel>
                 <Border Background="{DynamicResource Brush.Ground}"
@@ -49,6 +154,14 @@
                 </Border>
 
                 <WrapPanel Margin="0,14,-8,0">
+                    <!-- The one worth pressing when something is wrong, so it is the one that looks pressable. -->
+                    <Button Style="{StaticResource Button.Pill}"
+                            Height="34"
+                            Margin="0,0,12,8"
+                            Padding="20,0"
+                            Command="{Binding ReportProblem}"
+                            Content="Report a problem"
+                            ToolTip="Copies this report with the log and opens the bug form. Nothing is sent by SmartZoom." />
                     <Button Style="{StaticResource Button.Quiet}"
                             Margin="0,0,8,8"
                             Padding="18,0"
@@ -112,7 +225,7 @@
             </StackPanel>
         </Border>
 
-        <!-- 3. What the last change was told about itself -->
+        <!-- 4. What the last change was told about itself -->
         <ItemsControl Margin="0,14,0,0"
                       ItemTemplate="{StaticResource Problem.Line}"
                       ItemsSource="{Binding Problems}">

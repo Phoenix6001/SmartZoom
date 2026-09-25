@@ -53,7 +53,7 @@ internal sealed partial class AboutViewModel : ObservableObject
         OpenProject = new RelayCommand(() => Open(ProjectUrl));
         ReportProblem = new RelayCommand(() => Open(IssuesUrl));
         OpenReleases = new RelayCommand(() => Open(ReleasesUrl));
-        GoToAdvanced = new RelayCommand(() => NavigationRequested?.Invoke(this, NavigationSection.Advanced));
+        GoToDiagnostics = new RelayCommand(() => NavigationRequested?.Invoke(this, NavigationSection.Diagnostics));
     }
 
     /// <summary>Raised when one of the page's links asks for another page.</summary>
@@ -98,7 +98,7 @@ internal sealed partial class AboutViewModel : ObservableObject
     public ICommand OpenReleases { get; }
 
     /// <summary>Shows the Advanced page, where the full report and the diagnostics switch live.</summary>
-    public ICommand GoToAdvanced { get; }
+    public ICommand GoToDiagnostics { get; }
 
     /// <summary>
     /// Hands a URL to the shell, which opens it in whatever the user browses with. No request is made from
