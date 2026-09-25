@@ -6,7 +6,16 @@ All notable changes to SmartZoom are recorded here. The format follows
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **A browser page that was left zoomed no longer zooms twice on the next press, and comes back properly.**
+  When a page is still showing a zoom SmartZoom does not remember making — it was restarted, switched off while
+  the page was zoomed, or a restore did not take — the next press used to zoom on top of it. Chromium clamps
+  the visual viewport at x4, so that second gesture was refused, and a refused gesture looks exactly like a page
+  that blocks gestures (`touch-action`): SmartZoom fell back to Ctrl+wheel page zoom, which is a *separate* zoom
+  stacked on the first. The page magnified twice, and the next press took only one of the two back off, every
+  time. The accessibility tree already gives the page's current zoom away, so a page that is carrying one is now
+  cleared first and read again, and the zoom is planned from a page at rest.
 
 ## [0.3.0] - 2026-09-24
 

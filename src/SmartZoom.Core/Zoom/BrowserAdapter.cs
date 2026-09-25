@@ -110,18 +110,29 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
             return ZoomInResult.Handled(ZoomReason.NoContent);
         }
 
+        // A zoom is already on the screen that this process is not remembering - it was restarted, switched off
+        // while the page was zoomed, or a restore did not take. It cannot simply be zoomed on top of: Chromium
+        // clamps the visual viewport at x4, so the gesture would be refused, and a refused gesture is
+        // indistinguishable from a page that blocks gestures (touch-action). That reading sends the press to
+        // Ctrl+wheel page zoom, which is a second, separate zoom stacked on the first - the page magnifies twice
+        // and the next press takes only one of the two back off. Clear it and read the tree again instead.
+        if (hit.PageScale > 1)
+        {
+            LogForgottenZoom(target.ProcessName, hit.PageScale);
+            hit = await ResetAsync(target, point, hit, cancellationToken).ConfigureAwait(false);
+            if (hit is null)
+            {
+                LogNoContent(target.ProcessName);
+                return ZoomInResult.Handled(ZoomReason.NoContent);
+            }
+        }
+
         var block = _blocks.Select(hit);
         if (block is null)
         {
-            // Maybe the page is still visually zoomed from an earlier zoom this app has forgotten (restarted, or
-            // the restore did not take): accessibility rects are then off-screen or wrong and nothing qualifies.
-            // Zooming out below 1.0 is invisible on a page that is not zoomed and resets one that is; look again.
-            // TimeSpan.Zero is deliberate: this is a state reset nobody sees happen, not a gesture, so it must
-            // not appear in the gesture-health totals (the injector excludes zero-duration pinches for exactly
-            // that reason).
-            await _pinch.PinchAsync(ClampInto(point, hit.Viewport), RestoreOvershoot / _planner.MaxScale, TimeSpan.Zero, ContactBounds(hit.Viewport), cancellationToken).ConfigureAwait(false);
-            await Task.Delay(ResetSettle, cancellationToken).ConfigureAwait(false);
-            hit = await _hitTester.HitTestAsync(target, point, cancellationToken).ConfigureAwait(false);
+            // The same forgotten zoom, on a page whose tree does not give the scale away: the rectangles are
+            // off-screen or wrong and nothing qualifies. Reset and look again before giving up.
+            hit = await ResetAsync(target, point, hit, cancellationToken).ConfigureAwait(false);
             block = hit is null ? null : _blocks.Select(hit);
 
             if (hit is null || block is null)
@@ -237,6 +248,22 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
     internal static PixelRect VerifyRegion(ScreenPoint anchor, PixelRect viewport) =>
         new PixelRect(anchor.X - VerifyHalfWidth, anchor.Y - VerifyHalfHeight, anchor.X + VerifyHalfWidth, anchor.Y + VerifyHalfHeight).Intersect(viewport);
 
+    /// <summary>
+    /// Clears a pinch zoom the page is carrying and re-reads the tree underneath it. Zooming out below 1.0 is
+    /// invisible on a page that is at rest and resets one that is not.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="TimeSpan.Zero"/> is deliberate: this is a state reset nobody sees happen, not a gesture, so
+    /// it must not appear in the gesture-health totals (the injector excludes zero-duration pinches for exactly
+    /// that reason).
+    /// </remarks>
+    private async Task<ContentHit?> ResetAsync(TargetInfo target, ScreenPoint point, ContentHit hit, CancellationToken cancellationToken)
+    {
+        await _pinch.PinchAsync(ClampInto(point, hit.Viewport), RestoreOvershoot / _planner.MaxScale, TimeSpan.Zero, ContactBounds(hit.Viewport), cancellationToken).ConfigureAwait(false);
+        await Task.Delay(ResetSettle, cancellationToken).ConfigureAwait(false);
+        return await _hitTester.HitTestAsync(target, point, cancellationToken).ConfigureAwait(false);
+    }
+
     private static ScreenPoint ClampInto(ScreenPoint point, PixelRect rect) => new(
         PixelRect.ClampWithInset(point.X, rect.Left, rect.Right - 1, EdgeInset),
         PixelRect.ClampWithInset(point.Y, rect.Top, rect.Bottom - 1, EdgeInset));
@@ -289,6 +316,9 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The page did not zoom: it blocks pinch gestures across the window (touch-action), so the gesture reached the page's own scripts instead ({Changed:P0} of the screen around the cursor changed in {Process}, and {Retries} other anchors were tried). {Fallback}")]
     private partial void LogPinchBlocked(string? process, double changed, int retries, string fallback);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "The page in {Process} is still showing a x{Scale:F2} zoom SmartZoom does not remember making; clearing it before zooming again.")]
+    private partial void LogForgottenZoom(string? process, double scale);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Could not read the screen around the cursor in {Process}, so whether the page took the pinch was not checked.")]
     private partial void LogVerificationSkipped(string? process);

@@ -400,6 +400,33 @@ public sealed class BrowserAdapterTests
     public async Task Zoom_out_rejects_foreign_state() =>
         await Assert.ThrowsAsync<ArgumentException>(() => Create().ZoomOutAsync(Brave, "nope", CancellationToken.None));
 
+    [Fact]
+    public async Task A_page_still_carrying_a_zoom_the_app_forgot_is_reset_before_the_new_one()
+    {
+        // The tree reports the page pinch-zoomed while this is a zoom-IN, so it is a zoom the process no
+        // longer remembers: it was restarted, or switched off while the page was zoomed, or a restore did
+        // not take. Chromium clamps the visual viewport at x4, so a second zoom on top of it is refused -
+        // and a refused gesture looks exactly like a page that blocks gestures, which would send the press
+        // to Ctrl+wheel page zoom and leave two different zooms stacked on one page.
+        _hits.Result = ParagraphHit with { PageScale = 1.93 };
+        _hits.Next = ParagraphHit;
+
+        var result = await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None);
+
+        Assert.Equal(ZoomInStatus.Applied, result.Status);
+        Assert.Equal(2, _pinch.Calls.Count);
+
+        // The reset: below 1.0, and instant so it is not counted as a gesture.
+        Assert.True(_pinch.Calls[0].Factor < 1);
+        Assert.Equal(TimeSpan.Zero, _pinch.Calls[0].Duration);
+
+        // The zoom itself, planned from the tree as it reads once the page is back at 1.0.
+        Assert.Equal(1874.0 / (949 + 32), _pinch.Calls[1].Factor, precision: 6);
+        Assert.Equal(
+            _pinch.Calls[1].Factor,
+            Assert.IsType<BrowserAdapter.RestoreState>(result.RestoreState).Plan.Scale);
+    }
+
     // Answers the first hit-test with Result and any later one with Next (when set).
     private sealed class FakeHitTester : IContentHitTester
     {
