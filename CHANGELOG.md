@@ -6,6 +6,16 @@ All notable changes to SmartZoom are recorded here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **Diagnostics is its own page.** The record of what did not work used to be the fourth section of Advanced,
+  below zoom tuning, PDF readers and logging — but two other surfaces send people to it: the status card in the
+  window's corner counts recorded issues, and the tray offers **Diagnostic report…**. Both landed at the top of
+  Advanced, leaving three sections of tuning to scroll past. Both now open a **Diagnostics** row in the rail
+  that holds the report, its Refresh / Copy / Save… / Clear buttons, the "include recent log lines" opt-in and
+  the switch that turns recording off. Advanced keeps zoom, PDF readers and logging. Nothing about what is
+  recorded, or about it never leaving the machine, has changed.
+
 ### Fixed
 
 - **A browser page that was left zoomed no longer zooms twice on the next press, and comes back properly.**

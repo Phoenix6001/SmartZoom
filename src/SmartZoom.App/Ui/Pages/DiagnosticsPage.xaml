@@ -1,0 +1,131 @@
+<UserControl x:Class="SmartZoom.App.Ui.Pages.DiagnosticsPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:ClassModifier="internal">
+    <UserControl.Resources>
+
+        <!-- The name and explanation on the left of a settings row. -->
+        <Style x:Key="RowTitle" TargetType="TextBlock" BasedOn="{StaticResource Text.CardTitle}">
+            <Setter Property="FontSize" Value="14" />
+        </Style>
+
+        <Style x:Key="RowNote" TargetType="TextBlock" BasedOn="{StaticResource Text.Muted}">
+            <Setter Property="Margin" Value="0,4,0,0" />
+            <Setter Property="FontSize" Value="12.5" />
+        </Style>
+
+    </UserControl.Resources>
+
+    <StackPanel Margin="40,34,34,36">
+
+        <!-- 1. Heading -->
+        <TextBlock Style="{StaticResource Text.Hero}" FontSize="30" Text="Diagnostics" />
+        <TextBlock Style="{StaticResource Text.Muted}"
+                   Margin="1,8,0,0"
+                   MaxWidth="620"
+                   HorizontalAlignment="Left"
+                   Text="Everything that did not work, and what SmartZoom would tell you about itself. Read it, then copy it into a bug report. Nothing here is sent anywhere." />
+
+        <!-- 2. The report -->
+        <Border Style="{StaticResource Card}" Margin="0,24,0,0" Padding="24,20,24,20">
+            <StackPanel>
+                <Border Background="{DynamicResource Brush.Ground}"
+                        BorderBrush="{DynamicResource Brush.CardBorder}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                    <TextBox Height="430"
+                             Padding="12"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             FontFamily="Consolas, Cascadia Mono, Courier New"
+                             FontSize="12"
+                             Foreground="{DynamicResource Brush.Ink}"
+                             HorizontalScrollBarVisibility="Auto"
+                             IsReadOnly="True"
+                             SelectionBrush="{DynamicResource Brush.Accent}"
+                             Text="{Binding Report, Mode=OneWay}"
+                             TextWrapping="NoWrap"
+                             VerticalScrollBarVisibility="Auto" />
+                </Border>
+
+                <WrapPanel Margin="0,14,-8,0">
+                    <Button Style="{StaticResource Button.Quiet}"
+                            Margin="0,0,8,8"
+                            Padding="18,0"
+                            Command="{Binding RefreshReport}"
+                            Content="Refresh" />
+                    <Button Style="{StaticResource Button.Quiet}"
+                            Margin="0,0,8,8"
+                            Padding="18,0"
+                            Command="{Binding CopyReport}"
+                            Content="Copy" />
+                    <Button Style="{StaticResource Button.Quiet}"
+                            Margin="0,0,8,8"
+                            Padding="18,0"
+                            Command="{Binding SaveReport}"
+                            Content="Save…" />
+                    <Button Style="{StaticResource Button.Quiet}"
+                            Margin="0,0,8,8"
+                            Padding="18,0"
+                            Command="{Binding ClearRecord}"
+                            Content="Clear recorded data" />
+                    <CheckBox Style="{StaticResource Check}"
+                              Margin="8,0,8,8"
+                              VerticalAlignment="Center"
+                              Content="Include recent log lines"
+                              IsChecked="{Binding IncludeLog}" />
+                </WrapPanel>
+
+                <TextBlock Margin="0,2,0,0" FontSize="12.5" Text="{Binding Status}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Muted}">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasStatus}" Value="True">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding StatusFailed}" Value="True">
+                                    <Setter Property="Foreground" Value="{DynamicResource Brush.Error}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+
+                <Border Style="{StaticResource Rule}" Margin="0,16,0,0" />
+
+                <Grid Margin="0,16,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,20,0">
+                        <TextBlock Style="{StaticResource RowTitle}" Text="Record what doesn't work" />
+                        <TextBlock Style="{StaticResource RowNote}" Text="Counts presses that zoomed nothing, adapters that failed and crashes, so a problem can be described without reading a log file. It never leaves this machine." />
+                    </StackPanel>
+                    <Button Grid.Column="1"
+                            Style="{StaticResource Switch}"
+                            VerticalAlignment="Center"
+                            Command="{Binding ToggleRecording}"
+                            Tag="{Binding RecordEnabled}" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- 3. What the last change was told about itself -->
+        <ItemsControl Margin="0,14,0,0"
+                      ItemTemplate="{StaticResource Problem.Line}"
+                      ItemsSource="{Binding Problems}">
+            <ItemsControl.Style>
+                <Style TargetType="ItemsControl">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding HasProblems}" Value="True">
+                            <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </ItemsControl.Style>
+        </ItemsControl>
+    </StackPanel>
+</UserControl>

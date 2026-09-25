@@ -9,11 +9,12 @@ namespace SmartZoom.App.Ui.Shell;
 /// </remarks>
 internal static class ShellPages
 {
-    /// <summary>Creates the five sections, in the order the rail shows them.</summary>
+    /// <summary>Creates the six sections, in the order the rail shows them.</summary>
     /// <param name="overview">The Overview page's view model.</param>
     /// <param name="triggers">The Triggers page's view model.</param>
     /// <param name="applications">The Applications page's view model.</param>
     /// <param name="advanced">The Advanced page's view model.</param>
+    /// <param name="diagnostics">The Diagnostics page's view model.</param>
     /// <param name="about">The About page's view model.</param>
     /// <returns>The sections; the first is the one the window opens on.</returns>
     public static IReadOnlyList<NavigationItem> Build(
@@ -21,12 +22,14 @@ internal static class ShellPages
         TriggersViewModel triggers,
         ApplicationsViewModel applications,
         AdvancedViewModel advanced,
+        DiagnosticsViewModel diagnostics,
         AboutViewModel about) =>
     [
         new(NavigationSection.Overview, "", "Overview", new OverviewPage { DataContext = overview }),
         new(NavigationSection.Triggers, "", "Triggers", new TriggersPage { DataContext = triggers }),
         new(NavigationSection.Applications, "", "Applications", new ApplicationsPage { DataContext = applications }),
         new(NavigationSection.Advanced, "", "Advanced", new AdvancedPage { DataContext = advanced }),
+        new(NavigationSection.Diagnostics, "", "Diagnostics", new DiagnosticsPage { DataContext = diagnostics }),
         new(NavigationSection.About, "", "About", new AboutPage { DataContext = about }),
     ];
 }

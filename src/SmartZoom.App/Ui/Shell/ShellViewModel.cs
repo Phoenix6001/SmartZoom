@@ -84,7 +84,7 @@ internal sealed partial class ShellViewModel : ObservableObject
         _theme = theme;
         _logger = logger;
 
-        ShowIssues = new RelayCommand(_ => GoTo(NavigationSection.Advanced));
+        ShowIssues = new RelayCommand(_ => GoTo(NavigationSection.Diagnostics));
         overview.NavigationRequested += (_, section) => GoTo(section);
         about.NavigationRequested += (_, section) => GoTo(section);
 

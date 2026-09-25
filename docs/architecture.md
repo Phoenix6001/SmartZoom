@@ -124,7 +124,8 @@ never pays for WPF; both are then created once and kept, so the window comes bac
 ```
 Ui/Shell/     ShellWindow (frameless chrome, the rail), ShellViewModel, ShellPages (the one place a view
               is constructed), NavigationSection
-Ui/Pages/     Overview, Triggers, Applications, Advanced, About — a XAML UserControl and a view model each
+Ui/Pages/     Overview, Triggers, Applications, Advanced, Diagnostics, About — a XAML UserControl and a
+              view model each
 Ui/Recorder/  TriggerRecorderWindow: the trigger is performed, not named
 Ui/Panel/     The tray panel: the same few facts, for someone who only wants to flip a switch
 Ui/Themes/    Light.xaml and Dark.xaml declare the same keys and nothing else names a colour, so

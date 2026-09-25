@@ -173,15 +173,19 @@ Following the existing split, and adding no new plumbing through the zoom pipeli
 
 ## The user interface
 
-A section of the settings window's Advanced page, below Zoom, PDF readers and Logging, containing:
+A page of the settings window, containing:
 
 - The report itself in a read-only box. **Showing it is the consent mechanism** — "the user reads it before
   pasting" is only true if it is put in front of them.
 - **Copy**, **Save…**, **Clear recorded data**, and the on/off switch.
 - The "include recent log lines" checkbox.
 
+It is a page of its own rather than a section of Advanced because two other surfaces send people to it — the
+shell's status card counts recorded issues and the tray offers the report — and a page the application points
+at is not one the user goes looking for. As a section it sat below three of tuning they had to scroll past.
+
 The tray menu gains one **Diagnostic report…** item, because the tray is where people go when something is
-wrong. It *opens the Advanced page* rather than copying to the clipboard directly: a tray item that silently filled
+wrong. It *opens the Diagnostics page* rather than copying to the clipboard directly: a tray item that silently filled
 the clipboard would defeat the principle in the paragraph above it, which is that nothing is handed over
 before it has been read.
 

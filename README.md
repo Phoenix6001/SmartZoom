@@ -47,13 +47,14 @@ dotnet run --project src/SmartZoom.App
 
 SmartZoom runs in the notification area. A left click drops a small panel out of the tray with the few
 things people change most; a double-click — or right-click and **Settings…** — opens the settings window.
-It has five pages: **Overview** (what SmartZoom is doing, and a card for each setting people change),
+It has six pages: **Overview** (what SmartZoom is doing, and a card for each setting people change),
 **Triggers** (recorded by pressing them, not by naming them), **Applications** (which application is handled
-by which strategy, alongside the ones that already are), **Advanced** (zoom tuning, PDF readers, the logging
-level and the diagnostic report) and **About**. There is no Save button: every change applies as you make
+by which strategy, alongside the ones that already are), **Advanced** (zoom tuning, PDF readers and the
+logging level), **Diagnostics** (the record of what did not work, and the report built from it) and
+**About**. There is no Save button: every change applies as you make
 it, and nothing needs a restart. The rest of the right-click menu is **Enabled**, **Change trigger…**,
 **Zoom amount**, **Open settings file**, **Reload settings file**, **Open log folder**,
-**Diagnostic report…** (opens Settings on the Advanced page — see below), **About SmartZoom** and **Exit**.
+**Diagnostic report…** (opens Settings on the Diagnostics page — see below), **About SmartZoom** and **Exit**.
 
 Publish a single-file executable:
 
@@ -198,7 +199,7 @@ four-finger tap can instead be a *Custom shortcut*, which you point at one of yo
 
 Logs are written to `%LOCALAPPDATA%\SmartZoom\logs` (rolling daily, 14 days kept).
 
-Settings → Advanced → Diagnostics keeps a small local record of what SmartZoom failed to do — presses that
+Settings → Diagnostics keeps a small local record of what SmartZoom failed to do — presses that
 zoomed nothing, adapters that threw, and crashes — at `%LOCALAPPDATA%\SmartZoom\diagnostics.json`, and renders
 it on demand as a report you can copy into a bug report. It's on by default; the same section has a switch to
 turn it off — written to your settings file at once, so it stays off — and a button to clear what's recorded.

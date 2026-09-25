@@ -301,8 +301,8 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
     /// <summary>Opens the settings window, or brings it to the front when it is already open.</summary>
     private void OpenShell() => Shell(_shell.ShowSettings);
 
-    /// <summary>Opens the Advanced page, where the diagnostic report is read and copied.</summary>
-    private void ShowDiagnostics() => Shell(_shell.ShowAdvanced);
+    /// <summary>Opens the Diagnostics page, where the report is read and copied.</summary>
+    private void ShowDiagnostics() => Shell(_shell.ShowDiagnostics);
 
     /// <summary>Runs one of the window's entry points; a UI that will not open must not take the tray with it.</summary>
     private void Shell(Action show)
