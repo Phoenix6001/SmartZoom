@@ -43,7 +43,7 @@ dotnet test
 dotnet run --project src/SmartZoom.App
 ```
 
-![The settings window in light and dark: a navigation rail beside the Overview page, which shows whether SmartZoom is on, a preview of a zoom, and a card for each setting people change.](docs/media/settings-window.png)
+![The settings window in light and dark. A navigation rail — Overview, Triggers, Applications, Advanced, Diagnostics, About — beside the Overview page, which shows whether SmartZoom is on, a preview of what a zoom looks like, and a card for each setting people change.](docs/media/settings-window.png)
 
 SmartZoom runs in the notification area. A left click drops a small panel out of the tray with the few
 things people change most; a double-click — or right-click and **Settings…** — opens the settings window.
@@ -204,7 +204,9 @@ zoomed nothing, adapters that threw, and crashes — at `%LOCALAPPDATA%\SmartZoo
 it on demand as a report you can copy into a bug report. It's on by default; the same section has a switch to
 turn it off — written to your settings file at once, so it stays off — and a button to clear what's recorded.
 Nothing in it is sent anywhere — see [SECURITY.md](SECURITY.md) for exactly what it holds and what it never
-does.
+does. **Report a problem** builds that report with the log
+included, puts it on the clipboard and opens the bug form ready to paste it into — the browser makes that
+connection, not SmartZoom.
 
 ## Architecture
 
