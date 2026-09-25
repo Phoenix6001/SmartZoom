@@ -16,6 +16,15 @@ All notable changes to SmartZoom are recorded here. The format follows
   the switch that turns recording off. Advanced keeps zoom, PDF readers and logging. Nothing about what is
   recorded, or about it never leaving the machine, has changed.
 
+- **The Applications page leads with what is supported, and shows each application's own icon and name.**
+  It used to open on an empty "Yours" list and a box asking for a process image name — the one place the
+  settings window expected you to know whether an application is called "notepad", "Notepad" or "Notepad.exe"
+  — with the list of what actually works pushed below it. Now the supported applications come first, pictured
+  and named as they name themselves on this machine; anything not installed still shows its process name.
+  Routing something of your own moved below as **Exceptions**, and is done by picking from the applications you
+  have open, with typing still there for one that is not running. A new exception defaults to Ctrl+wheel rather
+  than to whichever strategy sorted first alphabetically.
+
 - **The tray icon goes grey when SmartZoom is switched off.** Whether it is listening is the one thing its
   place in the notification area exists to say, and it used to say it only in a tooltip. The grey icon is
   derived from the colour one at startup rather than shipped as a second file, so the two cannot drift apart.

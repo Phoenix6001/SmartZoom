@@ -5,9 +5,11 @@ using Microsoft.Extensions.Logging;
 
 using SmartZoom.App.Hosting;
 using SmartZoom.App.Settings;
+using SmartZoom.App.Ui.Applications;
 using SmartZoom.App.Ui.Mvvm;
 using SmartZoom.Core.Routing;
 using SmartZoom.Core.Settings;
+using SmartZoom.Core.Zoom;
 
 namespace SmartZoom.App.Ui.Pages;
 
@@ -34,6 +36,8 @@ internal sealed partial class ApplicationsViewModel : ObservableObject, IPageMod
     private IReadOnlyList<StrategyChoice> _strategies = [];
     private IReadOnlyList<ApplicationRoute> _routes = [];
     private IReadOnlyList<BuiltInGroup> _builtIn = [];
+    private IReadOnlyList<InstalledApplication> _running = [];
+    private InstalledApplication? _selectedRunning;
     private IReadOnlyList<ProblemLine> _problems = [];
     private StrategyChoice? _newStrategy;
     private string _newProcess = string.Empty;
@@ -128,6 +132,31 @@ internal sealed partial class ApplicationsViewModel : ObservableObject, IPageMod
     /// <summary>Removes a route; the parameter is its <see cref="ApplicationRoute"/>.</summary>
     public ICommand RemoveApplication { get; }
 
+    /// <summary>
+    /// The running application the picker is on. Selecting one fills in <see cref="NewProcess"/>; the field
+    /// stays editable, because an application that is not running has no entry to pick.
+    /// </summary>
+    public InstalledApplication? SelectedRunning
+    {
+        get => _selectedRunning;
+        set
+        {
+            if (!Set(ref _selectedRunning, value) || value is null)
+                return;
+
+            NewProcess = value.ImageName;
+        }
+    }
+
+    /// <summary>
+    /// The applications running with a window right now, for the picker. Empty until the first lookup returns.
+    /// </summary>
+    public IReadOnlyList<InstalledApplication> Running
+    {
+        get => _running;
+        private set => Set(ref _running, value);
+    }
+
     /// <inheritdoc />
     public void Refresh()
     {
@@ -135,7 +164,11 @@ internal sealed partial class ApplicationsViewModel : ObservableObject, IPageMod
         var adapters = _engine.Current.Router.Adapters;
 
         Strategies = [.. adapters.Select(StrategyChoice.From).OrderBy(s => s.DisplayName, StringComparer.CurrentCulture), StrategyChoice.NotHandled];
-        _newStrategy = Strategies.FirstOrDefault(s => s.Id != AdapterId.None) ?? StrategyChoice.NotHandled;
+        // Ctrl+wheel, because an application worth an exception is usually one that does nothing today and a
+        // crude zoom is the improvement. Routing something to "Browsers" by accident would be a silent puzzle.
+        _newStrategy = Strategies.FirstOrDefault(s => s.Id == CtrlWheelAdapter.Descriptor.Id)
+            ?? Strategies.FirstOrDefault(s => s.Id != AdapterId.None)
+            ?? StrategyChoice.NotHandled;
         Raise(nameof(NewStrategy));
 
         Routes =
@@ -157,8 +190,52 @@ internal sealed partial class ApplicationsViewModel : ObservableObject, IPageMod
                     Processes = adapter.DefaultProcesses.Where(p => !settings.Routing.Apps.ContainsKey(p)).ToList(),
                 })
                 .Where(group => group.Processes.Count > 0)
-                .Select(group => new BuiltInGroup(group.DisplayName, group.Description, string.Join(", ", group.Processes))),
+                .Select(group => new BuiltInGroup(
+                    group.DisplayName,
+                    group.Description,
+                    [.. group.Processes.Select(p => new InstalledApplication(p, p, Icon: null))])),
         ];
+
+        Look();
+    }
+
+    /// <summary>
+    /// Fills in what this machine knows about those applications, and what is running, off the UI thread:
+    /// both read the registry and open executables, and the page has to be on screen before either returns.
+    /// </summary>
+    /// <remarks>
+    /// The lists are replaced wholesale rather than filled in place, so a row is never half a row. Everything
+    /// it produces is frozen, which is what makes it safe to hand over.
+    /// </remarks>
+    private void Look()
+    {
+        var groups = _builtIn;
+
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                var described = groups
+                    .Select(group => group with
+                    {
+                        Applications = [.. group.Applications.Select(a => InstalledApplications.Describe(a.ImageName))],
+                    })
+                    .ToList();
+                var running = RunningApplications.List();
+
+                _dispatcher.BeginInvoke(() =>
+                {
+                    BuiltIn = described;
+                    Running = running;
+                });
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                // Names without icons are a far better outcome than a settings page that will not open
+                // because one machine has an odd App Paths entry or a process that vanished mid-question.
+                LogLookupFailed(ex);
+            }
+        });
     }
 
     /// <summary>The choice an id stands for, or the raw id when the file names a strategy this build lacks.</summary>
@@ -184,6 +261,7 @@ internal sealed partial class ApplicationsViewModel : ObservableObject, IPageMod
         var strategy = _newStrategy ?? StrategyChoice.NotHandled;
         Write(settings => settings.Routing.Apps[process] = strategy.Id);
         NewProcess = string.Empty;
+        SelectedRunning = null;
     }
 
     private void Remove(object? parameter)
@@ -243,6 +321,9 @@ internal sealed partial class ApplicationsViewModel : ObservableObject, IPageMod
             });
         });
     }
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "The Applications page could not look up what this machine has installed or running.")]
+    private partial void LogLookupFailed(Exception exception);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "An application routing change from the settings window failed.")]
     private partial void LogChangeFailed(Exception exception);
