@@ -34,15 +34,14 @@ public sealed class TrayQuickSettingsTests
         }
 
         [Fact]
-        public void Is_changed_on_a_copy_leaving_the_settings_in_force_alone()
+        public void Sets_the_largest_zoom()
         {
             var settings = new SmartZoomSettings();
             settings.Zoom.MaxScale = 3.0;
 
-            var changed = TrayQuickSettings.WithZoomAmount(settings, 1.5);
+            TrayQuickSettings.SetZoomAmount(settings, 1.5);
 
-            Assert.Equal(1.5, changed.Zoom.MaxScale);
-            Assert.Equal(3.0, settings.Zoom.MaxScale);
+            Assert.Equal(1.5, settings.Zoom.MaxScale);
         }
 
         [Fact]
@@ -52,10 +51,10 @@ public sealed class TrayQuickSettingsTests
             settings.Zoom.MinScale = 1.4;
             settings.Diagnostics.Enabled = false;
 
-            var changed = TrayQuickSettings.WithZoomAmount(settings, 2.0);
+            TrayQuickSettings.SetZoomAmount(settings, 2.0);
 
-            Assert.Equal(1.4, changed.Zoom.MinScale);
-            Assert.False(changed.Diagnostics.Enabled);
+            Assert.Equal(1.4, settings.Zoom.MinScale);
+            Assert.False(settings.Diagnostics.Enabled);
         }
     }
 
@@ -64,10 +63,12 @@ public sealed class TrayQuickSettingsTests
         [Fact]
         public void Routes_it_to_None()
         {
-            var changed = TrayQuickSettings.WithIgnored(new SmartZoomSettings(), "brave", ignored: true);
+            var settings = new SmartZoomSettings();
 
-            Assert.Equal(AdapterId.None, changed.Routing.Apps["brave"]);
-            Assert.True(TrayQuickSettings.IsIgnored(changed, "brave"));
+            TrayQuickSettings.SetIgnored(settings, "brave", ignored: true);
+
+            Assert.Equal(AdapterId.None, settings.Routing.Apps["brave"]);
+            Assert.True(TrayQuickSettings.IsIgnored(settings, "brave"));
         }
 
         [Fact]
@@ -75,12 +76,13 @@ public sealed class TrayQuickSettingsTests
         {
             // Naming one would freeze today's answer: an application handed back to its default picks up a
             // better strategy in a later version, and the entry is what would stop it.
-            var off = TrayQuickSettings.WithIgnored(new SmartZoomSettings(), "brave", ignored: true);
+            var settings = new SmartZoomSettings();
+            TrayQuickSettings.SetIgnored(settings, "brave", ignored: true);
 
-            var on = TrayQuickSettings.WithIgnored(off, "brave", ignored: false);
+            TrayQuickSettings.SetIgnored(settings, "brave", ignored: false);
 
-            Assert.DoesNotContain("brave", on.Routing.Apps);
-            Assert.False(TrayQuickSettings.IsIgnored(on, "brave"));
+            Assert.DoesNotContain("brave", settings.Routing.Apps);
+            Assert.False(TrayQuickSettings.IsIgnored(settings, "brave"));
         }
 
         [Fact]
@@ -107,9 +109,9 @@ public sealed class TrayQuickSettingsTests
             var settings = new SmartZoomSettings();
             settings.Routing.Apps["notepad"] = new AdapterId("CtrlWheel");
 
-            var changed = TrayQuickSettings.WithIgnored(settings, "brave", ignored: true);
+            TrayQuickSettings.SetIgnored(settings, "brave", ignored: true);
 
-            Assert.Equal(new AdapterId("CtrlWheel"), changed.Routing.Apps["notepad"]);
+            Assert.Equal(new AdapterId("CtrlWheel"), settings.Routing.Apps["notepad"]);
         }
     }
 
@@ -128,11 +130,11 @@ public sealed class TrayQuickSettingsTests
                 ],
             };
 
-            var changed = TrayQuickSettings.WithFirstTrigger(settings, new TriggerSettings { Mouse = MouseButton.Middle, TapCount = 2 });
+            TrayQuickSettings.SetFirstTrigger(settings, new TriggerSettings { Mouse = MouseButton.Middle, TapCount = 2 });
 
-            Assert.Equal(2, changed.Triggers.Count);
-            Assert.Equal(MouseButton.Middle, changed.Triggers[0].Mouse);
-            Assert.Equal("Ctrl+Alt+Z", changed.Triggers[1].Keys);
+            Assert.Equal(2, settings.Triggers.Count);
+            Assert.Equal(MouseButton.Middle, settings.Triggers[0].Mouse);
+            Assert.Equal("Ctrl+Alt+Z", settings.Triggers[1].Keys);
         }
 
         [Fact]
@@ -140,22 +142,9 @@ public sealed class TrayQuickSettingsTests
         {
             var settings = new SmartZoomSettings { Triggers = [] };
 
-            var changed = TrayQuickSettings.WithFirstTrigger(settings, new TriggerSettings { Mouse = MouseButton.Middle });
+            TrayQuickSettings.SetFirstTrigger(settings, new TriggerSettings { Mouse = MouseButton.Middle });
 
-            Assert.Equal(MouseButton.Middle, Assert.Single(changed.Triggers).Mouse);
-        }
-
-        [Fact]
-        public void Leaves_the_settings_in_force_alone()
-        {
-            var settings = new SmartZoomSettings
-            {
-                Triggers = [new TriggerSettings { Mouse = MouseButton.XButton2, TapCount = 1 }],
-            };
-
-            TrayQuickSettings.WithFirstTrigger(settings, new TriggerSettings { Mouse = MouseButton.Middle });
-
-            Assert.Equal(MouseButton.XButton2, settings.Triggers[0].Mouse);
+            Assert.Equal(MouseButton.Middle, Assert.Single(settings.Triggers).Mouse);
         }
 
         [Fact]

@@ -107,48 +107,59 @@ internal sealed partial class TriggersViewModel : ObservableObject, IPageModel
         if (Record(existing: null) is not { } captured)
             return;
 
-        var settings = SettingsStore.Clone(_holder.Current);
-        settings.Triggers.Add(captured);
-        Apply(settings);
+        Apply(settings => settings.Triggers.Add(captured));
     }
 
     private void Edit(object? parameter)
     {
-        if (parameter is not TriggerRow row)
+        if (parameter is not TriggerRow row || Showing() is not { } showing)
             return;
 
-        var settings = SettingsStore.Clone(_holder.Current);
-        if (row.Index < 0 || row.Index >= settings.Triggers.Count)
+        if (row.Index < 0 || row.Index >= showing.Count)
             return;
 
-        if (Record(settings.Triggers[row.Index]) is not { } captured)
+        if (Record(showing[row.Index]) is not { } captured)
             return;
 
-        settings.Triggers[row.Index] = captured;
-        Apply(settings);
+        // The row's index is into the list this page drew, and the recorder was on screen for as long as the
+        // user took over it. Checked again against the list actually in force rather than trusted.
+        Apply(settings =>
+        {
+            if (row.Index < settings.Triggers.Count)
+                settings.Triggers[row.Index] = captured;
+        });
     }
 
     private void Remove(object? parameter)
     {
-        if (parameter is not TriggerRow row)
+        if (parameter is not TriggerRow row || Showing() is not { } showing)
             return;
 
-        var settings = SettingsStore.Clone(_holder.Current);
-        if (row.Index < 0 || row.Index >= settings.Triggers.Count)
+        if (row.Index < 0 || row.Index >= showing.Count)
             return;
 
         // Refused here rather than by the check after the fact, and said out loud: an application with no
         // trigger cannot be started by anything, and a list that silently emptied itself would look like a bug.
-        if (settings.Triggers.Count == 1)
+        if (showing.Count == 1)
         {
             Problems = ProblemLine.Error(
                 "Triggers: this is the only way to start a zoom. Add another trigger before removing this one.");
             return;
         }
 
-        settings.Triggers.RemoveAt(row.Index);
-        Apply(settings);
+        Apply(settings =>
+        {
+            // Both checked again in force: the last trigger must survive however the list moved since.
+            if (row.Index < settings.Triggers.Count && settings.Triggers.Count > 1)
+                settings.Triggers.RemoveAt(row.Index);
+        });
     }
+
+    /// <summary>
+    /// A copy of the triggers as they stand, to decide by and to show the recorder. A copy because the
+    /// settings in force are published and must not be edited by anything that is handed part of them.
+    /// </summary>
+    private IList<TriggerSettings>? Showing() => SettingsStore.Clone(_holder.Current).Triggers;
 
     /// <summary>
     /// Shows the recorder and returns what was pressed, or null when it was cancelled. Modal on the UI thread:
@@ -177,10 +188,10 @@ internal sealed partial class TriggersViewModel : ObservableObject, IPageModel
     }
 
     /// <summary>
-    /// Puts a changed copy into force off the UI thread — the applier's gate may be held by a zoom in flight —
+    /// Puts a change into force off the UI thread — the applier's gate may be held by a zoom in flight —
     /// and then re-reads the list, so it shows what took effect rather than what was asked for.
     /// </summary>
-    private void Apply(SmartZoomSettings settings)
+    private void Apply(Action<SmartZoomSettings> change)
     {
         _busy = true;
         Problems = [];
@@ -191,7 +202,7 @@ internal sealed partial class TriggersViewModel : ObservableObject, IPageModel
             IReadOnlyList<ProblemLine> problems;
             try
             {
-                var result = await _applier.ApplyAsync(settings).ConfigureAwait(false);
+                var result = await _applier.ApplyAsync(change).ConfigureAwait(false);
                 problems = ProblemLine.From(result.Problems);
                 if (result.Outcome == SettingsApplyOutcome.AppliedButNotSaved)
                 {

@@ -10,8 +10,10 @@ namespace SmartZoom.App.Tray;
 /// The settings the tray menu can change, as functions over a settings object rather than as click handlers.
 /// </summary>
 /// <remarks>
-/// Every one of these returns a copy: the settings already published are never edited underneath whoever is
-/// reading them, and the copy goes to <see cref="SettingsApplier"/>, which remains the only writer of the file.
+/// Each of these edits the settings object it is given, which is the copy <see cref="SettingsApplier"/> makes
+/// under its own gate before handing it to a change. Copying is the applier's job precisely so that a caller
+/// cannot copy too early: between reading the settings in force and reaching that gate, anything else may have
+/// changed them, and the gate is held for as long as a zoom in flight takes.
 /// </remarks>
 internal static class TrayQuickSettings
 {
@@ -33,16 +35,14 @@ internal static class TrayQuickSettings
         return Math.Abs(settings.Zoom.MaxScale - amount) < AmountTolerance;
     }
 
-    /// <summary>A copy whose largest zoom is the given amount.</summary>
-    /// <param name="settings">The settings in force.</param>
+    /// <summary>Sets the largest zoom.</summary>
+    /// <param name="settings">The copy being changed, which the applier made.</param>
     /// <param name="amount">The new largest zoom.</param>
-    public static SmartZoomSettings WithZoomAmount(SmartZoomSettings settings, double amount)
+    public static void SetZoomAmount(SmartZoomSettings settings, double amount)
     {
         ArgumentNullException.ThrowIfNull(settings);
 
-        var copy = SettingsStore.Clone(settings);
-        copy.Zoom.MaxScale = amount;
-        return copy;
+        settings.Zoom.MaxScale = amount;
     }
 
     /// <summary>Whether an application is currently routed to <see cref="AdapterId.None"/>.</summary>
@@ -66,18 +66,15 @@ internal static class TrayQuickSettings
     /// so the application goes back to the one that claims it by default — which is also how it picks up a
     /// better strategy in a later version.
     /// </param>
-    public static SmartZoomSettings WithIgnored(SmartZoomSettings settings, string process, bool ignored)
+    public static void SetIgnored(SmartZoomSettings settings, string process, bool ignored)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentException.ThrowIfNullOrWhiteSpace(process);
 
-        var copy = SettingsStore.Clone(settings);
         if (ignored)
-            copy.Routing.Apps[process] = AdapterId.None;
+            settings.Routing.Apps[process] = AdapterId.None;
         else
-            copy.Routing.Apps.Remove(process);
-
-        return copy;
+            settings.Routing.Apps.Remove(process);
     }
 
     /// <summary>
@@ -90,18 +87,15 @@ internal static class TrayQuickSettings
     /// would silently delete a second trigger — a hotkey kept alongside a mouse button, typically — that the
     /// user never saw on screen.
     /// </remarks>
-    public static SmartZoomSettings WithFirstTrigger(SmartZoomSettings settings, TriggerSettings trigger)
+    public static void SetFirstTrigger(SmartZoomSettings settings, TriggerSettings trigger)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(trigger);
 
-        var copy = SettingsStore.Clone(settings);
-        if (copy.Triggers.Count == 0)
-            copy.Triggers.Add(trigger);
+        if (settings.Triggers.Count == 0)
+            settings.Triggers.Add(trigger);
         else
-            copy.Triggers[0] = trigger;
-
-        return copy;
+            settings.Triggers[0] = trigger;
     }
 
     /// <summary>The trigger the "change trigger" item should open the recorder with, or null when there is none.</summary>

@@ -135,7 +135,7 @@ internal sealed partial class AdvancedViewModel : ObservableObject, IPageModel
         set
         {
             if (Set(ref _animate, value) && !_loading)
-                Write(settings => settings.Zoom.Animate = value);
+                Apply(settings => settings.Zoom.Animate = value);
         }
     }
 
@@ -146,7 +146,7 @@ internal sealed partial class AdvancedViewModel : ObservableObject, IPageModel
         set
         {
             if (Set(ref _ctrlWheelFallback, value) && !_loading)
-                Write(settings => settings.Zoom.FallbackToCtrlWheel = value);
+                Apply(settings => settings.Zoom.FallbackToCtrlWheel = value);
         }
     }
 
@@ -161,7 +161,7 @@ internal sealed partial class AdvancedViewModel : ObservableObject, IPageModel
 
             Raise(nameof(ReaderShortcuts));
             if (!_loading)
-                Write(settings => settings.Zoom.Reader.Mode = value ? ReaderZoomMode.Pinch : ReaderZoomMode.Shortcuts);
+                Apply(settings => settings.Zoom.Reader.Mode = value ? ReaderZoomMode.Pinch : ReaderZoomMode.Shortcuts);
         }
     }
 
@@ -186,7 +186,7 @@ internal sealed partial class AdvancedViewModel : ObservableObject, IPageModel
             if (value is null || !Set(ref _logLevel, value) || _loading)
                 return;
 
-            Write(settings => settings.Logging.Level = value.Level);
+            Apply(settings => settings.Logging.Level = value.Level);
         }
     }
 
@@ -255,26 +255,18 @@ internal sealed partial class AdvancedViewModel : ObservableObject, IPageModel
         _settle.Start();
     }
 
-    private void ApplyScales() => Write(settings =>
+    private void ApplyScales() => Apply(settings =>
     {
         settings.Zoom.MaxScale = _maxScale;
         settings.Zoom.MinScale = _minScale;
         settings.Zoom.Reader.Magnification = _readerMagnification;
     });
 
-    /// <summary>Makes a change on a copy of the settings in force and puts it through the applier.</summary>
-    private void Write(Action<SmartZoomSettings> change)
-    {
-        var settings = SettingsStore.Clone(_holder.Current);
-        change(settings);
-        Apply(settings);
-    }
-
     /// <summary>
-    /// Puts a changed copy into force off the UI thread — the applier's gate may be held by a zoom in flight —
+    /// Puts a change into force off the UI thread — the applier's gate may be held by a zoom in flight —
     /// and then re-reads the page, so it shows what took effect rather than what was asked for.
     /// </summary>
-    private void Apply(SmartZoomSettings settings)
+    private void Apply(Action<SmartZoomSettings> change)
     {
         Problems = [];
 
@@ -283,7 +275,7 @@ internal sealed partial class AdvancedViewModel : ObservableObject, IPageModel
             IReadOnlyList<ProblemLine> problems;
             try
             {
-                var result = await _applier.ApplyAsync(settings).ConfigureAwait(false);
+                var result = await _applier.ApplyAsync(change).ConfigureAwait(false);
                 problems = ProblemLine.From(result.Problems);
                 if (result.Outcome == SettingsApplyOutcome.AppliedButNotSaved)
                 {

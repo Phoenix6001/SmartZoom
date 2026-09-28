@@ -189,7 +189,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
         new(
             $"{amount:0.#}×",
             image: null,
-            (_, _) => Apply(TrayQuickSettings.WithZoomAmount(_holder.Current, amount), $"Zoom amount is now {amount:0.#}×."))
+            (_, _) => Apply(settings => TrayQuickSettings.SetZoomAmount(settings, amount), $"Zoom amount is now {amount:0.#}×."))
         {
             // Radio marks rather than ticks: these three are one choice, not three switches.
             CheckOnClick = false,
@@ -243,7 +243,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
             return;
 
         Apply(
-            TrayQuickSettings.WithFirstTrigger(settings, captured),
+            settings => TrayQuickSettings.SetFirstTrigger(settings, captured),
             $"The trigger is now {captured.ToDefinition(_systemInput.DoubleClickTimeMs).DisplayName}.");
     }
 
@@ -253,26 +253,25 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
         if (_lastProcess is not { Length: > 0 } process)
             return;
 
-        var settings = _holder.Current;
-        var ignore = !TrayQuickSettings.IsIgnored(settings, process);
+        var ignore = !TrayQuickSettings.IsIgnored(_holder.Current, process);
         Apply(
-            TrayQuickSettings.WithIgnored(settings, process, ignore),
+            settings => TrayQuickSettings.SetIgnored(settings, process, ignore),
             ignore ? $"SmartZoom now leaves {process} alone." : $"SmartZoom zooms {process} again.");
     }
 
     /// <summary>
-    /// Puts a changed copy of the settings into force. Off the UI thread, because the applier's gate may be
+    /// Puts a change into force. Off the UI thread, because the applier's gate may be
     /// held by a zoom in flight, and the user hears the outcome either way.
     /// </summary>
-    /// <param name="settings">The changed copy.</param>
+    /// <param name="change">What to change, applied to a copy the applier makes under its own gate.</param>
     /// <param name="done">What to say when it worked.</param>
-    private void Apply(SmartZoomSettings settings, string done) => _ = Task.Run(async () =>
+    private void Apply(Action<SmartZoomSettings> change, string done) => _ = Task.Run(async () =>
     {
         string summary;
         var good = false;
         try
         {
-            var result = await _applier.ApplyAsync(settings).ConfigureAwait(false);
+            var result = await _applier.ApplyAsync(change).ConfigureAwait(false);
             good = result.InForce;
             summary = good
                 ? done

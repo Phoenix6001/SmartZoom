@@ -225,7 +225,7 @@ internal sealed partial class PanelViewModel : ObservableObject
         if (parameter is not ZoomAmountChoice choice)
             return;
 
-        Run(() => _applier.ApplyAsync(TrayQuickSettings.WithZoomAmount(_holder.Current, choice.Amount)));
+        Run(() => _applier.ApplyAsync(settings => TrayQuickSettings.SetZoomAmount(settings, choice.Amount)));
     }
 
     private void Ignore()
@@ -234,7 +234,7 @@ internal sealed partial class PanelViewModel : ObservableObject
             return;
 
         var wanted = !IsIgnored;
-        Run(() => _applier.ApplyAsync(TrayQuickSettings.WithIgnored(_holder.Current, process, wanted)));
+        Run(() => _applier.ApplyAsync(settings => TrayQuickSettings.SetIgnored(settings, process, wanted)));
     }
 
     /// <summary>
@@ -266,7 +266,7 @@ internal sealed partial class PanelViewModel : ObservableObject
             _triggers.Enabled = wasEnabled;
         }
 
-        Run(() => _applier.ApplyAsync(TrayQuickSettings.WithFirstTrigger(settings, captured)));
+        Run(() => _applier.ApplyAsync(current => TrayQuickSettings.SetFirstTrigger(current, captured)));
     }
 
     /// <summary>

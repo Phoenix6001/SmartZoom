@@ -248,7 +248,7 @@ internal sealed partial class ApplicationsViewModel : ObservableObject, IPageMod
     /// <summary>Wires a row's combo box to apply the moment it is moved.</summary>
     private ApplicationRoute Track(ApplicationRoute route)
     {
-        route.StrategyChanged += (_, _) => Write(settings => settings.Routing.Apps[route.Process] = route.Strategy.Id);
+        route.StrategyChanged += (_, _) => Apply(settings => settings.Routing.Apps[route.Process] = route.Strategy.Id);
         return route;
     }
 
@@ -259,7 +259,7 @@ internal sealed partial class ApplicationsViewModel : ObservableObject, IPageMod
             return;
 
         var strategy = _newStrategy ?? StrategyChoice.NotHandled;
-        Write(settings => settings.Routing.Apps[process] = strategy.Id);
+        Apply(settings => settings.Routing.Apps[process] = strategy.Id);
         NewProcess = string.Empty;
         SelectedRunning = null;
     }
@@ -267,22 +267,14 @@ internal sealed partial class ApplicationsViewModel : ObservableObject, IPageMod
     private void Remove(object? parameter)
     {
         if (parameter is ApplicationRoute route)
-            Write(settings => settings.Routing.Apps.Remove(route.Process));
-    }
-
-    /// <summary>Makes a change on a copy of the settings in force and puts it through the applier.</summary>
-    private void Write(Action<SmartZoomSettings> change)
-    {
-        var settings = SettingsStore.Clone(_holder.Current);
-        change(settings);
-        Apply(settings);
+            Apply(settings => settings.Routing.Apps.Remove(route.Process));
     }
 
     /// <summary>
-    /// Puts a changed copy into force off the UI thread — the applier's gate may be held by a zoom in flight —
+    /// Puts a change into force off the UI thread — the applier's gate may be held by a zoom in flight —
     /// and then re-reads the page, so it shows what took effect rather than what was asked for.
     /// </summary>
-    private void Apply(SmartZoomSettings settings)
+    private void Apply(Action<SmartZoomSettings> change)
     {
         _busy = true;
         Problems = [];
@@ -293,7 +285,7 @@ internal sealed partial class ApplicationsViewModel : ObservableObject, IPageMod
             IReadOnlyList<ProblemLine> problems;
             try
             {
-                var result = await _applier.ApplyAsync(settings).ConfigureAwait(false);
+                var result = await _applier.ApplyAsync(change).ConfigureAwait(false);
                 problems = ProblemLine.From(result.Problems);
                 if (result.Outcome == SettingsApplyOutcome.AppliedButNotSaved)
                 {

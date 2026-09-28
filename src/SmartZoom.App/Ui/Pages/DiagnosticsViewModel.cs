@@ -141,7 +141,7 @@ internal sealed partial class DiagnosticsViewModel : ObservableObject, IPageMode
         set
         {
             if (Set(ref _recordEnabled, value) && !_loading)
-                Write(settings => settings.Diagnostics.Enabled = value);
+                Apply(settings => settings.Diagnostics.Enabled = value);
         }
     }
 
@@ -313,19 +313,11 @@ internal sealed partial class DiagnosticsViewModel : ObservableObject, IPageMode
         Raise(nameof(MoreLabel));
     }
 
-    /// <summary>Makes a change on a copy of the settings in force and puts it through the applier.</summary>
-    private void Write(Action<SmartZoomSettings> change)
-    {
-        var settings = SettingsStore.Clone(_holder.Current);
-        change(settings);
-        Apply(settings);
-    }
-
     /// <summary>
-    /// Puts a changed copy into force off the UI thread — the applier's gate may be held by a zoom in flight —
+    /// Puts a change into force off the UI thread — the applier's gate may be held by a zoom in flight —
     /// and then re-reads the page, so it shows what took effect rather than what was asked for.
     /// </summary>
-    private void Apply(SmartZoomSettings settings)
+    private void Apply(Action<SmartZoomSettings> change)
     {
         Problems = [];
 
@@ -334,7 +326,7 @@ internal sealed partial class DiagnosticsViewModel : ObservableObject, IPageMode
             IReadOnlyList<ProblemLine> problems;
             try
             {
-                var result = await _applier.ApplyAsync(settings).ConfigureAwait(false);
+                var result = await _applier.ApplyAsync(change).ConfigureAwait(false);
                 problems = ProblemLine.From(result.Problems);
                 if (result.Outcome == SettingsApplyOutcome.AppliedButNotSaved)
                 {

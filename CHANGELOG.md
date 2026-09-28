@@ -67,6 +67,14 @@ All notable changes to SmartZoom are recorded here. The format follows
 
 ### Fixed
 
+- **A setting changed while something else was changing no longer puts the other change back.** Every part of
+  the settings window and the tray used to read the settings, edit a copy, and then hand the result over to be
+  applied — and the applier can be busy for as long as a zoom in flight takes. Anything that changed in that
+  window was silently undone by the copy, which still held the old value for every field: switching off from
+  the tray and then moving a slider could turn zooming back on, and write that to the file. Callers now say
+  what to change rather than what the result should be, and the copy is made where the change is applied, so
+  there is no copy to go stale.
+
 - **A zoom over a plain part of a page is no longer mistaken for a page that blocks zooming.** Whether a pinch
   took effect is decided by comparing the screen around the cursor before and after it. Over a wide margin, an
   empty panel or a flat image there is nothing in that region to move, so a gesture that worked perfectly read
