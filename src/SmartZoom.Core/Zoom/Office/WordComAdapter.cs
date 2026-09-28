@@ -87,8 +87,16 @@ public sealed partial class WordComAdapter : ZoomAdapter<WordViewState>
             var scale = Math.Min((double)viewport.Width / (bounds.Width + (2 * _margin)), _maxScale);
             if (scale < _minScale)
             {
-                LogAlreadyFits(target.ProcessName, bounds.Width, viewport.Width);
-                return ZoomInResult.Handled(ZoomReason.AlreadyFits);
+                // A paragraph the width of the page has no fit to compute, which in a maximised Word window
+                // is every paragraph. Magnify by the fixed factor instead of doing nothing.
+                if (_maxScale <= 1)
+                {
+                    LogAlreadyFits(target.ProcessName, bounds.Width, viewport.Width);
+                    return ZoomInResult.Handled(ZoomReason.AlreadyFits);
+                }
+
+                scale = _maxScale;
+                LogMagnifying(target.ProcessName, scale);
             }
 
             var targetZoom = Math.Clamp((int)Math.Round(before.ZoomPercent * scale), MinWordZoom, MaxWordZoom);
@@ -175,6 +183,9 @@ public sealed partial class WordComAdapter : ZoomAdapter<WordViewState>
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Word's document pane in {Process} has no size (closed or minimised); nothing was zoomed.")]
     private partial void LogNoViewport(string? process);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Smart zoom (Word): nothing to fit in {Process}; magnifying x{Scale:F2} instead.")]
+    private partial void LogMagnifying(string? process, double scale);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Block ({Width} px) already fills the {ViewportWidth} px pane in {Process}; nothing to zoom.")]
     private partial void LogAlreadyFits(string? process, int width, int viewportWidth);

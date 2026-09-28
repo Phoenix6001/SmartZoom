@@ -27,7 +27,7 @@ public sealed class BrowserAdapterTests
     private readonly FakePinch _pinch = new();
     private readonly FakeScreenSampler _screen = new();
 
-    private IZoomAdapter Create(bool animate = true, bool ctrlWheelWhenPinchBlocked = true) =>
+    private IZoomAdapter Create(bool animate = true, bool ctrlWheelWhenPinchBlocked = true, double amount = 3.0) =>
         new BrowserAdapter(
             _hits,
             _pinch,
@@ -35,17 +35,18 @@ public sealed class BrowserAdapterTests
             new ZoomSettings
             {
                 Animate = animate,
+                MaxScale = amount,
                 Smart = new SmartZoomTuning { AnimationMs = 180 },
                 Browser = new BrowserZoomSettings { AnchorInsetPx = 0, CtrlWheelWhenPinchBlocked = ctrlWheelWhenPinchBlocked },
             },
             NullLogger<BrowserAdapter>.Instance);
 
     [Fact]
-    public async Task Zooms_the_paragraph_and_remembers_the_plan()
+    public async Task Zooms_by_the_configured_amount_around_the_cursor_and_remembers_the_plan()
     {
         _hits.Result = ParagraphHit;
 
-        var result = await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None);
+        var result = await Create(amount: 2.5).ZoomInAsync(Brave, Cursor, CancellationToken.None);
 
         Assert.Equal(ZoomInStatus.Applied, result.Status);
 
@@ -53,9 +54,32 @@ public sealed class BrowserAdapterTests
         // shrink-and-rebound, so nothing may precede it.
         Assert.Single(_pinch.Calls);
         var pinch = _pinch.Calls[0];
-        Assert.Equal(1874.0 / (949 + 32), pinch.Factor, precision: 6);
+        Assert.Equal(2.5, pinch.Factor, precision: 9);
+        Assert.Equal(Cursor, pinch.Anchor);
         Assert.Equal(TimeSpan.FromMilliseconds(180), pinch.Duration);
         Assert.Equal(pinch.Factor, Assert.IsType<BrowserAdapter.RestoreState>(result.RestoreState).Plan.Scale);
+    }
+
+    [Fact]
+    public async Task The_amount_does_not_depend_on_what_the_cursor_happened_to_land_on()
+    {
+        // The whole point. A narrow image and a paragraph most of the width of the window used to zoom x3.00
+        // and x1.12 respectively — the same press doing visibly different things a few pixels apart.
+        var narrow = new ContentHit(
+            [new ContentNode(ContentRole.Image, PixelRect.FromSize(900, 1100, 252, 190)), new ContentNode(ContentRole.Document, Viewport)],
+            Viewport);
+        var wide = new ContentHit(
+            [new ContentNode(ContentRole.Group, PixelRect.FromSize(470, 800, 1630, 40)), new ContentNode(ContentRole.Document, Viewport)],
+            Viewport);
+
+        foreach (var hit in new[] { narrow, wide })
+        {
+            _pinch.Calls.Clear();
+            _hits.Result = hit;
+
+            Assert.Equal(ZoomInStatus.Applied, (await Create(amount: 3.0).ZoomInAsync(Brave, Cursor, CancellationToken.None)).Status);
+            Assert.Equal(3.0, Assert.Single(_pinch.Calls).Factor, precision: 9);
+        }
     }
 
     [Fact]
@@ -86,36 +110,17 @@ public sealed class BrowserAdapterTests
     }
 
     [Fact]
-    public async Task No_block_resets_a_possibly_stuck_zoom_and_looks_again_before_giving_up()
+    public async Task A_page_with_no_content_under_the_cursor_still_zooms_by_the_amount()
     {
+        // A document and nothing else: no structure to reason about, and the press still asked for a zoom.
         _hits.Result = new ContentHit([new ContentNode(ContentRole.Document, Viewport)], Viewport);
-
-        var result = await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None);
-
-        Assert.Equal(ZoomInStatus.Handled, result.Status);
-        Assert.Equal(ZoomReason.NoBlock, result.Reason);
-
-        // One instant pinch-out (invisible on an unzoomed page, a reset on a zoomed one) and one more look.
-        var reset = Assert.Single(_pinch.Calls);
-        Assert.Equal(0.9 / 3.0, reset.Factor, precision: 9);
-        Assert.Equal(TimeSpan.Zero, reset.Duration);
-        Assert.Equal(2, _hits.Calls);
-    }
-
-    [Fact]
-    public async Task Block_found_after_the_reset_is_zoomed()
-    {
-        _hits.Result = new ContentHit([new ContentNode(ContentRole.Document, Viewport)], Viewport);
-        _hits.Next = ParagraphHit;
 
         var result = await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None);
 
         Assert.Equal(ZoomInStatus.Applied, result.Status);
-
-        // The reset that rescued the hit-test, then the zoom itself — and nothing in between.
-        Assert.Equal(2, _pinch.Calls.Count);
-        Assert.Equal(0.9 / 3.0, _pinch.Calls[0].Factor, precision: 9);
-        Assert.Equal(TimeSpan.Zero, _pinch.Calls[0].Duration);
+        var pinch = Assert.Single(_pinch.Calls);
+        Assert.Equal(3.0, pinch.Factor, precision: 9);
+        Assert.Equal(Cursor, pinch.Anchor);
     }
 
     [Fact]
@@ -129,31 +134,6 @@ public sealed class BrowserAdapterTests
 
         var only = Assert.Single(_pinch.Calls);
         Assert.True(only.Factor > 1, "the one gesture should be the zoom itself, not a pinch-out below 1.0");
-    }
-
-    [Fact]
-    public async Task Block_that_already_fits_is_handled_without_a_gesture()
-    {
-        _hits.Result = new ContentHit(
-            [new ContentNode(ContentRole.Group, PixelRect.FromSize(470, 800, 1800, 300)), new ContentNode(ContentRole.Document, Viewport)],
-            Viewport);
-
-        // 1800 of 1874 px is 96% of the viewport: too wide for the block selector, so nothing to zoom.
-        var tooWide = await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None);
-        Assert.Equal(ZoomInStatus.Handled, tooWide.Status);
-        Assert.Equal(ZoomReason.NoBlock, tooWide.Reason);
-
-        _hits.Result = new ContentHit(
-            [new ContentNode(ContentRole.Group, PixelRect.FromSize(470, 800, 1680, 300)), new ContentNode(ContentRole.Document, Viewport)],
-            Viewport);
-
-        // 1680 px qualifies as a block but the resulting scale (1.09) is below MinScale.
-        var belowMinScale = await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None);
-        Assert.Equal(ZoomInStatus.Handled, belowMinScale.Status);
-        Assert.Equal(ZoomReason.AlreadyFits, belowMinScale.Reason);
-
-        // The first case made one instant reset pinch (see the stuck-zoom test); the second made no gesture at all.
-        Assert.Single(_pinch.Calls);
     }
 
     [Fact]
@@ -219,14 +199,17 @@ public sealed class BrowserAdapterTests
         Assert.Equal(ZoomInStatus.Applied, result.Status);
         Assert.Equal(2, _pinch.Calls.Count);
 
-        // The same zoom, only aimed above the block that refused it and on the original anchor's column.
+        // The same zoom, aimed the required clearance away from the point that refused it. Chromium reads
+        // touch-action from where the contacts land, so the retry has to start clear of it.
         var first = _pinch.Calls[0];
         var retry = _pinch.Calls[1];
         Assert.Equal(first.Factor, retry.Factor);
         Assert.Equal(first.Duration, retry.Duration);
         Assert.Equal(first.Bounds, retry.Bounds);
-        Assert.Equal(first.Anchor.X, retry.Anchor.X);
-        Assert.Equal(1133 - RetryAnchor.OutsideGap, retry.Anchor.Y);
+
+        var moved = Math.Abs(retry.Anchor.X - first.Anchor.X) + Math.Abs(retry.Anchor.Y - first.Anchor.Y);
+        Assert.Equal(RetryAnchor.OutsideGap, moved);
+        Assert.True(first.Bounds.Contains(retry.Anchor));
 
         // The restore has to reverse the gesture that happened, not the one the page refused.
         var state = Assert.IsType<BrowserAdapter.RestoreState>(result.RestoreState);
@@ -260,7 +243,8 @@ public sealed class BrowserAdapterTests
     public async Task A_page_that_blocks_every_anchor_is_unhandled_so_the_coordinator_can_page_zoom_instead()
     {
         _hits.Result = ParagraphHit;
-        for (var i = 0; i < 6; i++)
+        // Four gestures are verified: the zoom, its two retries, and the one after the page is cleared.
+        for (var i = 0; i < 8; i++)
             _screen.Frames.Enqueue(90);
 
         var result = await Create(ctrlWheelWhenPinchBlocked: true).ZoomInAsync(Brave, Cursor, CancellationToken.None);
@@ -268,15 +252,16 @@ public sealed class BrowserAdapterTests
         Assert.Equal(ZoomInStatus.Unhandled, result.Status);
         Assert.Null(result.RestoreState);
 
-        // The zoom and its two retries, and nothing more: a refused press costs three gestures.
-        Assert.Equal(3, _pinch.Calls.Count);
+        // The zoom, its two retries, the clearing pinch and one more attempt: a page that really does block
+        // gestures costs five, and only then is the press handed to page zoom.
+        Assert.Equal(5, _pinch.Calls.Count);
     }
 
     [Fact]
     public async Task A_page_that_blocks_every_anchor_is_reported_and_left_alone_when_page_zoom_is_not_wanted()
     {
         _hits.Result = ParagraphHit;
-        for (var i = 0; i < 6; i++)
+        for (var i = 0; i < 8; i++)
             _screen.Frames.Enqueue(90);
 
         var result = await Create(ctrlWheelWhenPinchBlocked: false).ZoomInAsync(Brave, Cursor, CancellationToken.None);
@@ -285,7 +270,40 @@ public sealed class BrowserAdapterTests
         Assert.Equal(ZoomReason.GestureRefused, result.Reason);
         Assert.Equal("pinch blocked by the page", result.Detail);
         Assert.Null(result.RestoreState);
-        Assert.Equal(3, _pinch.Calls.Count);
+        Assert.Equal(5, _pinch.Calls.Count);
+    }
+
+    [Fact]
+    public async Task A_page_already_zoomed_as_far_as_it_goes_is_cleared_and_zoomed_rather_than_page_zoomed()
+    {
+        // The reason the fallback is not reached on the third refusal. Chromium clamps the visual viewport at
+        // x4, so a page already there swallows every gesture exactly the way one with touch-action: none does
+        // — and this is a zoom the process does not remember, which the check at the top of ZoomInAsync cannot
+        // always see, because Chromium only bakes the scale into the accessibility tree when it next
+        // re-serializes it. Falling back here would stack page zoom on top of a pinch zoom, and the next press
+        // would take only one of the two off.
+        _hits.Result = ParagraphHit;
+
+        // The zoom and its two retries change nothing; the one after the page is cleared does.
+        for (var i = 0; i < 6; i++)
+            _screen.Frames.Enqueue(90);
+        _screen.Frames.Enqueue(90);
+        _screen.Frames.Enqueue(200);
+
+        var result = await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None);
+
+        Assert.Equal(ZoomInStatus.Applied, result.Status);
+        Assert.Equal(5, _pinch.Calls.Count);
+
+        // The clearing pinch: below 1.0, and instant so it is not seen as a gesture of its own.
+        Assert.True(_pinch.Calls[3].Factor < 1);
+        Assert.Equal(TimeSpan.Zero, _pinch.Calls[3].Duration);
+
+        // What is remembered is the gesture that actually took, so the next press undoes exactly it.
+        var state = Assert.IsType<BrowserAdapter.RestoreState>(result.RestoreState);
+        Assert.Equal(3.0, state.Plan.Scale, precision: 9);
+        Assert.Equal(_pinch.Calls[4].Anchor, state.Plan.Anchor);
+        Assert.Equal(3.0, _pinch.Calls[4].Factor, precision: 9);
     }
 
     [Fact]
@@ -413,8 +431,9 @@ public sealed class BrowserAdapterTests
         var tiny = PixelRect.FromSize(100, 100, 40, 30);
         _hits.Result = new ContentHit([new ContentNode(ContentRole.Document, tiny)], tiny);
 
-        Assert.Equal(ZoomInStatus.Handled, (await Create().ZoomInAsync(Brave, new ScreenPoint(101, 101), CancellationToken.None)).Status);
+        Assert.Equal(ZoomInStatus.Applied, (await Create().ZoomInAsync(Brave, new ScreenPoint(101, 101), CancellationToken.None)).Status);
 
+        // With no inset range to clamp the cursor into, the anchor falls back to the middle of what there is.
         Assert.Equal(new ScreenPoint(120, 114), Assert.Single(_pinch.Calls).Anchor);
     }
 
@@ -442,8 +461,8 @@ public sealed class BrowserAdapterTests
         Assert.True(_pinch.Calls[0].Factor < 1);
         Assert.Equal(TimeSpan.Zero, _pinch.Calls[0].Duration);
 
-        // The zoom itself, planned from the tree as it reads once the page is back at 1.0.
-        Assert.Equal(1874.0 / (949 + 32), _pinch.Calls[1].Factor, precision: 6);
+        // The zoom itself, by the configured amount, once the page is back at 1.0.
+        Assert.Equal(3.0, _pinch.Calls[1].Factor, precision: 9);
         Assert.Equal(
             _pinch.Calls[1].Factor,
             Assert.IsType<BrowserAdapter.RestoreState>(result.RestoreState).Plan.Scale);

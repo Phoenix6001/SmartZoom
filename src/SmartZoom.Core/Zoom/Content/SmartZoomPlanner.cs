@@ -13,7 +13,7 @@ namespace SmartZoom.Core.Zoom.Content;
 /// the viewport. Asking for anything outside would make the browser scroll the page itself, which is
 /// not undone by zooming back out.
 /// </remarks>
-/// <param name="MinScale">Smallest zoom worth doing; below it the trigger is a no-op.</param>
+/// <param name="MinScale">Smallest fit worth doing; below it there is nothing to fit to and <see cref="SmartZoomPlanner.Magnify"/> is the answer.</param>
 /// <param name="MaxScale">Largest zoom; keeps tiny blocks from becoming absurd.</param>
 /// <param name="Margin">Breathing room, in pixels, between the block and the viewport edges after zooming.</param>
 public sealed record SmartZoomPlanner(double MinScale = 1.1, double MaxScale = 3.0, int Margin = 16)
@@ -59,5 +59,36 @@ public sealed record SmartZoomPlanner(double MinScale = 1.1, double MaxScale = 3
             PixelRect.ClampWithInset(viewport.Top + (regionTop * scale / (scale - 1)), viewport.Top, viewport.Bottom - 1, insets.Y));
 
         return new ZoomPlan(scale, anchor);
+    }
+
+    /// <summary>Zooms by <see cref="MaxScale"/> around the cursor.</summary>
+    /// <param name="viewport">Visible area, physical pixels.</param>
+    /// <param name="cursor">Cursor position; the one point the zoom leaves where it is.</param>
+    /// <param name="insets">Extra keep-out from the viewport edges for the anchor.</param>
+    /// <returns>The plan, or null when there is no viewport to zoom.</returns>
+    /// <remarks>
+    /// <para>
+    /// One amount, wherever the press lands. Scaling the thing under the cursor to fill the width instead
+    /// sounds like the smarter rule and is not: it makes how much a press zooms depend on how wide the thing
+    /// you happened to point at is. A narrow image grew threefold and a paragraph most of the width of the
+    /// window grew by a twelfth, which reads as the zoom being broken in places rather than as a rule.
+    /// </para>
+    /// <para>
+    /// Anchoring on the cursor is what makes it predictable: the pixel under the pointer is the one the zoom
+    /// holds still. The zoomed view is then a <c>1/MaxScale</c>-sized window around a point that is itself
+    /// inside the viewport, so it can never fall outside — the page is never asked to scroll, and zooming
+    /// back out is exact.
+    /// </para>
+    /// </remarks>
+    public ZoomPlan? Magnify(PixelRect viewport, ScreenPoint cursor, AnchorInsets insets = default)
+    {
+        if (viewport.IsEmpty || MaxScale <= 1)
+            return null;
+
+        return new ZoomPlan(
+            MaxScale,
+            new ScreenPoint(
+                PixelRect.ClampWithInset(cursor.X, viewport.Left, viewport.Right - 1, insets.X),
+                PixelRect.ClampWithInset(cursor.Y, viewport.Top, viewport.Bottom - 1, insets.Y)));
     }
 }

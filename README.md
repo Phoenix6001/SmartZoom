@@ -117,8 +117,8 @@ restart, exactly as a change made in the window does.
     }
   },
   "Zoom": {
-    "MinScale": 1.1,
-    "MaxScale": 3.0,
+    "MinScale": 1.1,              // Word and Excel only: below this a fit is not worth the motion
+    "MaxScale": 3.0,              // how much a press zooms; in a browser this is the amount, exactly
     "Animate": true,
     "FallbackToCtrlWheel": true,   // use Ctrl+wheel when a richer strategy can't act
     "CtrlWheel": { "Ticks": 6, "IntervalMs": 20 },

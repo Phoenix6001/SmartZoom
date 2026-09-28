@@ -102,8 +102,8 @@
                         <ColumnDefinition Width="100" />
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0" Margin="0,0,20,0">
-                        <TextBlock Style="{StaticResource RowTitle}" Text="Smallest zoom worth doing" />
-                        <TextBlock Style="{StaticResource RowNote}" Text="A block that would only grow by less than this is left alone, because the motion would cost more than it gained." />
+                        <TextBlock Style="{StaticResource RowTitle}" Text="Smallest fit worth having in Word and Excel" />
+                        <TextBlock Style="{StaticResource RowNote}" Text="Word and Excel scale the paragraph or block of cells under the cursor to fit the window. One that would only grow by less than this is zoomed by the amount instead, because the motion would cost more than it gained. Browsers always use the amount." />
                     </StackPanel>
                     <Slider Grid.Column="1"
                             Style="{StaticResource Slider.Setting}"

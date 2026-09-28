@@ -17,7 +17,10 @@ public sealed class ExcelComAdapterTests
 
     // A 1000 px pane and a 32 px margin leave 96.8% of the width, so a 300% fit is kept as 290%.
     private IZoomAdapter Create(double maxScale = 3.0, double minScale = 1.1) =>
-        new ExcelComAdapter(_excel, new ZoomSettings { MinScale = minScale, MaxScale = maxScale }, NullLogger<ExcelComAdapter>.Instance);
+        new ExcelComAdapter(
+            _excel,
+            new ZoomSettings { MinScale = minScale, MaxScale = maxScale },
+            NullLogger<ExcelComAdapter>.Instance);
 
     [Fact]
     public async Task Zoom_in_keeps_the_fitting_zoom_and_scrolls_the_block_to_the_top_left()
@@ -76,11 +79,24 @@ public sealed class ExcelComAdapterTests
     }
 
     [Fact]
-    public async Task A_block_that_already_fills_the_pane_is_left_alone_and_the_view_put_back()
+    public async Task A_block_that_already_fills_the_pane_is_zoomed_by_the_amount_instead()
     {
         _excel.Window.Block = new ExcelFit(FitZoomPercent: 105, PaneWidthPx: 1000, Row: 3, Column: 1, Rows: 60, Columns: 20, CursorRow: 3);
 
         var result = await Create(minScale: 1.1).ZoomInAsync(Excel, Cursor, CancellationToken.None);
+
+        // Measuring the fit moves the view, so it is put back before the amount is applied from the zoom
+        // the user actually had: 100% x the 3.0 amount.
+        Assert.Equal(ZoomInStatus.Applied, result.Status);
+        Assert.Equal(300, _excel.Window.Zoom);
+    }
+
+    [Fact]
+    public async Task A_block_that_already_fills_the_pane_with_no_magnification_is_left_alone_and_the_view_put_back()
+    {
+        _excel.Window.Block = new ExcelFit(FitZoomPercent: 105, PaneWidthPx: 1000, Row: 3, Column: 1, Rows: 60, Columns: 20, CursorRow: 3);
+
+        var result = await Create(minScale: 1.1, maxScale: 1).ZoomInAsync(Excel, Cursor, CancellationToken.None);
 
         Assert.Equal(ZoomInStatus.Handled, result.Status);
         Assert.Equal(ZoomReason.AlreadyFits, result.Reason);

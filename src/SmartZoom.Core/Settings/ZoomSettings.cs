@@ -3,10 +3,18 @@ namespace SmartZoom.Core.Settings;
 /// <summary>Zoom behavior shared by all adapters.</summary>
 public sealed class ZoomSettings
 {
-    /// <summary>Smallest zoom factor a smart zoom will apply.</summary>
+    /// <summary>
+    /// Smallest zoom worth the motion, for the strategies that compute a fit of their own (Word and Excel).
+    /// Browsers zoom by <see cref="MaxScale"/> wherever the press lands and never consult this.
+    /// </summary>
     public double MinScale { get; set; } = 1.1;
 
-    /// <summary>Largest zoom factor a smart zoom will apply.</summary>
+    /// <summary>
+    /// How much a press zooms. The tray's <c>Zoom amount</c> sets this, and in a browser it is the amount
+    /// exactly: the same everywhere on the page, whatever the cursor happens to be over. Word and Excel,
+    /// which fit the block they can identify, treat it as the ceiling on that fit and as the amount when
+    /// there is no fit worth having.
+    /// </summary>
     public double MaxScale { get; set; } = 3.0;
 
     /// <summary>Animate zoom transitions where the adapter supports it.</summary>

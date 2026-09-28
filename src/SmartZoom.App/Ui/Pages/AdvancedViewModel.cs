@@ -100,7 +100,7 @@ internal sealed partial class AdvancedViewModel : ObservableObject, IPageModel
     /// <summary>The largest zoom the way somebody would say it: "3× bigger".</summary>
     public string MaxScaleLabel => Times(_maxScale) + " bigger";
 
-    /// <summary>Below this, a zoom is not worth the motion and the press does nothing.</summary>
+    /// <summary>Word and Excel only: below this a fit is not worth having, and the amount applies instead.</summary>
     public double MinScale
     {
         get => _minScale;

@@ -23,8 +23,12 @@ public sealed class WordComAdapterTests : IDisposable
 
     public void Dispose() => _word.Dispose();
 
-    private IZoomAdapter Create(bool animate = false) =>
-        new WordComAdapter(_word, new ZoomSettings { Animate = animate, Smart = new SmartZoomTuning { AnimationMs = 100, MarginPx = 16 } }, _time, NullLogger<WordComAdapter>.Instance);
+    private IZoomAdapter Create(bool animate = false, double amount = 2.0) =>
+        new WordComAdapter(
+            _word,
+            new ZoomSettings { Animate = animate, MaxScale = amount, Smart = new SmartZoomTuning { AnimationMs = 100, MarginPx = 16 } },
+            _time,
+            NullLogger<WordComAdapter>.Instance);
 
     /// <summary>Runs an animated zoom to completion, stepping the fake clock through each animation delay.</summary>
     private async Task Animate(Task zoom)
@@ -93,11 +97,24 @@ public sealed class WordComAdapterTests : IDisposable
     }
 
     [Fact]
-    public async Task Block_that_already_fills_the_pane_is_left_alone()
+    public async Task Block_that_already_fills_the_pane_is_magnified_by_the_fixed_factor()
     {
+        // A paragraph the width of the page, which in a maximised window is every paragraph: no fit to
+        // compute, so the fixed factor applies rather than the press doing nothing.
         _word.Block = PixelRect.FromSize(210, 850, 1500, 120);
 
         var result = await Create().ZoomInAsync(Word, Cursor, CancellationToken.None);
+
+        Assert.Equal(ZoomInStatus.Applied, result.Status);
+        Assert.Equal(200, _word.Zoom);
+    }
+
+    [Fact]
+    public async Task Block_that_already_fills_the_pane_with_no_magnification_is_left_alone()
+    {
+        _word.Block = PixelRect.FromSize(210, 850, 1500, 120);
+
+        var result = await Create(amount: 1).ZoomInAsync(Word, Cursor, CancellationToken.None);
 
         Assert.Equal(ZoomInStatus.Handled, result.Status);
         Assert.Equal(ZoomReason.AlreadyFits, result.Reason);

@@ -8,6 +8,18 @@ All notable changes to SmartZoom are recorded here. The format follows
 
 ### Changed
 
+- **A browser press now zooms by the amount you set, everywhere on the page**
+  ([#14](https://github.com/Phoenix6001/SmartZoom/issues/14)). Smart zoom used to scale whatever was under
+  the cursor to the width of the window. That sounds like the smarter rule and is not: it made *how much* a
+  press zooms depend on how wide the thing you happened to point at was. A narrow image grew threefold; a
+  paragraph running most of the width of the window grew by a twelfth — barely visible — and one that ran the
+  whole width had nothing to fit to at all and did nothing, silently. The same press did visibly different
+  things a few pixels apart, which reads as the zoom being broken in places rather than as a rule. It now
+  zooms by **Zoom amount** (the tray menu, or **Largest zoom** on the Advanced page — `Zoom.MaxScale`),
+  the same wherever the press lands, anchored on the pointer so the pixel you aimed at is the one that stays
+  still. Word and Excel still fit the block they can identify, since they can re-flow rather than magnify,
+  and fall back to the same amount when there is no fit worth having.
+
 - **Diagnostics is its own page.** The record of what did not work used to be the fourth section of Advanced,
   below zoom tuning, PDF readers and logging â€” but two other surfaces send people to it: the status card in the
   window's corner counts recorded issues, and the tray offers **Diagnostic reportâ€¦**. Both landed at the top of
@@ -66,6 +78,15 @@ All notable changes to SmartZoom are recorded here. The format follows
   arrow cursor; the motion is its whole answer to the pointer.
 
 ### Fixed
+
+- **A page already zoomed as far as it goes is cleared rather than page-zoomed on top.** Chromium stops
+  magnifying at four times, and a page sitting at that ceiling swallows a pinch in exactly the way a page
+  that blocks gestures outright does: the gesture goes in cleanly and nothing moves. SmartZoom read that as
+  "this page blocks pinch zoom" and handed the press to the browser's own page zoom — which is a second,
+  separate zoom stacked on the first, so the page magnified twice and the next press took only one of the two
+  back off. The zoom is now cleared and tried once more before the fallback is considered, so page zoom is
+  only ever reached by a page that genuinely refuses. A page that really does block gestures costs one extra
+  gesture and behaves exactly as before.
 
 - **A Word or Excel dialog no longer takes zooming down with it for the rest of the session.** Office answers
   its object model only between its own message pumps, so a modal dialog — Save As, "do you want to save your
