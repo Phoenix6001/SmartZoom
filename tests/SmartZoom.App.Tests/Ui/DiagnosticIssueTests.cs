@@ -125,6 +125,21 @@ public sealed class DiagnosticIssueTests
             Assert.DoesNotContain("UiThread", ui.Detail, StringComparison.Ordinal);
         }
 
+        [Fact]
+        public void A_zoom_that_ran_past_its_deadline_says_so_rather_than_saying_an_error_was_raised()
+        {
+            // The dispatcher records an abandoned zoom as a failure like any other, but nothing threw and
+            // "the strategy raised an error" would send somebody looking for a bug rather than at the dialog
+            // the application is actually showing.
+            var issue = Assert.Single(DiagnosticIssue.Summarise(
+                [new DiagnosticCounter(new DiagnosticKey(DiagnosticKind.AdapterThrew, "EXCEL", null, nameof(TimeoutException)), 1, Now, Now)],
+                Now));
+
+            Assert.True(issue.IsError);
+            Assert.Contains("did not answer in time", issue.Detail, StringComparison.Ordinal);
+            Assert.DoesNotContain("raised an error", issue.Detail, StringComparison.Ordinal);
+        }
+
         [Theory]
         [InlineData(0, "just now")]
         [InlineData(5, "5 minutes ago")]

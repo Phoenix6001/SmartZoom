@@ -138,7 +138,9 @@ public sealed partial class WordAutomation(ILogger<WordAutomation> logger) : IWo
             w.HorizontalPercentScrolled = state.HorizontalPercent;
         });
 
-        public void Dispose() => sta.Run(() =>
+        // Posted rather than waited on: the reference is released whenever Office next answers, and a
+        // disposal at the end of a failed zoom must not throw a timeout over the failure that caused it.
+        public void Dispose() => sta.Post(() =>
         {
             // One release for the one reference this object took; the runtime may be sharing the wrapper with
             // another caller, and FinalReleaseComObject would pull it out from under them.

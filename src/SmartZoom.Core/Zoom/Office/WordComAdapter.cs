@@ -99,7 +99,7 @@ public sealed partial class WordComAdapter : ZoomAdapter<WordViewState>
 
             return Applied(before);
         }
-        catch (COMException ex)
+        catch (Exception ex) when (ex is COMException or TimeoutException)
         {
             LogComFailure(ex, target.ProcessName);
             TryRestore(window, captured);
@@ -119,7 +119,7 @@ public sealed partial class WordComAdapter : ZoomAdapter<WordViewState>
             await AnimateZoomAsync(window, window.GetState().ZoomPercent, restoreState.ZoomPercent, cancellationToken).ConfigureAwait(false);
             window.Restore(restoreState);
         }
-        catch (COMException ex)
+        catch (Exception ex) when (ex is COMException or TimeoutException)
         {
             LogComFailure(ex, target.ProcessName);
         }
@@ -136,7 +136,7 @@ public sealed partial class WordComAdapter : ZoomAdapter<WordViewState>
         {
             window.Restore(state);
         }
-        catch (COMException)
+        catch (Exception ex) when (ex is COMException or TimeoutException)
         {
             // Word is still unwell; the user's next trigger will set the zoom anyway.
         }
@@ -182,6 +182,6 @@ public sealed partial class WordComAdapter : ZoomAdapter<WordViewState>
     [LoggerMessage(Level = LogLevel.Information, Message = "Smart zoom (Word): block {Width}x{Height} px in {ViewportWidth} px pane -> zoom {From}% to {To}%.")]
     private partial void LogPlan(int width, int height, int viewportWidth, int from, int to);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Word's object model refused the request in {Process} (busy or window closed); nothing was zoomed.")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Word did not act on the request in {Process} (busy, showing a dialog, or the window closed); nothing was zoomed.")]
     private partial void LogComFailure(Exception exception, string? process);
 }

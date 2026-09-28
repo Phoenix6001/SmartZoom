@@ -5,8 +5,9 @@ namespace SmartZoom.Core.Zoom.Office;
 
 /// <summary>A Word document window that SmartZoom is attached to.</summary>
 /// <remarks>Implementations talk to Word's object model; every member may throw
-/// <see cref="System.Runtime.InteropServices.COMException"/> if Word is busy (modal dialog) or the
-/// window has closed. Callers treat that as "nothing was zoomed".</remarks>
+/// <see cref="System.Runtime.InteropServices.COMException"/> if the window has closed, or
+/// <see cref="TimeoutException"/> if Word is busy or showing a dialog and does not answer at all.
+/// Callers treat both as "nothing was zoomed".</remarks>
 public interface IWordWindow : IDisposable
 {
     /// <summary>Screen bounds of the document pane in physical pixels.</summary>

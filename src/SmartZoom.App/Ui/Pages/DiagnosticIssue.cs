@@ -115,7 +115,14 @@ internal sealed record DiagnosticIssue(bool IsError, string Headline, string Det
             return "It was recorded here rather than being lost; the report below has the details.";
 
         if (kind == DiagnosticKind.AdapterThrew)
+        {
+            // A zoom that ran past its deadline is recorded as a failure like any other, but it is the one
+            // kind with an answer the user can act on, so it does not get the generic sentence.
+            if (reason == nameof(TimeoutException))
+                return "The application did not answer in time and the zoom was abandoned. It was most likely showing a dialog.";
+
             return strategy is null ? "The strategy handling it raised an error." : $"The {strategy} strategy raised an error.";
+        }
 
         if (!Enum.TryParse<ZoomReason>(reason, out var parsed))
             return reason is { Length: > 0 } raw ? raw : "No reason was recorded.";

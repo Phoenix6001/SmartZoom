@@ -5,8 +5,9 @@ namespace SmartZoom.Core.Zoom.Office;
 /// <summary>An Excel worksheet window that SmartZoom is attached to.</summary>
 /// <remarks>
 /// Implementations talk to Excel's object model; every member may throw
-/// <see cref="System.Runtime.InteropServices.COMException"/> when Excel is busy (a modal dialog, or the user
-/// is editing a cell) or the window has closed. Callers treat that as "nothing was zoomed".
+/// <see cref="System.Runtime.InteropServices.COMException"/> when the window has closed, or
+/// <see cref="TimeoutException"/> when Excel is busy — a modal dialog, or the user part-way through editing
+/// a cell — and does not answer at all. Callers treat both as "nothing was zoomed".
 /// </remarks>
 public interface IExcelWindow : IDisposable
 {

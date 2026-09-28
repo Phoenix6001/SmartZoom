@@ -104,7 +104,7 @@ public sealed partial class ExcelComAdapter : ZoomAdapter<ExcelViewState>
             LogPlan(block.Rows, block.Columns, before.ZoomPercent, targetZoom);
             return Applied(before);
         }
-        catch (COMException ex)
+        catch (Exception ex) when (ex is COMException or TimeoutException)
         {
             LogComFailure(ex, target.ProcessName);
             TryRestore(window, captured);
@@ -125,7 +125,7 @@ public sealed partial class ExcelComAdapter : ZoomAdapter<ExcelViewState>
         {
             window.Restore(restoreState);
         }
-        catch (COMException ex)
+        catch (Exception ex) when (ex is COMException or TimeoutException)
         {
             LogComFailure(ex, target.ProcessName);
         }
@@ -142,7 +142,7 @@ public sealed partial class ExcelComAdapter : ZoomAdapter<ExcelViewState>
         {
             window.Restore(state);
         }
-        catch (COMException)
+        catch (Exception ex) when (ex is COMException or TimeoutException)
         {
             // Excel is still unwell; the user's next trigger will set the zoom anyway.
         }
@@ -157,6 +157,6 @@ public sealed partial class ExcelComAdapter : ZoomAdapter<ExcelViewState>
     [LoggerMessage(Level = LogLevel.Information, Message = "Smart zoom (Excel): block of {Rows} rows x {Columns} columns -> zoom {From}% to {To}%.")]
     private partial void LogPlan(int rows, int columns, int from, int to);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Excel's object model refused the request in {Process} (busy, editing a cell, or the window closed); nothing was zoomed.")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Excel did not act on the request in {Process} (busy, editing a cell, showing a dialog, or the window closed); nothing was zoomed.")]
     private partial void LogComFailure(Exception exception, string? process);
 }

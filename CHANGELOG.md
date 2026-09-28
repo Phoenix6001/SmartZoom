@@ -9,42 +9,42 @@ All notable changes to SmartZoom are recorded here. The format follows
 ### Changed
 
 - **Diagnostics is its own page.** The record of what did not work used to be the fourth section of Advanced,
-  below zoom tuning, PDF readers and logging — but two other surfaces send people to it: the status card in the
-  window's corner counts recorded issues, and the tray offers **Diagnostic report…**. Both landed at the top of
+  below zoom tuning, PDF readers and logging â€” but two other surfaces send people to it: the status card in the
+  window's corner counts recorded issues, and the tray offers **Diagnostic reportâ€¦**. Both landed at the top of
   Advanced, leaving three sections of tuning to scroll past. Both now open a **Diagnostics** row in the rail
-  that holds the report, its Refresh / Copy / Save… / Clear buttons, the "include recent log lines" opt-in and
+  that holds the report, its Refresh / Copy / Saveâ€¦ / Clear buttons, the "include recent log lines" opt-in and
   the switch that turns recording off. Advanced keeps zoom, PDF readers and logging. Nothing about what is
   recorded, or about it never leaving the machine, has changed.
 
 - **One click to report a problem.** The Diagnostics page has a **Report a problem** button: it ticks
   "include recent log lines", rebuilds the report on screen so you can see what it now contains, copies it, and
   opens the bug form with everything it can answer for you already filled in: the title, the application by its
-  real name, the build, the display, the issue itself as a starting description, and — where SmartZoom can tell
-  — whether vendor mouse software is running or your displays are scaled differently, which are the two things
+  real name, the build, the display, the issue itself as a starting description, and â€” where SmartZoom can tell
+  â€” whether vendor mouse software is running or your displays are scaled differently, which are the two things
   that most often explain a press that never arrived. The report and log boxes are deliberately left empty: one
   Ctrl+V fills the first with the whole report, log included, and a box holding only part of a log would look
   finished when it was not. The log goes in because a report without one usually costs a round
-  trip — but the box ticks visibly and the report is rebuilt *before* anything is copied, because showing you the
+  trip â€” but the box ticks visibly and the report is rebuilt *before* anything is copied, because showing you the
   report is the whole point and a button that quietly widened what gets shared would defeat it. SmartZoom still
   opens no connection of its own: the address goes to your browser, none of the report travels in it, and
   nothing is shared until you paste and submit.
 
 - **The Diagnostics page says what went wrong before it shows the report.** The status card counts issues and
   sends you here; what greeted you was a markdown table saying `ZoomedNothing/NoBlock`. The same events are now
-  listed at the top in sentences — "A press in brave zoomed nothing", "Something was found under the cursor, but
-  nothing there was a sensible thing to magnify. Often blank page area. · last seen 47 minutes ago" — with a red
+  listed at the top in sentences â€” "A press in brave zoomed nothing", "Something was found under the cursor, but
+  nothing there was a sensible thing to magnify. Often blank page area. Â· last seen 47 minutes ago" â€” with a red
   bar for a failure and an amber one for a press that simply found nothing to do, and a plain "nothing has gone
   wrong" when there is nothing to show. Where there is something to do about it, the line says so.
   **The list stays short however much is recorded**, because events are grouped by what happened rather than by
-  where: ten applications that all found nothing to magnify are one line — "75 presses in 10 applications zoomed
-  nothing", naming the busiest three — not ten copies of the same sentence. Failures come first whatever their
+  where: ten applications that all found nothing to magnify are one line â€” "75 presses in 10 applications zoomed
+  nothing", naming the busiest three â€” not ten copies of the same sentence. Failures come first whatever their
   count. Past five kinds the rest go behind "show more". The report underneath is unchanged, because that is
   the thing worth pasting into a bug report.
 
 - **The Applications page leads with what is supported, and shows each application's own icon and name.**
-  It used to open on an empty "Yours" list and a box asking for a process image name — the one place the
+  It used to open on an empty "Yours" list and a box asking for a process image name â€” the one place the
   settings window expected you to know whether an application is called "notepad", "Notepad" or "Notepad.exe"
-  — with the list of what actually works pushed below it. Now the supported applications come first, pictured
+  â€” with the list of what actually works pushed below it. Now the supported applications come first, pictured
   and named as they name themselves on this machine; anything not installed still shows its process name.
   Routing something of your own moved below as **Exceptions**, and is done by picking from the applications you
   have open, with typing still there for one that is not running. A new exception defaults to Ctrl+wheel rather
@@ -62,10 +62,23 @@ All notable changes to SmartZoom are recorded here. The format follows
 - **The Overview page's "Live preview" card now previews.** Hovering it plays the zoom on the little mock
   document: the block grows to the width of the window showing it, the way a smart zoom fits a block to a page,
   and settles back when the pointer leaves. It was a still drawing that looked exactly like the cards beside it
-  that navigate when clicked — so it read as broken rather than decorative. It stays non-clickable and keeps the
+  that navigate when clicked â€” so it read as broken rather than decorative. It stays non-clickable and keeps the
   arrow cursor; the motion is its whole answer to the pointer.
 
 ### Fixed
+
+- **A Word or Excel dialog no longer takes zooming down with it for the rest of the session.** Office answers
+  its object model only between its own message pumps, so a modal dialog — Save As, "do you want to save your
+  changes?", a cell part-way through being edited — simply never answers. SmartZoom waited for that answer with
+  no time limit, on the one thread that hands out zooms, so a single press made while such a dialog was up
+  parked every press afterwards: nothing happened, and nothing in the log said why, until SmartZoom was
+  restarted. Every wait is now bounded. A press made against an application that will not answer costs that
+  press and says so — "Word did not act on the request" — and the presses after it are unaffected, both because
+  the zoom is given up on and because the next call does not queue behind the same dialog. Everything goes back
+  to normal by itself the moment the dialog is dismissed. A zoom that overruns for any other reason is now
+  abandoned the same way rather than holding the next press up, and it is recorded, so the Diagnostics page
+  says "The application did not answer in time and the zoom was abandoned" instead of leaving you with a
+  trigger that quietly stopped working.
 
 - **A setting changed while something else was changing no longer puts the other change back.** Every part of
   the settings window and the tray used to read the settings, edit a copy, and then hand the result over to be

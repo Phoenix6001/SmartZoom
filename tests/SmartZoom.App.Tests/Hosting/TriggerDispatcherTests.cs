@@ -156,6 +156,52 @@ public sealed class TriggerDispatcherTests
         Assert.Empty(recorder.Snapshot().Samples);
     }
 
+    [Fact]
+    public async Task A_zoom_that_never_finishes_is_abandoned_and_recorded_rather_than_holding_up_every_press_after_it()
+    {
+        // The failure this guards against is silent and permanent: the engine hands one zoom at a time
+        // through a gate, so a strategy parked inside a modal dialog would hold that gate for the life of
+        // the process and every later trigger would be dropped with nothing in the log to say why.
+        var blocking = new BlockingAdapter();
+        var windows = new FakeWindowInspector { Target = PipelineFixtures.Target(BlockingAdapter.Process) };
+        using var temp = new TempDirectory();
+        var recorder = DiagnosticFixtures.CreateRecorder(temp.Path);
+
+        var state = new WindowZoomStateStore();
+        var engine = new ZoomEngine(PipelineFixtures.Pipeline(state, blocking), state, NullLogger<ZoomEngine>.Instance);
+        var dispatcher = new TriggerDispatcher(
+            _source, windows, engine, _activity, recorder, TimeProvider.System, NullLogger<TriggerDispatcher>.Instance,
+            zoomDeadline: TimeSpan.FromMilliseconds(200));
+
+        await dispatcher.StartAsync(CancellationToken.None);
+        _source.Writer.TryWrite(new TriggerEvent(Point, unchecked((uint)Environment.TickCount)));
+        await blocking.Entered;
+
+        // A second press, written only once the first is demonstrably stuck. It is the one that proves the
+        // dispatcher came back: without the deadline it would never be read at all.
+        _source.Writer.TryWrite(new TriggerEvent(Point, unchecked((uint)Environment.TickCount)));
+        _source.Writer.Complete();
+
+        await dispatcher.ExecuteTask!;
+
+        Assert.Equal(2, windows.Calls);
+
+        var counter = Assert.Single(recorder.Snapshot().Counters);
+        Assert.Equal(
+            new DiagnosticKey(DiagnosticKind.AdapterThrew, BlockingAdapter.Process, null, nameof(TimeoutException)),
+            counter.Key);
+        Assert.Equal(2, counter.Count);
+
+        // The report says what happened without an exception to show, because nothing threw.
+        Assert.All(recorder.Snapshot().Samples, sample =>
+        {
+            Assert.Null(sample.Exception);
+            Assert.Contains("abandoned", sample.Detail, StringComparison.Ordinal);
+        });
+
+        blocking.Release();
+    }
+
     private async Task RunOneTriggerAsync(FakeWindowInspector windows, ZoomEngine engine, DiagnosticRecorder recorder)
     {
         var dispatcher = new TriggerDispatcher(

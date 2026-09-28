@@ -10,5 +10,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/SmartZoom.App.Tests/SmartZoom.App.Tests.csproj" />
     <Project Path="tests/SmartZoom.Core.Tests/SmartZoom.Core.Tests.csproj" />
+    <Project Path="tests/SmartZoom.Interop.Tests/SmartZoom.Interop.Tests.csproj" />
   </Folder>
 </Solution>
