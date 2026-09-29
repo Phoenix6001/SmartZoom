@@ -85,26 +85,15 @@ public sealed partial class ExcelComAdapter : ZoomAdapter<ExcelViewState>
                 : block.FitZoomPercent;
 
             var scale = fit / before.ZoomPercent;
-            var fitted = scale >= _minScale;
-            if (!fitted)
+            if (scale < _minScale)
             {
-                // A block already as wide as the pane has no fit to compute. Magnify by the fixed factor
-                // instead of doing nothing — but put the view back first, because measuring the fit moved it.
                 window.Restore(before);
-                if (_maxScale <= 1)
-                {
-                    LogAlreadyFits(target.ProcessName, block.Rows, block.Columns);
-                    return ZoomInResult.Handled(ZoomReason.AlreadyFits);
-                }
-
-                scale = _maxScale;
-                LogMagnifying(target.ProcessName, scale);
+                LogAlreadyFits(target.ProcessName, block.Rows, block.Columns);
+                return ZoomInResult.Handled(ZoomReason.AlreadyFits);
             }
 
-            // The fixed factor is not a computed fit, so MaxScale does not bound it (see SmartZoomTuning).
-            var wanted = fitted ? Math.Min(scale, _maxScale) : scale;
-            var targetZoom = Math.Clamp((int)Math.Round(before.ZoomPercent * wanted), MinExcelZoom, MaxExcelZoom);
-            if (!fitted || targetZoom != block.FitZoomPercent)
+            var targetZoom = Math.Clamp((int)Math.Round(before.ZoomPercent * Math.Min(scale, _maxScale)), MinExcelZoom, MaxExcelZoom);
+            if (targetZoom != block.FitZoomPercent)
                 window.SetZoom(targetZoom);
 
             // Scroll to the cursor's own row, not the top of the block: a table taller than the pane would
@@ -161,9 +150,6 @@ public sealed partial class ExcelComAdapter : ZoomAdapter<ExcelViewState>
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Smart zoom unavailable: no data, chart or picture under the cursor in {Process}. Nothing was zoomed.")]
     private partial void LogNoBlock(string? process);
-
-    [LoggerMessage(Level = LogLevel.Information, Message = "Smart zoom (Excel): nothing to fit in {Process}; magnifying x{Scale:F2} instead.")]
-    private partial void LogMagnifying(string? process, double scale);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "The {Rows}x{Columns} block under the cursor already fills the pane in {Process}; nothing to zoom.")]
     private partial void LogAlreadyFits(string? process, int rows, int columns);
