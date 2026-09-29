@@ -72,7 +72,7 @@ public sealed partial class ExcelComAdapter : ZoomAdapter<ExcelViewState>
             var before = window.GetState();
             captured = before;
 
-            var found = window.ApplyFitToBlockAt(point);
+            var found = window.MeasureFitAt(point);
             if (found is not { } block)
             {
                 LogNoBlock(target.ProcessName);
@@ -87,24 +87,31 @@ public sealed partial class ExcelComAdapter : ZoomAdapter<ExcelViewState>
             var scale = fit / before.ZoomPercent;
             if (scale < _minScale)
             {
+                // Put the view back even though nothing is being zoomed. Measuring the fit scrolls the sheet
+                // to the block, and Excel does not follow a scroll set while it is not drawing, so without
+                // this a press that decided to do nothing still left the worksheet moved. Every other exit
+                // from here reaches ApplyView, which sets the scroll with the screen live and repairs it.
                 window.Restore(before);
                 LogAlreadyFits(target.ProcessName, block.Rows, block.Columns);
                 return ZoomInResult.Handled(ZoomReason.AlreadyFits);
             }
 
             var targetZoom = Math.Clamp((int)Math.Round(before.ZoomPercent * Math.Min(scale, _maxScale)), MinExcelZoom, MaxExcelZoom);
-            if (targetZoom != block.FitZoomPercent)
-                window.SetZoom(targetZoom);
 
+            // One change to the screen, not two. A touch gesture was tried here and removed: Excel commits
+            // one about 1.2 s after it ends and about 26% short of what was asked for (measured x1.56 asked,
+            // x1.15 delivered), so the correction to the exact fit was itself a large visible jump — the
+            // press stepped twice. Word commits in 150 ms and within 7%, which is why it keeps its gesture.
+            //
             // Scroll to the cursor's own row, not the top of the block: a table taller than the pane would
             // otherwise magnify the cell that was asked about and then leave it below the bottom of the window.
             // The column is the block's, because fitting the width already brings the whole of it into view.
             var row = Math.Max(block.Row, block.CursorRow - ContextRows);
-            window.ScrollTo(row, block.Column);
+            window.ApplyView(targetZoom, row, block.Column);
             LogPlan(block.Rows, block.Columns, before.ZoomPercent, targetZoom);
             return Applied(before);
         }
-        catch (COMException ex)
+        catch (Exception ex) when (ex is COMException or TimeoutException)
         {
             LogComFailure(ex, target.ProcessName);
             TryRestore(window, captured);
@@ -125,7 +132,7 @@ public sealed partial class ExcelComAdapter : ZoomAdapter<ExcelViewState>
         {
             window.Restore(restoreState);
         }
-        catch (COMException ex)
+        catch (Exception ex) when (ex is COMException or TimeoutException)
         {
             LogComFailure(ex, target.ProcessName);
         }
@@ -142,7 +149,7 @@ public sealed partial class ExcelComAdapter : ZoomAdapter<ExcelViewState>
         {
             window.Restore(state);
         }
-        catch (COMException)
+        catch (Exception ex) when (ex is COMException or TimeoutException)
         {
             // Excel is still unwell; the user's next trigger will set the zoom anyway.
         }
@@ -157,6 +164,6 @@ public sealed partial class ExcelComAdapter : ZoomAdapter<ExcelViewState>
     [LoggerMessage(Level = LogLevel.Information, Message = "Smart zoom (Excel): block of {Rows} rows x {Columns} columns -> zoom {From}% to {To}%.")]
     private partial void LogPlan(int rows, int columns, int from, int to);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Excel's object model refused the request in {Process} (busy, editing a cell, or the window closed); nothing was zoomed.")]
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Excel did not act on the request in {Process} (busy, editing a cell, showing a dialog, or the window closed); nothing was zoomed.")]
     private partial void LogComFailure(Exception exception, string? process);
 }

@@ -40,7 +40,15 @@ public sealed class DiagnosticSampleFactoryTests
             new FakeHitTester { Result = NothingToZoom },
             new FakePinch(),
             new FakeScreenSampler(),
-            new ZoomSettings { Animate = false, Smart = new SmartZoomTuning { AnimationMs = 0 }, Browser = new BrowserZoomSettings { AnchorInsetPx = 0 } },
+            // An amount of 1 is not a zoom, which is the one way a browser press still records having done
+            // nothing; this test needs a genuine "zoomed nothing" outcome to build a sample from.
+            new ZoomSettings
+            {
+                Animate = false,
+                MaxScale = 1,
+                Smart = new SmartZoomTuning { AnimationMs = 0 },
+                Browser = new BrowserZoomSettings { AnchorInsetPx = 0 },
+            },
             NullLogger<BrowserAdapter>.Instance);
 
         var router = new ZoomRouter(
@@ -59,14 +67,14 @@ public sealed class DiagnosticSampleFactoryTests
         // carries absolute coordinates (1438, 1361).
         var outcome = await coordinator.HandleTriggerAsync(Browser, Cursor, CancellationToken.None);
         Assert.Equal(ZoomAction.Handled, outcome.Action);
-        Assert.Equal(ZoomReason.NoBlock, outcome.Reason);
+        Assert.Equal(ZoomReason.NoContent, outcome.Reason);
 
         // The code under test: what TriggerDispatcher actually calls to build what gets recorded.
         var (key, sample) = DiagnosticSampleFactory.ForZoomedNothing(outcome, DateTimeOffset.UtcNow);
 
         Assert.Equal("brave", key.Process);
         Assert.Equal("Browser", key.Adapter);
-        Assert.Equal("NoBlock", key.Reason);
+        Assert.Equal("NoContent", key.Reason);
 
         Assert.NotNull(sample);
         var detail = sample.Detail;

@@ -1,6 +1,6 @@
 namespace SmartZoom.Core.Zoom.Office;
 
-/// <summary>What <see cref="IExcelWindow.ApplyFitToBlockAt"/> found, and the zoom it applied.</summary>
+/// <summary>What <see cref="IExcelWindow.MeasureFitAt"/> found, and the zoom it applied.</summary>
 /// <param name="FitZoomPercent">Zoom at which the block's width fills the pane, as Excel computed it.</param>
 /// <param name="PaneWidthPx">Width of the worksheet pane in physical pixels, for the margin rule.</param>
 /// <param name="Row">Top row of the block (1-based).</param>

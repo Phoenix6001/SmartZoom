@@ -9,6 +9,55 @@
             <TextBlock Style="{StaticResource Text.Base}" FontSize="13" Text="{Binding DisplayName}" />
         </DataTemplate>
 
+        <!-- One application: its own icon and name, with the process name it is matched by underneath. -->
+        <DataTemplate x:Key="ApplicationChip">
+            <StackPanel Margin="0,0,20,10" Orientation="Horizontal" ToolTip="{Binding ImageName}">
+                <Image Width="18"
+                       Height="18"
+                       VerticalAlignment="Center"
+                       RenderOptions.BitmapScalingMode="HighQuality"
+                       Source="{Binding Icon}">
+                    <Image.Style>
+                        <Style TargetType="Image">
+                            <Setter Property="Visibility" Value="Visible" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Icon}" Value="{x:Null}">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Image.Style>
+                </Image>
+                <TextBlock Style="{StaticResource Text.Muted}"
+                           Margin="7,0,0,0"
+                           VerticalAlignment="Center"
+                           FontSize="12.5"
+                           Text="{Binding DisplayName}" />
+            </StackPanel>
+        </DataTemplate>
+
+        <!-- The same, for the picker's dropdown, where the process name has to be readable too. -->
+        <DataTemplate x:Key="RunningApplication">
+            <StackPanel Orientation="Horizontal">
+                <Image Width="18"
+                       Height="18"
+                       VerticalAlignment="Center"
+                       RenderOptions.BitmapScalingMode="HighQuality"
+                       Source="{Binding Icon}" />
+                <TextBlock Style="{StaticResource Text.Base}"
+                           Margin="8,0,0,0"
+                           VerticalAlignment="Center"
+                           FontSize="13"
+                           Text="{Binding DisplayName}" />
+                <TextBlock Style="{StaticResource Text.Muted}"
+                           Margin="8,0,0,0"
+                           VerticalAlignment="Center"
+                           FontSize="11.5"
+                           Opacity="0.75"
+                           Text="{Binding ImageName}" />
+            </StackPanel>
+        </DataTemplate>
+
         <!-- One of the user's own routes. -->
         <DataTemplate x:Key="RouteTemplate">
             <Border Style="{StaticResource Card}" Margin="0,0,0,8" Padding="18,14,14,14">
@@ -63,11 +112,18 @@
                            Text="{Binding DisplayName}"
                            ToolTip="{Binding Description}" />
                 <StackPanel Grid.Column="1">
-                    <TextBlock Style="{StaticResource Text.Muted}" Text="{Binding Processes}" />
+                    <ItemsControl ItemTemplate="{StaticResource ApplicationChip}" ItemsSource="{Binding Applications}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                    </ItemsControl>
                     <TextBlock Style="{StaticResource Text.Muted}"
-                               Margin="0,3,0,0"
+                               Margin="0,0,0,0"
                                FontSize="12"
                                Opacity="0.8"
+                               TextWrapping="Wrap"
                                Text="{Binding Description}" />
                 </StackPanel>
             </Grid>
@@ -93,11 +149,32 @@
                        Margin="1,8,0,0"
                        MaxWidth="620"
                        HorizontalAlignment="Left"
-                       Text="SmartZoom already knows about the applications listed under “Built in”. You only need a row of your own to change one of those, or to add something it has never heard of." />
+                       Text="What SmartZoom zooms, and anything you have changed. In an application that is not listed here a press does nothing at all — adding an exception is how you give it the crude Ctrl+wheel zoom, or how you switch SmartZoom off somewhere it gets in the way." />
         </StackPanel>
 
-        <!-- 2. Yours -->
+        <!-- 2. Supported: the answer to "does it work in X?", so it comes first. -->
         <StackPanel Grid.Row="1" Margin="0,28,0,0" Orientation="Horizontal">
+            <Border Width="28" Height="28" Background="{DynamicResource Brush.AccentTint}" CornerRadius="8">
+                <TextBlock Style="{StaticResource Glyph}"
+                           FontSize="14"
+                           Foreground="{DynamicResource Brush.Accent}"
+                           Text="&#xE8A9;" />
+            </Border>
+            <TextBlock Style="{StaticResource Text.Section}"
+                       Margin="10,0,0,0"
+                       VerticalAlignment="Center"
+                       Text="Supported" />
+        </StackPanel>
+
+        <Border Grid.Row="2"
+                Style="{StaticResource Card}"
+                Margin="0,14,0,0"
+                Padding="20,18,20,6">
+            <ItemsControl ItemTemplate="{StaticResource BuiltInTemplate}" ItemsSource="{Binding BuiltIn}" />
+        </Border>
+
+        <!-- 3. Exceptions: only for changing one of the above, or naming something it has never heard of. -->
+        <StackPanel Grid.Row="3" Margin="0,30,0,0" Orientation="Horizontal">
             <Border Width="28" Height="28" Background="{DynamicResource Brush.AccentTint}" CornerRadius="8">
                 <TextBlock Style="{StaticResource Glyph}"
                            FontSize="14"
@@ -107,13 +184,13 @@
             <TextBlock Style="{StaticResource Text.Section}"
                        Margin="10,0,0,0"
                        VerticalAlignment="Center"
-                       Text="Yours" />
+                       Text="Exceptions" />
         </StackPanel>
 
-        <StackPanel Grid.Row="2" Margin="0,14,0,0">
+        <StackPanel Grid.Row="4" Margin="0,14,0,0">
             <ItemsControl ItemTemplate="{StaticResource RouteTemplate}" ItemsSource="{Binding Routes}" />
 
-            <TextBlock Margin="0,0,0,8" FontSize="12.5" Text="Nothing routed by hand yet.">
+            <TextBlock Margin="0,0,0,8" FontSize="12.5" Text="Nothing changed. The defaults above apply everywhere.">
                 <TextBlock.Style>
                     <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Muted}">
                         <Setter Property="Visibility" Value="Visible" />
@@ -126,7 +203,11 @@
                 </TextBlock.Style>
             </TextBlock>
 
-            <!-- 3. The add row: the same shape as a route, with the process name still to be typed. -->
+            <!--
+                The add row. The picker is what people use: almost every application somebody wants an
+                exception for is on their screen while they are looking for it. The field under it stays,
+                because an application that is not running has nothing to pick.
+            -->
             <Border Style="{StaticResource Card}" Padding="18,14,14,14">
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -136,19 +217,50 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                        <Grid>
+                            <ComboBox Style="{StaticResource Combo}"
+                                      ItemTemplate="{StaticResource RunningApplication}"
+                                      ItemsSource="{Binding Running}"
+                                      SelectedItem="{Binding SelectedRunning}"
+                                      ToolTip="The applications you have open right now." />
+                            <!-- The shared combo template carries no watermark, and an empty box reads as broken. -->
+                            <TextBlock Margin="14,0,0,0"
+                                       VerticalAlignment="Center"
+                                       IsHitTestVisible="False"
+                                       Text="Choose an application you have open…">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Muted}">
+                                        <Setter Property="FontSize" Value="13" />
+                                        <!-- Hidden as soon as something is picked; the combo shows it then. -->
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding SelectedRunning}" Value="{x:Null}">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
                         <TextBox Style="{StaticResource Field}"
+                                 Margin="0,8,0,0"
                                  Text="{Binding NewProcess, UpdateSourceTrigger=PropertyChanged}"
                                  ToolTip="The process name, with or without “.exe”." />
                         <TextBlock Style="{StaticResource Text.Muted}"
                                    Margin="2,5,0,0"
                                    FontSize="12"
-                                   Text="Add an application… type its process name, for example “notepad”." />
+                                   Text="Pick an application you have open, or type a process name such as “notepad”." />
                     </StackPanel>
 
+                    <!--
+                        IsSynchronizedWithCurrentItem="False" or the box follows the collection view's current
+                        item - the first strategy alphabetically - and writes that back over the default.
+                    -->
                     <ComboBox Grid.Column="1"
                               Style="{StaticResource Combo}"
                               Width="210"
                               VerticalAlignment="Top"
+                              IsSynchronizedWithCurrentItem="False"
                               ItemTemplate="{StaticResource StrategyName}"
                               ItemsSource="{Binding Strategies}"
                               SelectedItem="{Binding NewStrategy}" />
@@ -165,8 +277,8 @@
             </Border>
         </StackPanel>
 
-        <!-- 4. What the last change was told about itself -->
-        <ItemsControl Grid.Row="3"
+        <!-- 5. What the last change was told about itself -->
+        <ItemsControl Grid.Row="5"
                       Margin="0,10,0,0"
                       ItemTemplate="{StaticResource Problem.Line}"
                       ItemsSource="{Binding Problems}">
@@ -182,27 +294,6 @@
             </ItemsControl.Style>
         </ItemsControl>
 
-        <!-- 5. Built in -->
-        <StackPanel Grid.Row="4" Margin="0,30,0,0" Orientation="Horizontal">
-            <Border Width="28" Height="28" Background="{DynamicResource Brush.AccentTint}" CornerRadius="8">
-                <TextBlock Style="{StaticResource Glyph}"
-                           FontSize="14"
-                           Foreground="{DynamicResource Brush.Accent}"
-                           Text="&#xE8A9;" />
-            </Border>
-            <TextBlock Style="{StaticResource Text.Section}"
-                       Margin="10,0,0,0"
-                       VerticalAlignment="Center"
-                       Text="Built in" />
-        </StackPanel>
-
-        <Border Grid.Row="5"
-                Style="{StaticResource Card}"
-                Margin="0,14,0,0"
-                Padding="20,18,20,6">
-            <ItemsControl ItemTemplate="{StaticResource BuiltInTemplate}" ItemsSource="{Binding BuiltIn}" />
-        </Border>
-
         <!-- 6. Footer -->
         <TextBlock Grid.Row="6"
                    Style="{StaticResource Text.Muted}"
@@ -210,6 +301,6 @@
                    MaxWidth="620"
                    HorizontalAlignment="Left"
                    FontSize="12.5"
-                   Text="A row of your own always wins over the built-in list, so naming an application here is also how you move it to another strategy or switch SmartZoom off for it." />
+                   Text="An exception always wins over the list above, so naming an application here is also how you move it to another strategy." />
     </Grid>
 </UserControl>

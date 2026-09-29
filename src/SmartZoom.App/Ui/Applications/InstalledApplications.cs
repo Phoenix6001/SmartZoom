@@ -40,7 +40,7 @@ internal static class InstalledApplications
         var executable = FindExecutable(imageName);
         return executable is null
             ? new InstalledApplication(imageName, imageName, Icon: null)
-            : new InstalledApplication(imageName, NameOf(executable) ?? imageName, TryLoadIcon(executable));
+            : new InstalledApplication(imageName, TryReadName(executable) ?? imageName, TryLoadIcon(executable));
     }
 
     /// <summary>The full path an image name runs from, or null when nothing on this machine registers it.</summary>
@@ -97,7 +97,9 @@ internal static class InstalledApplications
     }
 
     /// <summary>What the executable calls itself, e.g. "Google Chrome" for chrome.exe.</summary>
-    private static string? NameOf(string executable)
+    /// <param name="executable">Full path to the executable.</param>
+    /// <returns>Its file description, or null when it has none or cannot be read.</returns>
+    public static string? TryReadName(string executable)
     {
         try
         {

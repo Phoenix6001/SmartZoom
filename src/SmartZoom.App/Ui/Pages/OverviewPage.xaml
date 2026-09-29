@@ -206,15 +206,82 @@
                                Margin="0,10,0,0"
                                MinHeight="40"
                                Text="{Binding StatusDescription}" />
-                    <Button Style="{StaticResource Button.Pill}"
-                            Margin="0,20,0,0"
+                    <Button Margin="0,20,0,0"
                             HorizontalAlignment="Left"
                             Command="{Binding ToggleEnabled}"
-                            Content="{Binding ToggleLabel}" />
+                            Content="{Binding ToggleLabel}">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource Button.Pill}">
+                                <Style.Triggers>
+                                    <!--
+                                        IsEnabled here is the view model's - whether zooming is on - not the
+                                        button's. While it is on, this button says "Turn off", which is not the
+                                        action to encourage, so it drops the accent and reads as grey.
+                                    -->
+                                    <DataTrigger Binding="{Binding IsEnabled}" Value="True">
+                                        <Setter Property="Background" Value="{DynamicResource Brush.Neutral}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource Brush.Ink}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
                 </StackPanel>
             </Border>
 
+            <!--
+                Hovering the card plays the zoom on the mock document below, which is what makes "Live preview"
+                true: the card is not pressable and keeps the arrow cursor, so the motion is the whole of its
+                answer to the pointer. MouseEnter/MouseLeave rather than a Style trigger because
+                FrameworkElement.Triggers is the collection whose Storyboard.TargetName resolves in this scope.
+            -->
             <Border Grid.Column="1" Style="{StaticResource Card}" Margin="10,0,0,0" Padding="26,24,26,24">
+                <Border.Triggers>
+                    <EventTrigger RoutedEvent="Border.MouseEnter">
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetName="PreviewBlockScale"
+                                                 Storyboard.TargetProperty="ScaleX"
+                                                 To="1.16"
+                                                 Duration="0:0:0.28">
+                                    <DoubleAnimation.EasingFunction>
+                                        <CubicEase EasingMode="EaseInOut" />
+                                    </DoubleAnimation.EasingFunction>
+                                </DoubleAnimation>
+                                <DoubleAnimation Storyboard.TargetName="PreviewBlockScale"
+                                                 Storyboard.TargetProperty="ScaleY"
+                                                 To="1.16"
+                                                 Duration="0:0:0.28">
+                                    <DoubleAnimation.EasingFunction>
+                                        <CubicEase EasingMode="EaseInOut" />
+                                    </DoubleAnimation.EasingFunction>
+                                </DoubleAnimation>
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </EventTrigger>
+                    <EventTrigger RoutedEvent="Border.MouseLeave">
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetName="PreviewBlockScale"
+                                                 Storyboard.TargetProperty="ScaleX"
+                                                 To="1"
+                                                 Duration="0:0:0.28">
+                                    <DoubleAnimation.EasingFunction>
+                                        <CubicEase EasingMode="EaseInOut" />
+                                    </DoubleAnimation.EasingFunction>
+                                </DoubleAnimation>
+                                <DoubleAnimation Storyboard.TargetName="PreviewBlockScale"
+                                                 Storyboard.TargetProperty="ScaleY"
+                                                 To="1"
+                                                 Duration="0:0:0.28">
+                                    <DoubleAnimation.EasingFunction>
+                                        <CubicEase EasingMode="EaseInOut" />
+                                    </DoubleAnimation.EasingFunction>
+                                </DoubleAnimation>
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </EventTrigger>
+                </Border.Triggers>
                 <StackPanel>
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -257,10 +324,12 @@
                     <!--
                         The mock document from the design, drawn with shapes: a window with a title strip, a
                         few lines of "text", and the block under the cursor lifted out into an accent-bordered
-                        card at a larger size. No animation in this wave.
+                        card. Clipped, so the block growing on hover stays inside the little window the way a
+                        real zoom stays inside the page.
                     -->
                     <Border Margin="0,20,0,0"
                             Padding="14"
+                            ClipToBounds="True"
                             Background="{DynamicResource Brush.Ground}"
                             BorderBrush="{DynamicResource Brush.CardBorder}"
                             BorderThickness="1"
@@ -283,12 +352,22 @@
                             <Rectangle Height="6" Margin="0,14,40,0" Fill="{DynamicResource Brush.Muted}" Opacity="0.3" RadiusX="3" RadiusY="3" />
                             <Rectangle Height="6" Margin="0,7,86,0" Fill="{DynamicResource Brush.Muted}" Opacity="0.3" RadiusX="3" RadiusY="3" />
 
-                            <Border Margin="0,13,0,0"
+                            <!--
+                                Inset at rest and grown to the window's width on hover: that is the shape of a
+                                smart zoom, a block fitted to the width of what is showing it. The inset is what
+                                the growth has to happen into - at full width there is nowhere to go, and the
+                                clip takes the card's own sides off.
+                            -->
+                            <Border Margin="20,13,20,0"
                                     Padding="12,11,12,12"
                                     Background="{DynamicResource Brush.Card}"
                                     BorderBrush="{DynamicResource Brush.Accent}"
                                     BorderThickness="2"
-                                    CornerRadius="8">
+                                    CornerRadius="8"
+                                    RenderTransformOrigin="0.5,0.5">
+                                <Border.RenderTransform>
+                                    <ScaleTransform x:Name="PreviewBlockScale" ScaleX="1" ScaleY="1" />
+                                </Border.RenderTransform>
                                 <StackPanel>
                                     <Rectangle Height="11" Margin="0,0,24,0" Fill="{DynamicResource Brush.Ink}" Opacity="0.72" RadiusX="5" RadiusY="5" />
                                     <Rectangle Height="11" Margin="0,8,64,0" Fill="{DynamicResource Brush.Ink}" Opacity="0.72" RadiusX="5" RadiusY="5" />

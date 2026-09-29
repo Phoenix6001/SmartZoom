@@ -55,7 +55,7 @@
                    Margin="1,8,0,0"
                    MaxWidth="620"
                    HorizontalAlignment="Left"
-                   Text="How far a zoom goes, how PDFs are zoomed, what SmartZoom writes down, and the record of anything that did not work. Every change here takes effect at once." />
+                   Text="How far a zoom goes, how PDFs are zoomed, and what SmartZoom writes to its log. Every change here takes effect at once." />
 
         <!-- 2. Zoom -->
         <StackPanel Style="{StaticResource SectionHead}">
@@ -102,8 +102,8 @@
                         <ColumnDefinition Width="100" />
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0" Margin="0,0,20,0">
-                        <TextBlock Style="{StaticResource RowTitle}" Text="Smallest zoom worth doing" />
-                        <TextBlock Style="{StaticResource RowNote}" Text="A block that would only grow by less than this is left alone, because the motion would cost more than it gained." />
+                        <TextBlock Style="{StaticResource RowTitle}" Text="Smallest fit worth having in Word and Excel" />
+                        <TextBlock Style="{StaticResource RowNote}" Text="Word and Excel scale the paragraph or block of cells under the cursor to fit the window. One that would only grow by less than this is zoomed by the amount instead, because the motion would cost more than it gained. Browsers always use the amount." />
                     </StackPanel>
                     <Slider Grid.Column="1"
                             Style="{StaticResource Slider.Setting}"
@@ -249,108 +249,7 @@
             </Grid>
         </Border>
 
-        <!-- 5. Diagnostics -->
-        <StackPanel Style="{StaticResource SectionHead}">
-            <Border Style="{StaticResource SectionGlyph}">
-                <TextBlock Style="{StaticResource Glyph}"
-                           FontSize="14"
-                           Foreground="{DynamicResource Brush.Accent}"
-                           Text="&#xE9D9;" />
-            </Border>
-            <TextBlock Style="{StaticResource SectionLabel}" Text="Diagnostics" />
-        </StackPanel>
-
-        <Border Style="{StaticResource Card}" Margin="0,14,0,0" Padding="24,20,24,20">
-            <StackPanel>
-                <TextBlock Style="{StaticResource Text.Muted}"
-                           FontSize="12.5"
-                           Text="This is everything SmartZoom would tell you about itself. Read it, then copy it into a bug report. Nothing here is sent anywhere." />
-
-                <Border Margin="0,14,0,0"
-                        Background="{DynamicResource Brush.Ground}"
-                        BorderBrush="{DynamicResource Brush.CardBorder}"
-                        BorderThickness="1"
-                        CornerRadius="8">
-                    <TextBox Height="280"
-                             Padding="12"
-                             Background="Transparent"
-                             BorderThickness="0"
-                             FontFamily="Consolas, Cascadia Mono, Courier New"
-                             FontSize="12"
-                             Foreground="{DynamicResource Brush.Ink}"
-                             HorizontalScrollBarVisibility="Auto"
-                             IsReadOnly="True"
-                             SelectionBrush="{DynamicResource Brush.Accent}"
-                             Text="{Binding Report, Mode=OneWay}"
-                             TextWrapping="NoWrap"
-                             VerticalScrollBarVisibility="Auto" />
-                </Border>
-
-                <WrapPanel Margin="0,14,-8,0">
-                    <Button Style="{StaticResource Button.Quiet}"
-                            Margin="0,0,8,8"
-                            Padding="18,0"
-                            Command="{Binding RefreshReport}"
-                            Content="Refresh" />
-                    <Button Style="{StaticResource Button.Quiet}"
-                            Margin="0,0,8,8"
-                            Padding="18,0"
-                            Command="{Binding CopyReport}"
-                            Content="Copy" />
-                    <Button Style="{StaticResource Button.Quiet}"
-                            Margin="0,0,8,8"
-                            Padding="18,0"
-                            Command="{Binding SaveReport}"
-                            Content="Save…" />
-                    <Button Style="{StaticResource Button.Quiet}"
-                            Margin="0,0,8,8"
-                            Padding="18,0"
-                            Command="{Binding ClearRecord}"
-                            Content="Clear recorded data" />
-                    <CheckBox Style="{StaticResource Check}"
-                              Margin="8,0,8,8"
-                              VerticalAlignment="Center"
-                              Content="Include recent log lines"
-                              IsChecked="{Binding IncludeLog}" />
-                </WrapPanel>
-
-                <TextBlock Margin="0,2,0,0" FontSize="12.5" Text="{Binding Status}">
-                    <TextBlock.Style>
-                        <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Muted}">
-                            <Setter Property="Visibility" Value="Collapsed" />
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding HasStatus}" Value="True">
-                                    <Setter Property="Visibility" Value="Visible" />
-                                </DataTrigger>
-                                <DataTrigger Binding="{Binding StatusFailed}" Value="True">
-                                    <Setter Property="Foreground" Value="{DynamicResource Brush.Error}" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </TextBlock.Style>
-                </TextBlock>
-
-                <Border Style="{StaticResource Rule}" Margin="0,16,0,0" />
-
-                <Grid Margin="0,16,0,0">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" Margin="0,0,20,0">
-                        <TextBlock Style="{StaticResource RowTitle}" Text="Record what doesn't work" />
-                        <TextBlock Style="{StaticResource RowNote}" Text="Counts presses that zoomed nothing, adapters that failed and crashes, so a problem can be described without reading a log file. It never leaves this machine." />
-                    </StackPanel>
-                    <Button Grid.Column="1"
-                            Style="{StaticResource Switch}"
-                            VerticalAlignment="Center"
-                            Command="{Binding ToggleRecording}"
-                            Tag="{Binding RecordEnabled}" />
-                </Grid>
-            </StackPanel>
-        </Border>
-
-        <!-- 6. What the last change was told about itself -->
+        <!-- 5. What the last change was told about itself -->
         <ItemsControl Margin="0,14,0,0"
                       ItemTemplate="{StaticResource Problem.Line}"
                       ItemsSource="{Binding Problems}">
@@ -366,7 +265,7 @@
             </ItemsControl.Style>
         </ItemsControl>
 
-        <!-- 7. Footer -->
+        <!-- 6. Footer -->
         <StackPanel Margin="0,20,0,0" HorizontalAlignment="Left" Orientation="Horizontal">
             <TextBlock Style="{StaticResource Text.Muted}"
                        VerticalAlignment="Center"

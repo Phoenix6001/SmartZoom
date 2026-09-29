@@ -81,10 +81,15 @@ The interesting tests are the ones where the application misbehaves: it scrolled
 refused the shortcut, the window closed mid-zoom. Those are the cases that were found by hand and should never
 have to be found again.
 
-`SmartZoom.Interop` has no test project. What is left in it needs a real window, a real accessibility tree or
-real touch injection, none of which works on a CI runner; it is verified by hand, on one machine, through the
-acceptance run in [docs/testing.md](docs/testing.md). If you find yourself wanting to test something there,
-that is a good sign the logic belongs in Core.
+Almost nothing in `SmartZoom.Interop` is unit-tested. What is left in it needs a real window, a real
+accessibility tree or real touch injection, none of which works on a CI runner; it is verified by hand, on one
+machine, through the acceptance run in [docs/testing.md](docs/testing.md). If you find yourself wanting to test
+something there, that is usually a good sign the logic belongs in Core.
+
+`tests/SmartZoom.Interop.Tests` exists for the exception: plumbing with no P/Invoke in it, where a mistake is a
+concurrency bug rather than something a smoke test would show. `StaThread` — the one thread every Office call
+goes through, and what it does when Office stops answering — is what it was created for. Do not reach for it to
+avoid moving policy into Core.
 
 `SmartZoom.App` does have one, `tests/SmartZoom.App.Tests`, in the solution and run by CI alongside
 `tests/SmartZoom.Core.Tests`. It exists for the things that are genuinely App's own — wiring real components

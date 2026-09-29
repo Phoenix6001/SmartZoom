@@ -18,6 +18,16 @@ internal sealed class SettingsHolder(SmartZoomSettings initial)
     /// <summary>The settings in force right now.</summary>
     public SmartZoomSettings Current => _current;
 
+    /// <summary>
+    /// Raised after a new set is published, on whatever thread applied it. A listener that touches a window
+    /// must marshal to its own thread.
+    /// </summary>
+    public event EventHandler? Changed;
+
     /// <summary>Publishes a new set. Called only by <see cref="SettingsApplier"/>, after they have been applied.</summary>
-    public void Replace(SmartZoomSettings settings) => _current = settings;
+    public void Replace(SmartZoomSettings settings)
+    {
+        _current = settings;
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
 }

@@ -118,10 +118,11 @@
         <Setter Property="Padding" Value="26,0" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Foreground" Value="White" />
+        <Setter Property="Background" Value="{DynamicResource Brush.Accent}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="Shell" Background="{DynamicResource Brush.Accent}" CornerRadius="20">
+                    <Border x:Name="Shell" Background="{TemplateBinding Background}" CornerRadius="20">
                         <ContentPresenter Margin="{TemplateBinding Padding}"
                                           HorizontalAlignment="Center"
                                           VerticalAlignment="Center" />

@@ -6,7 +6,133 @@ All notable changes to SmartZoom are recorded here. The format follows
 
 ## [Unreleased]
 
-Nothing yet.
+### Changed
+
+- **A browser press now zooms by the amount you set, everywhere on the page**
+  ([#14](https://github.com/Phoenix6001/SmartZoom/issues/14)). Smart zoom used to scale whatever was under
+  the cursor to the width of the window. That sounds like the smarter rule and is not: it made *how much* a
+  press zooms depend on how wide the thing you happened to point at was. A narrow image grew threefold; a
+  paragraph running most of the width of the window grew by a twelfth — barely visible — and one that ran the
+  whole width had nothing to fit to at all and did nothing, silently. The same press did visibly different
+  things a few pixels apart, which reads as the zoom being broken in places rather than as a rule. It now
+  zooms by **Zoom amount** (the tray menu, or **Largest zoom** on the Advanced page — `Zoom.MaxScale`),
+  the same wherever the press lands, anchored on the pointer so the pixel you aimed at is the one that stays
+  still. Word and Excel still fit the block they can identify, since they can re-flow rather than magnify,
+  and fall back to the same amount when there is no fit worth having.
+
+- **Diagnostics is its own page.** The record of what did not work used to be the fourth section of Advanced,
+  below zoom tuning, PDF readers and logging â€” but two other surfaces send people to it: the status card in the
+  window's corner counts recorded issues, and the tray offers **Diagnostic reportâ€¦**. Both landed at the top of
+  Advanced, leaving three sections of tuning to scroll past. Both now open a **Diagnostics** row in the rail
+  that holds the report, its Refresh / Copy / Saveâ€¦ / Clear buttons, the "include recent log lines" opt-in and
+  the switch that turns recording off. Advanced keeps zoom, PDF readers and logging. Nothing about what is
+  recorded, or about it never leaving the machine, has changed.
+
+- **One click to report a problem.** The Diagnostics page has a **Report a problem** button: it ticks
+  "include recent log lines", rebuilds the report on screen so you can see what it now contains, copies it, and
+  opens the bug form with everything it can answer for you already filled in: the title, the application by its
+  real name, the build, the display, the issue itself as a starting description, and â€” where SmartZoom can tell
+  â€” whether vendor mouse software is running or your displays are scaled differently, which are the two things
+  that most often explain a press that never arrived. The report and log boxes are deliberately left empty: one
+  Ctrl+V fills the first with the whole report, log included, and a box holding only part of a log would look
+  finished when it was not. The log goes in because a report without one usually costs a round
+  trip â€” but the box ticks visibly and the report is rebuilt *before* anything is copied, because showing you the
+  report is the whole point and a button that quietly widened what gets shared would defeat it. SmartZoom still
+  opens no connection of its own: the address goes to your browser, none of the report travels in it, and
+  nothing is shared until you paste and submit.
+
+- **The Diagnostics page says what went wrong before it shows the report.** The status card counts issues and
+  sends you here; what greeted you was a markdown table saying `ZoomedNothing/NoBlock`. The same events are now
+  listed at the top in sentences â€” "A press in brave zoomed nothing", "Something was found under the cursor, but
+  nothing there was a sensible thing to magnify. Often blank page area. Â· last seen 47 minutes ago" â€” with a red
+  bar for a failure and an amber one for a press that simply found nothing to do, and a plain "nothing has gone
+  wrong" when there is nothing to show. Where there is something to do about it, the line says so.
+  **The list stays short however much is recorded**, because events are grouped by what happened rather than by
+  where: ten applications that all found nothing to magnify are one line â€” "75 presses in 10 applications zoomed
+  nothing", naming the busiest three â€” not ten copies of the same sentence. Failures come first whatever their
+  count. Past five kinds the rest go behind "show more". The report underneath is unchanged, because that is
+  the thing worth pasting into a bug report.
+
+- **The Applications page leads with what is supported, and shows each application's own icon and name.**
+  It used to open on an empty "Yours" list and a box asking for a process image name â€” the one place the
+  settings window expected you to know whether an application is called "notepad", "Notepad" or "Notepad.exe"
+  â€” with the list of what actually works pushed below it. Now the supported applications come first, pictured
+  and named as they name themselves on this machine; anything not installed still shows its process name.
+  Routing something of your own moved below as **Exceptions**, and is done by picking from the applications you
+  have open, with typing still there for one that is not running. A new exception defaults to Ctrl+wheel rather
+  than to whichever strategy sorted first alphabetically.
+
+- **The tray icon goes grey when SmartZoom is switched off.** Whether it is listening is the one thing its
+  place in the notification area exists to say, and it used to say it only in a tooltip. The grey icon is
+  derived from the colour one at startup rather than shipped as a second file, so the two cannot drift apart.
+  Switching off from the tray panel or the settings window greys it at once, not at the next tooltip refresh.
+
+- **The on/off button is only accent-coloured when it is the thing to press.** While SmartZoom is running the
+  button reads "Turn off", which is not the action to encourage, so it is now a neutral grey; it returns to
+  accent as "Turn on" once zooming is off. In the tray panel and on the Overview page both.
+
+- **The Overview page's "Live preview" card now previews.** Hovering it plays the zoom on the little mock
+  document: the block grows to the width of the window showing it, the way a smart zoom fits a block to a page,
+  and settles back when the pointer leaves. It was a still drawing that looked exactly like the cards beside it
+  that navigate when clicked â€” so it read as broken rather than decorative. It stays non-clickable and keeps the
+  arrow cursor; the motion is its whole answer to the pointer.
+
+### Fixed
+
+- **A page already zoomed as far as it goes is cleared rather than page-zoomed on top.** Chromium stops
+  magnifying at four times, and a page sitting at that ceiling swallows a pinch in exactly the way a page
+  that blocks gestures outright does: the gesture goes in cleanly and nothing moves. SmartZoom read that as
+  "this page blocks pinch zoom" and handed the press to the browser's own page zoom — which is a second,
+  separate zoom stacked on the first, so the page magnified twice and the next press took only one of the two
+  back off. The zoom is now cleared and tried once more before the fallback is considered, so page zoom is
+  only ever reached by a page that genuinely refuses. A page that really does block gestures costs one extra
+  gesture and behaves exactly as before.
+
+- **A Word or Excel dialog no longer takes zooming down with it for the rest of the session.** Office answers
+  its object model only between its own message pumps, so a modal dialog — Save As, "do you want to save your
+  changes?", a cell part-way through being edited — simply never answers. SmartZoom waited for that answer with
+  no time limit, on the one thread that hands out zooms, so a single press made while such a dialog was up
+  parked every press afterwards: nothing happened, and nothing in the log said why, until SmartZoom was
+  restarted. Every wait is now bounded. A press made against an application that will not answer costs that
+  press and says so — "Word did not act on the request" — and the presses after it are unaffected, both because
+  the zoom is given up on and because the next call does not queue behind the same dialog. Everything goes back
+  to normal by itself the moment the dialog is dismissed. A zoom that overruns for any other reason is now
+  abandoned the same way rather than holding the next press up, and it is recorded, so the Diagnostics page
+  says "The application did not answer in time and the zoom was abandoned" instead of leaving you with a
+  trigger that quietly stopped working.
+
+- **A setting changed while something else was changing no longer puts the other change back.** Every part of
+  the settings window and the tray used to read the settings, edit a copy, and then hand the result over to be
+  applied — and the applier can be busy for as long as a zoom in flight takes. Anything that changed in that
+  window was silently undone by the copy, which still held the old value for every field: switching off from
+  the tray and then moving a slider could turn zooming back on, and write that to the file. Callers now say
+  what to change rather than what the result should be, and the copy is made where the change is applied, so
+  there is no copy to go stale.
+
+- **A zoom over a plain part of a page is no longer mistaken for a page that blocks zooming.** Whether a pinch
+  took effect is decided by comparing the screen around the cursor before and after it. Over a wide margin, an
+  empty panel or a flat image there is nothing in that region to move, so a gesture that worked perfectly read
+  as one the page had refused — and SmartZoom then sent two more pinches at the same magnification on top of
+  the zoom that had already happened, each around a point chosen to sit *outside* the block, which is further
+  into the same emptiness, before finally stacking a Ctrl+wheel page zoom on all of it. The page ended up
+  magnified several times over and the next press took only the last of those back off. A region is now checked
+  for whether it has enough in it to show movement at all, and when it has not, the gesture is trusted rather
+  than contradicted. A page that genuinely refuses the gesture is detected exactly as before.
+
+- **The pinch is paced for the monitor it lands on, not for the window under the cursor.** The gesture's
+  thresholds are distances in real pixels, so they follow the display's scaling; they were read with
+  `GetDpiForWindow`, which answers for the window's own DPI awareness instead — the primary display's scaling
+  for an older application, and 100% for one that does not handle scaling at all. On a second monitor set to a
+  different scale, a PDF reader could therefore be pinched with thresholds meant for another display.
+
+- **A browser page that was left zoomed no longer zooms twice on the next press, and comes back properly.**
+  When a page is still showing a zoom SmartZoom does not remember making — it was restarted, switched off while
+  the page was zoomed, or a restore did not take — the next press used to zoom on top of it. Chromium clamps
+  the visual viewport at x4, so that second gesture was refused, and a refused gesture looks exactly like a page
+  that blocks gestures (`touch-action`): SmartZoom fell back to Ctrl+wheel page zoom, which is a *separate* zoom
+  stacked on the first. The page magnified twice, and the next press took only one of the two back off, every
+  time. The accessibility tree already gives the page's current zoom away, so a page that is carrying one is now
+  cleared first and read again, and the zoom is planned from a page at rest.
 
 ## [0.3.0] - 2026-09-24
 

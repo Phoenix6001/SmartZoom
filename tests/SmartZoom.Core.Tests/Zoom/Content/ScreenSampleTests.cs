@@ -112,6 +112,90 @@ public sealed class ScreenSampleTests
             Assert.Throws<ArgumentException>(() => ScreenSample.FromLuma(PixelRect.FromSize(0, 0, 0, 5), []));
     }
 
+    /// <summary>
+    /// How much cell-scale structure a region has, which is what decides whether comparing two samples of it
+    /// can answer anything. The region here is the size the browser adapter actually verifies with.
+    /// </summary>
+    public sealed class Detail
+    {
+        private static readonly PixelRect Verified = PixelRect.FromSize(0, 0, 600, 400);
+
+        [Fact]
+        public void A_region_of_one_flat_colour_has_none()
+        {
+            var sample = ScreenSample.FromLuma(Verified, Filled(200));
+
+            Assert.Equal(0, sample.Detail);
+            Assert.False(sample.HasDetail);
+        }
+
+        [Fact]
+        public void A_region_whose_cells_alternate_is_all_detail()
+        {
+            var sample = ScreenSample.FromLuma(Verified, Checkerboard(60, 200));
+
+            Assert.Equal(1, sample.Detail);
+            Assert.True(sample.HasDetail);
+        }
+
+        [Fact]
+        public void A_gradient_gentler_than_the_tolerance_has_none()
+        {
+            // Every cell differs from its neighbour, but by less than LumaTolerance - which is exactly the case
+            // where content can move anywhere in the region and not one cell changes.
+            var pixels = Filled(0);
+            for (var y = 0; y < Verified.Height; y++)
+            {
+                for (var x = 0; x < Verified.Width; x++)
+                    pixels[(y * Verified.Width) + x] = (byte)(100 + (x * 40 / Verified.Width));
+            }
+
+            var sample = ScreenSample.FromLuma(Verified, pixels);
+
+            Assert.False(sample.HasDetail);
+        }
+
+        [Fact]
+        public void A_single_small_mark_on_an_empty_background_is_not_enough_to_judge_by()
+        {
+            // A wide white margin with one word in the corner of it. There is something there, but not enough
+            // for a zoom to move any appreciable number of cells, so it cannot show that a gesture was refused.
+            var pixels = Filled(235);
+            for (var y = 0; y < 16; y++)
+            {
+                for (var x = 0; x < 40; x++)
+                    pixels[(y * Verified.Width) + x] = 20;
+            }
+
+            var sample = ScreenSample.FromLuma(Verified, pixels);
+
+            Assert.False(sample.HasDetail);
+        }
+
+        private static byte[] Filled(byte luma)
+        {
+            var pixels = new byte[Verified.Width * Verified.Height];
+            Array.Fill(pixels, luma);
+            return pixels;
+        }
+
+        private static byte[] Checkerboard(byte dark, byte light)
+        {
+            var (columns, rows) = ScreenSample.GridFor(Verified.Width, Verified.Height);
+            var pixels = new byte[Verified.Width * Verified.Height];
+            for (var y = 0; y < Verified.Height; y++)
+            {
+                for (var x = 0; x < Verified.Width; x++)
+                {
+                    var cell = (x * columns / Verified.Width) + (y * rows / Verified.Height);
+                    pixels[(y * Verified.Width) + x] = cell % 2 == 0 ? dark : light;
+                }
+            }
+
+            return pixels;
+        }
+    }
+
     [Fact]
     public void Cells_must_fill_the_grid() =>
         Assert.Throws<ArgumentException>(() => new ScreenSample(Region, 2, 2, new byte[3]));

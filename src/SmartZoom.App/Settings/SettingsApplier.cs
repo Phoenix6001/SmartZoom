@@ -44,16 +44,28 @@ internal sealed partial class SettingsApplier(
 
     private readonly SemaphoreSlim _changing = new(1, 1);
 
-    /// <summary>Puts a new set of settings into force and saves them.</summary>
-    /// <param name="settings">The new settings. They become the app's, so the caller must not keep editing them.</param>
+    /// <summary>Makes a change to the settings in force and saves the result.</summary>
+    /// <param name="change">
+    /// What to change. It is handed a copy of the settings in force, made inside the gate, and may edit it
+    /// freely; it must not keep a reference to it afterwards.
+    /// </param>
     /// <returns>What happened, including anything the settings were only warned about.</returns>
-    public async Task<SettingsApplyResult> ApplyAsync(SmartZoomSettings settings)
+    /// <remarks>
+    /// The change rather than the result, because the caller cannot safely build the result. Between a caller
+    /// reading <see cref="SettingsHolder.Current"/> and reaching this gate, anything else may have changed
+    /// something — and the gate is held for as long as a zoom in flight takes, so that window is seconds wide,
+    /// not microseconds. Applying a copy read before it would silently put back every field somebody else had
+    /// just changed: switching off from the tray and then moving a slider used to turn zooming back on.
+    /// </remarks>
+    public async Task<SettingsApplyResult> ApplyAsync(Action<SmartZoomSettings> change)
     {
-        ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(change);
 
         await _changing.WaitAsync().ConfigureAwait(false);
         try
         {
+            var settings = SettingsStore.Clone(holder.Current);
+            change(settings);
             return await ApplyUnderGateAsync(settings).ConfigureAwait(false);
         }
         finally
@@ -66,10 +78,25 @@ internal sealed partial class SettingsApplier(
     /// Applies the settings file as it is on disk right now, whoever edited it. A file that cannot be read as
     /// it stands is rejected, never replaced: the user's edits are the point of this call.
     /// </summary>
-    public Task<SettingsApplyResult> ReloadAsync() =>
-        store.TryLoad(out var settings, out var error)
-            ? ApplyAsync(settings)
-            : Task.FromResult(SettingsApplyResult.Rejected([SettingsProblem.Error(FileSection, error)]));
+    /// <remarks>
+    /// The one caller that legitimately replaces the settings wholesale rather than changing them: the file
+    /// IS the new state, so there is nothing of the old one to preserve.
+    /// </remarks>
+    public async Task<SettingsApplyResult> ReloadAsync()
+    {
+        if (!store.TryLoad(out var settings, out var error))
+            return SettingsApplyResult.Rejected([SettingsProblem.Error(FileSection, error)]);
+
+        await _changing.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            return await ApplyUnderGateAsync(settings).ConfigureAwait(false);
+        }
+        finally
+        {
+            _changing.Release();
+        }
+    }
 
     /// <summary>
     /// Turns zooming on or off. Kept apart from <see cref="ApplyAsync"/> because nothing has to be rebuilt:

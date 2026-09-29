@@ -32,7 +32,11 @@ and talks to Office through COM. Things worth reporting:
 
 ## Privacy
 
-SmartZoom makes no network connections and sends nothing anywhere. The log at
+SmartZoom makes no network connections and sends nothing anywhere. The links on the About page, and the
+**Report a problem** button on the Diagnostics page, hand a github.com address to your default browser; the
+browser makes that connection, SmartZoom does not, and no part of your report travels in the address. That
+button puts the report on your clipboard for you to paste, after showing you what it contains — nothing is
+shared until you paste it and press submit. The log at
 `%LOCALAPPDATA%\SmartZoom\logs` stays on the machine and records process names, window classes, cursor
 positions and which adapter ran. The keyboard hook observes only modifier keys and the keys named in the
 configured triggers; other keystrokes are neither recorded nor logged.

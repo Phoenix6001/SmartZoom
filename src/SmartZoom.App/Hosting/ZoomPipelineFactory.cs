@@ -66,7 +66,7 @@ internal sealed class ZoomPipelineFactory(
         new CtrlWheelAdapter(injector, zoom.CtrlWheel, time),
         new BrowserAdapter(hitTester, pinch, screen, zoom, loggers.CreateLogger<BrowserAdapter>()),
         Reader(zoom),
-        new WordComAdapter(word, zoom, time, loggers.CreateLogger<WordComAdapter>()),
+        new WordComAdapter(word, pinch, zoom, time, loggers.CreateLogger<WordComAdapter>()),
         new ExcelComAdapter(excel, zoom, loggers.CreateLogger<ExcelComAdapter>()),
     ];
 

@@ -21,10 +21,18 @@ namespace SmartZoom.App.Tests.Settings;
 /// </summary>
 public sealed class SettingsApplierTests
 {
-    private static SmartZoomSettings Candidate(MouseButton button = MouseButton.Middle) => new()
+    /// <summary>
+    /// A whole settings object, for writing a file to reload from. Reload is the one caller that legitimately
+    /// deals in whole objects, because the file IS the new state.
+    /// </summary>
+    private static SmartZoomSettings OnDisk(MouseButton button = MouseButton.Middle) => new()
     {
         Triggers = [new TriggerSettings { Mouse = button, TapCount = 1 }],
     };
+
+    /// <summary>The ordinary change a test makes: put one trigger in force.</summary>
+    private static Action<SmartZoomSettings> Using(MouseButton button = MouseButton.Middle) =>
+        settings => settings.Triggers = [new TriggerSettings { Mouse = button, TapCount = 1 }];
 
     public sealed class ApplyAsync
     {
@@ -32,10 +40,8 @@ public sealed class SettingsApplierTests
         public async Task Rejects_settings_with_an_error_and_changes_nothing()
         {
             using var harness = new Harness();
-            var candidate = Candidate();
-            candidate.Triggers.Clear();
 
-            var result = await harness.Applier.ApplyAsync(candidate);
+            var result = await harness.Applier.ApplyAsync(settings => settings.Triggers.Clear());
 
             Assert.Equal(SettingsApplyOutcome.Rejected, result.Outcome);
             Assert.Contains(result.Problems, p => p.Section == "Triggers" && p.Severity == SettingsProblemSeverity.Error);
@@ -48,15 +54,18 @@ public sealed class SettingsApplierTests
         public async Task Puts_every_part_of_the_settings_into_force_and_then_writes_the_file()
         {
             using var harness = new Harness();
-            var candidate = Candidate(MouseButton.XButton1);
-            candidate.Enabled = false;
-            candidate.Logging.Level = LogLevel.Warning;
-            candidate.Diagnostics.Enabled = false;
 
-            var result = await harness.Applier.ApplyAsync(candidate);
+            var result = await harness.Applier.ApplyAsync(settings =>
+            {
+                Using(MouseButton.XButton1)(settings);
+                settings.Enabled = false;
+                settings.Logging.Level = LogLevel.Warning;
+                settings.Diagnostics.Enabled = false;
+            });
 
             Assert.Equal(SettingsApplyOutcome.Applied, result.Outcome);
-            Assert.Same(candidate, harness.Holder.Current);
+            Assert.False(harness.Holder.Current.Enabled);
+            Assert.Equal(MouseButton.XButton1, Assert.Single(harness.Holder.Current.Triggers).Mouse);
             var trigger = Assert.IsType<MouseButtonTrigger>(Assert.Single(harness.Triggers.CurrentTriggers!));
             Assert.Equal(MouseButton.XButton1, trigger.Button);
             Assert.False(harness.Triggers.Enabled);
@@ -75,15 +84,58 @@ public sealed class SettingsApplierTests
 
             // A directory where the file belongs: the temp file is written and the replace fails.
             Directory.CreateDirectory(harness.Paths.SettingsFile);
-            var candidate = Candidate();
 
-            var result = await harness.Applier.ApplyAsync(candidate);
+            var result = await harness.Applier.ApplyAsync(Using());
 
             Assert.Equal(SettingsApplyOutcome.AppliedButNotSaved, result.Outcome);
             Assert.True(result.InForce);
             Assert.NotNull(result.Detail);
-            Assert.Same(candidate, harness.Holder.Current);
+            Assert.Equal(MouseButton.Middle, Assert.Single(harness.Holder.Current.Triggers).Mouse);
             Assert.NotNull(harness.Triggers.CurrentTriggers);
+        }
+
+        [Fact]
+        public async Task A_change_is_handed_a_copy_and_never_the_settings_in_force()
+        {
+            // Whatever a change does to what it is handed, the object other parts of the app are reading
+            // must come through untouched. This is why the quick-settings helpers may edit in place.
+            using var harness = new Harness();
+            var inForce = harness.Holder.Current;
+            var triggersBefore = inForce.Triggers.Count;
+            SmartZoomSettings? handed = null;
+
+            await harness.Applier.ApplyAsync(settings =>
+            {
+                handed = settings;
+                settings.Triggers.Add(new TriggerSettings { Mouse = MouseButton.XButton1, TapCount = 1 });
+            });
+
+            Assert.NotNull(handed);
+            Assert.NotSame(inForce, handed);
+            Assert.Equal(triggersBefore, inForce.Triggers.Count);
+            Assert.Equal(triggersBefore + 1, harness.Holder.Current.Triggers.Count);
+        }
+
+        [Fact]
+        public async Task A_change_made_from_a_copy_read_earlier_does_not_undo_one_made_since()
+        {
+            using var harness = new Harness();
+
+            // A page is opened and reads the settings to fill its controls in.
+            _ = SettingsStore.Clone(harness.Holder.Current);
+
+            // Zooming is switched off from the tray while that page is on screen.
+            await harness.Applier.SetEnabledAsync(false);
+            Assert.False(harness.Holder.Current.Enabled);
+
+            // The page's own control is then moved. It says what to change, not what the result should be.
+            await harness.Applier.ApplyAsync(settings => settings.Zoom.MaxScale = 2.5);
+
+            Assert.Equal(2.5, harness.Holder.Current.Zoom.MaxScale);
+
+            // What it read still said Enabled; only the change it asked for may be applied.
+            Assert.False(harness.Holder.Current.Enabled);
+            Assert.False(harness.Triggers.Enabled);
         }
 
         [Fact]
@@ -96,7 +148,7 @@ public sealed class SettingsApplierTests
             var zoom = harness.Engine.HandleTriggerAsync(PipelineFixtures.Target(BlockingAdapter.Process), new ScreenPoint(1, 1), CancellationToken.None);
             await blocking.Entered;
 
-            var result = await harness.Applier.ApplyAsync(Candidate());
+            var result = await harness.Applier.ApplyAsync(Using());
 
             Assert.Equal(SettingsApplyOutcome.Applied, result.Outcome);
             Assert.Contains(result.Problems, p => p.Section == "Zoom" && p.Severity == SettingsProblemSeverity.Warning);
@@ -129,7 +181,7 @@ public sealed class SettingsApplierTests
         public async Task Applies_the_file_as_it_stands()
         {
             using var harness = new Harness();
-            harness.Store.Save(Candidate(MouseButton.XButton1));
+            harness.Store.Save(OnDisk(MouseButton.XButton1));
 
             var result = await harness.Applier.ReloadAsync();
 
@@ -176,7 +228,7 @@ public sealed class SettingsApplierTests
             // An editor holding the file exclusively is an IOException, which is an answer for the user,
             // not a task that dies quietly on a thread-pool thread.
             using var harness = new Harness();
-            harness.Store.Save(Candidate());
+            harness.Store.Save(OnDisk());
             using var locked = new FileStream(harness.Paths.SettingsFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
 
             var result = await harness.Applier.ReloadAsync();
@@ -219,7 +271,7 @@ public sealed class SettingsApplierTests
             {
                 var button = i % 2 == 0 ? MouseButton.Middle : MouseButton.XButton1;
                 var enabled = i % 3 == 0;
-                work.Add(Task.Run(() => harness.Applier.ApplyAsync(Candidate(button))));
+                work.Add(Task.Run(() => harness.Applier.ApplyAsync(Using(button))));
                 work.Add(Task.Run(() => harness.Applier.SetEnabledAsync(enabled)));
             }
 

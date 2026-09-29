@@ -150,7 +150,7 @@ public sealed partial class MsaaContentHitTester(ChromiumAccessibilityWake wake,
             // The hit-test itself is fresh, but reported rectangles lag behind scrolling. A leaf whose
             // rectangle doesn't contain the point is stale: keep asking until the tree has caught up.
             if (chain[0].Bounds.Contains(point))
-                return HitTestAttempt.Found(new ContentHit(chain, Viewport(document.Bounds, render)));
+                return HitTestAttempt.Found(new ContentHit(chain, Viewport(document.Bounds, render), stale?.Scale ?? 1));
 
             if (attempt == MaxHitTestAttempts)
             {
@@ -181,10 +181,10 @@ public sealed partial class MsaaContentHitTester(ChromiumAccessibilityWake wake,
 
                 LogDocumentFromWindow(target.ProcessName, path);
                 var page = new ContentNode(ContentRole.Document, window.Value);
-                return HitTestAttempt.Found(new ContentHit([.. chain, page], Viewport(window.Value, render)));
+                return HitTestAttempt.Found(new ContentHit([.. chain, page], Viewport(window.Value, render), stale?.Scale ?? 1));
             }
 
-            return HitTestAttempt.Found(new ContentHit(chain, Viewport(document.Bounds, render)));
+            return HitTestAttempt.Found(new ContentHit(chain, Viewport(document.Bounds, render), stale?.Scale ?? 1));
         }
 
         // A single handshake right after the window appeared can be too early; nudging again is cheap.

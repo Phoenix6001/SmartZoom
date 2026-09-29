@@ -131,4 +131,75 @@ public sealed class SmartZoomPlannerTests
         Assert.Null(_planner.Plan(new PixelRect(10, 10, 10, 50), Viewport, Cursor));
         Assert.Null(_planner.Plan(Paragraph, new PixelRect(0, 0, 0, 0), Cursor));
     }
+
+    /// <summary>
+    /// How a browser press is planned: by the configured amount, around the cursor, wherever it lands.
+    /// </summary>
+    public sealed class ByTheAmount
+    {
+        private static readonly PixelRect Viewport = PixelRect.FromSize(455, 420, 1874, 1527);
+        private static readonly ScreenPoint Cursor = new(1486, 1147);
+
+        private readonly SmartZoomPlanner _planner = new(MinScale: 1.1, MaxScale: 2.0, Margin: 16);
+
+        [Fact]
+        public void The_cursor_is_the_one_point_that_does_not_move()
+        {
+            var plan = _planner.Magnify(Viewport, Cursor)!.Value;
+
+            Assert.Equal(2.0, plan.Scale, precision: 9);
+            Assert.Equal(Cursor, plan.Anchor);
+        }
+
+        [Fact]
+        public void The_zoomed_view_never_falls_outside_what_is_visible_now()
+        {
+            // Anything outside would make the browser scroll the page, which zooming back out does not undo.
+            // An anchor inside the viewport cannot produce one, and this pins that down at the corners.
+            foreach (var corner in new[]
+            {
+                new ScreenPoint(Viewport.Left, Viewport.Top),
+                new ScreenPoint(Viewport.Right - 1, Viewport.Bottom - 1),
+            })
+            {
+                var plan = _planner.Magnify(Viewport, corner)!.Value;
+                var left = plan.Anchor.X - ((plan.Anchor.X - Viewport.Left) / plan.Scale);
+                var right = plan.Anchor.X + ((Viewport.Right - plan.Anchor.X) / plan.Scale);
+
+                Assert.InRange(left, Viewport.Left, Viewport.Right);
+                Assert.InRange(right, Viewport.Left, Viewport.Right);
+            }
+        }
+
+        [Fact]
+        public void A_cursor_outside_the_viewport_is_pulled_into_it()
+        {
+            // The window under the cursor is not always the page: a press on the toolbar still resolves to
+            // the document, and an anchor above it would put the contacts outside the page area.
+            var plan = _planner.Magnify(Viewport, new ScreenPoint(Viewport.Left - 500, Viewport.Top - 500))!.Value;
+
+            Assert.True(Viewport.Contains(plan.Anchor));
+        }
+
+        [Fact]
+        public void The_insets_keep_the_anchor_clear_of_the_edges()
+        {
+            var plan = _planner.Magnify(Viewport, new ScreenPoint(Viewport.Left, Viewport.Top), new AnchorInsets(X: 28, Y: 28))!.Value;
+
+            Assert.InRange(plan.Anchor.X, Viewport.Left + 28, Viewport.Right - 1 - 28);
+            Assert.InRange(plan.Anchor.Y, Viewport.Top + 28, Viewport.Bottom - 1 - 28);
+        }
+
+        [Fact]
+        public void An_amount_of_one_or_less_is_not_a_zoom()
+        {
+            Assert.Null(new SmartZoomPlanner(MaxScale: 1).Magnify(Viewport, Cursor));
+        }
+
+        [Fact]
+        public void No_viewport_means_no_plan()
+        {
+            Assert.Null(_planner.Magnify(new PixelRect(0, 0, 0, 0), Cursor));
+        }
+    }
 }

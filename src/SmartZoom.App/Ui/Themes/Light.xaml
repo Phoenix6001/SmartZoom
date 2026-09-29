@@ -16,6 +16,8 @@
     <SolidColorBrush x:Key="Brush.Ink" Color="#101828" />
     <SolidColorBrush x:Key="Brush.Muted" Color="#5A6472" />
     <SolidColorBrush x:Key="Brush.Accent" Color="#1B6BF0" />
+    <!-- A pill that is not the action being encouraged: "Turn off" while SmartZoom is running. -->
+    <SolidColorBrush x:Key="Brush.Neutral" Color="#E3E8F0" />
     <SolidColorBrush x:Key="Brush.AccentTint" Color="#E8F0FE" />
     <SolidColorBrush x:Key="Brush.Good" Color="#16A34A" />
     <SolidColorBrush x:Key="Brush.Warn" Color="#B45309" />

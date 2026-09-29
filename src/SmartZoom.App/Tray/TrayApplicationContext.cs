@@ -102,7 +102,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
         // Everything the menu shows is read here rather than kept in step with every change behind its back.
         _menu.Opening += (_, _) =>
         {
-            UpdateTooltip();
+            UpdateTrayState();
             UpdateQuickItems();
         };
 
@@ -116,7 +116,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
         // click opens the full window for the things the panel deliberately leaves out.
         _notifyIcon.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) TogglePanel(); };
         _notifyIcon.DoubleClick += (_, _) => OpenShell();
-        UpdateTooltip();
+        UpdateTrayState();
 
         // If the host stops on its own (e.g. a hosted service faulted), don't leave a tray icon with no hook
         // behind it. Creating the menu installed the WinForms synchronization context; capture it to marshal back.
@@ -126,7 +126,8 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
 
         // Zooms are reported from the dispatcher's thread; the tooltip belongs to the UI thread.
         _activity.Happened += OnZoomHappened;
-        _tooltipClock.Tick += (_, _) => UpdateTooltip();
+        _holder.Changed += OnSettingsChanged;
+        _tooltipClock.Tick += (_, _) => UpdateTrayState();
         _tooltipClock.Start();
     }
 
@@ -142,6 +143,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
         if (disposing)
         {
             _activity.Happened -= OnZoomHappened;
+            _holder.Changed -= OnSettingsChanged;
             _tooltipClock.Dispose();
             _hostStoppingRegistration.Dispose();
             _shell.Dispose();
@@ -178,7 +180,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
                 LogChangeFailed(ex);
             }
 
-            _uiContext.Post(_ => UpdateTooltip(), null);
+            _uiContext.Post(_ => UpdateTrayState(), null);
         });
     }
 
@@ -187,7 +189,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
         new(
             $"{amount:0.#}×",
             image: null,
-            (_, _) => Apply(TrayQuickSettings.WithZoomAmount(_holder.Current, amount), $"Zoom amount is now {amount:0.#}×."))
+            (_, _) => Apply(settings => TrayQuickSettings.SetZoomAmount(settings, amount), $"Zoom amount is now {amount:0.#}×."))
         {
             // Radio marks rather than ticks: these three are one choice, not three switches.
             CheckOnClick = false,
@@ -241,7 +243,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
             return;
 
         Apply(
-            TrayQuickSettings.WithFirstTrigger(settings, captured),
+            settings => TrayQuickSettings.SetFirstTrigger(settings, captured),
             $"The trigger is now {captured.ToDefinition(_systemInput.DoubleClickTimeMs).DisplayName}.");
     }
 
@@ -251,26 +253,25 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
         if (_lastProcess is not { Length: > 0 } process)
             return;
 
-        var settings = _holder.Current;
-        var ignore = !TrayQuickSettings.IsIgnored(settings, process);
+        var ignore = !TrayQuickSettings.IsIgnored(_holder.Current, process);
         Apply(
-            TrayQuickSettings.WithIgnored(settings, process, ignore),
+            settings => TrayQuickSettings.SetIgnored(settings, process, ignore),
             ignore ? $"SmartZoom now leaves {process} alone." : $"SmartZoom zooms {process} again.");
     }
 
     /// <summary>
-    /// Puts a changed copy of the settings into force. Off the UI thread, because the applier's gate may be
+    /// Puts a change into force. Off the UI thread, because the applier's gate may be
     /// held by a zoom in flight, and the user hears the outcome either way.
     /// </summary>
-    /// <param name="settings">The changed copy.</param>
+    /// <param name="change">What to change, applied to a copy the applier makes under its own gate.</param>
     /// <param name="done">What to say when it worked.</param>
-    private void Apply(SmartZoomSettings settings, string done) => _ = Task.Run(async () =>
+    private void Apply(Action<SmartZoomSettings> change, string done) => _ = Task.Run(async () =>
     {
         string summary;
         var good = false;
         try
         {
-            var result = await _applier.ApplyAsync(settings).ConfigureAwait(false);
+            var result = await _applier.ApplyAsync(change).ConfigureAwait(false);
             good = result.InForce;
             summary = good
                 ? done
@@ -287,7 +288,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
             _ =>
             {
                 Notify(summary, good);
-                UpdateTooltip();
+                UpdateTrayState();
             },
             null);
     });
@@ -301,8 +302,8 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
     /// <summary>Opens the settings window, or brings it to the front when it is already open.</summary>
     private void OpenShell() => Shell(_shell.ShowSettings);
 
-    /// <summary>Opens the Advanced page, where the diagnostic report is read and copied.</summary>
-    private void ShowDiagnostics() => Shell(_shell.ShowAdvanced);
+    /// <summary>Opens the Diagnostics page, where the report is read and copied.</summary>
+    private void ShowDiagnostics() => Shell(_shell.ShowDiagnostics);
 
     /// <summary>Runs one of the window's entry points; a UI that will not open must not take the tray with it.</summary>
     private void Shell(Action show)
@@ -345,7 +346,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
             _ =>
             {
                 Notify(summary, good);
-                UpdateTooltip();
+                UpdateTrayState();
             },
             null);
     });
@@ -377,14 +378,19 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
                 // Kept here rather than on ZoomActivity: the tray is the only thing that needs it, and it is
                 // already being told. Null when the process could not be identified, which hides the item.
                 _lastProcess = process;
-                UpdateTooltip();
+                UpdateTrayState();
             },
             (outcome.ToString(), outcome.Process));
 
-    private void UpdateTooltip()
+    // Switching off from the tray panel or the settings window reaches the tray only as a settings change;
+    // without this the icon would keep its colour until the clock next ticked, half a minute later.
+    private void OnSettingsChanged(object? sender, EventArgs e) => _uiContext.Post(_ => UpdateTrayState(), null);
+
+    private void UpdateTrayState()
     {
         var enabled = _triggerSource.Enabled;
         _enabledItem.Checked = enabled;
+        _notifyIcon.Icon = TrayIcon.Load(enabled);
 
         var header = enabled ? "SmartZoom" : "SmartZoom (disabled)";
         var text = header + Environment.NewLine + _lastAction + Since();

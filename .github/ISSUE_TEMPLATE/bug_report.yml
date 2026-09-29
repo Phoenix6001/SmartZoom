@@ -33,9 +33,9 @@ body:
     attributes:
       label: Diagnostic report
       description: >
-        Double-click the tray icon (or right-click it and choose **Diagnostic report…**), open the
-        **Diagnostics** tab, press **Copy**, and paste here. Read it first: it names the applications
-        SmartZoom has seen.
+        In SmartZoom, open **Diagnostics** and press **Report a problem** — that copies this report with the
+        log and opens this form with the rest of it filled in, so all that is left is to paste here. Read it
+        first: it names the applications SmartZoom has seen. Nothing in it leaves your machine until you submit.
       render: markdown
     validations:
       required: true

@@ -79,16 +79,16 @@ internal sealed partial class SettingsShell(
     }
 
     /// <summary>
-    /// Shows the settings window on the Advanced page, where the diagnostic report lives.
+    /// Shows the settings window on the Diagnostics page, where the report lives.
     /// </summary>
     /// <remarks>
     /// The report is rebuilt on the way in, because it is a snapshot and the press the user is asking about
     /// is the one they made a moment ago. Must be called on the UI thread.
     /// </remarks>
-    public void ShowAdvanced()
+    public void ShowDiagnostics()
     {
         ShowSettings();
-        _shell?.GoTo(NavigationSection.Advanced);
+        _shell?.GoTo(NavigationSection.Diagnostics);
     }
 
     /// <summary>
