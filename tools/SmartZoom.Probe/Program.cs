@@ -66,6 +66,12 @@ internal static class Program
             case "excel":
                 return Excel(Point(args, 1));
 
+            case "exceltrace":
+                return ExcelTrace(Point(args, 1), Integer(args, 3, 4000));
+
+            case "word":
+                return Word(Point(args, 1), Number(args, 3), Integer(args, 4, 0));
+
             case "shot":
                 if (Arg(args, 1, "file.png") is not { } shot)
                     return false;
@@ -223,6 +229,102 @@ internal static class Program
         return sent;
     }
 
+    /// <summary>
+    /// Whether Word can carry a zoom the way a PDF reader does: it renders a pinch itself, which is smooth,
+    /// but only if it then lets the object model decide where the zoom lands. Word was found in 2026-09-16 to
+    /// commit the gesture asynchronously and overwrite that value; Excel was found not to. This measures it.
+    /// </summary>
+    /// <param name="point">Where to pinch, over the document.</param>
+    /// <param name="factor">Gesture factor; 1 or less only reads and sets.</param>
+    /// <param name="percent">Zoom to set through the object model afterwards; 0 to leave it alone.</param>
+    private static bool Word(ScreenPoint point, double factor, int percent)
+    {
+        if (new WindowInspector().GetTargetAt(point) is not { } target)
+            return false;
+
+        using var word = new WordAutomation(NullLogger<WordAutomation>.Instance);
+        using var window = word.AttachAsync(target, CancellationToken.None).GetAwaiter().GetResult();
+
+        if (window is null)
+        {
+            Console.WriteLine($"{target.ProcessName} is not a Word document window");
+            return false;
+        }
+
+        var before = window.GetState();
+        Console.WriteLine($"before      zoom {before.ZoomPercent}%");
+
+        if (factor > 1)
+        {
+            var injector = new TouchPinchInjector(new TouchDevices(NullLogger<TouchDevices>.Instance), NullLogger<TouchPinchInjector>.Instance);
+            injector.PinchAsync(point, factor, TimeSpan.FromMilliseconds(300), Under(point), CancellationToken.None).GetAwaiter().GetResult();
+
+            foreach (var settle in new[] { 0, 150, 400 })
+            {
+                Thread.Sleep(settle);
+                Console.WriteLine($"after pinch zoom {window.GetState().ZoomPercent}% (settled {settle} ms)");
+            }
+        }
+
+        if (percent > 0)
+        {
+            window.SetZoom(percent);
+            foreach (var wait in new[] { 100, 300, 600, 1500 })
+            {
+                Thread.Sleep(wait);
+                Console.WriteLine($"+{wait,4} ms   zoom {window.GetState().ZoomPercent}% (asked for {percent}%)");
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Samples the worksheet's zoom and scroll as fast as the object model will answer, so a press can be
+    /// watched happening. Every distinct line is a separate thing the user sees move.
+    /// </summary>
+    /// <param name="point">A point over the worksheet, to attach through.</param>
+    /// <param name="milliseconds">How long to watch for.</param>
+    private static bool ExcelTrace(ScreenPoint point, int milliseconds)
+    {
+        if (new WindowInspector().GetTargetAt(point) is not { } target)
+            return false;
+
+        using var excel = new ExcelAutomation(NullLogger<ExcelAutomation>.Instance);
+        using var window = excel.AttachAsync(target, CancellationToken.None).GetAwaiter().GetResult();
+        if (window is null)
+        {
+            Console.WriteLine($"{target.ProcessName} is not an Excel worksheet window");
+            return false;
+        }
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var last = string.Empty;
+        while (clock.ElapsedMilliseconds < milliseconds)
+        {
+            string now;
+            try
+            {
+                var state = window.GetState();
+                now = $"zoom {state.ZoomPercent}%, row {state.ScrollRow}, column {state.ScrollColumn}";
+            }
+            catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or TimeoutException)
+            {
+                now = "busy";
+            }
+
+            if (now != last)
+            {
+                Console.WriteLine($"{clock.ElapsedMilliseconds,5} ms  {now}");
+                last = now;
+            }
+
+            Thread.Sleep(15);
+        }
+
+        return true;
+    }
+
     private static bool Excel(ScreenPoint point)
     {
         if (new WindowInspector().GetTargetAt(point) is not { } target)
@@ -241,7 +343,7 @@ internal static class Program
         Console.WriteLine($"before    zoom {before.ZoomPercent}%, row {before.ScrollRow}, column {before.ScrollColumn}");
 
         // This applies the fit: Excel will only report one by performing it. The view goes back below.
-        var fit = window.ApplyFitToBlockAt(point);
+        var fit = window.MeasureFitAt(point);
         if (fit is { } block)
         {
             Console.WriteLine($"block     {block.Rows} rows x {block.Columns} columns at row {block.Row}, column {block.Column}");

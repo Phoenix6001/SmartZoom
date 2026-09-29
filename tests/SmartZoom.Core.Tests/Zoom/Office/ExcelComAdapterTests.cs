@@ -1,9 +1,14 @@
+using System.Diagnostics;
+
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
 using SmartZoom.Core.Settings;
+using SmartZoom.Core.Tests.Zoom.Reader;
 using SmartZoom.Core.Zoom;
+using SmartZoom.Core.Zoom.Content;
 using SmartZoom.Core.Zoom.Office;
 
 namespace SmartZoom.Core.Tests.Zoom.Office;
@@ -17,7 +22,25 @@ public sealed class ExcelComAdapterTests
 
     // A 1000 px pane and a 32 px margin leave 96.8% of the width, so a 300% fit is kept as 290%.
     private IZoomAdapter Create(double maxScale = 3.0, double minScale = 1.1) =>
-        new ExcelComAdapter(_excel, new ZoomSettings { MinScale = minScale, MaxScale = maxScale }, NullLogger<ExcelComAdapter>.Instance);
+        new ExcelComAdapter(
+            _excel,
+            new ZoomSettings { MinScale = minScale, MaxScale = maxScale },
+            NullLogger<ExcelComAdapter>.Instance);
+
+    [Fact]
+    public async Task A_press_moves_the_sheet_exactly_once()
+    {
+        // Two things used to make a press step. Excel reports a fitting zoom only by performing one, so the
+        // measurement was a zoom, a read and an undo, all of it on screen; it now runs with Excel's drawing
+        // off. And the zoom and the scroll were set separately, which is two repaints; they now land in one
+        // call. What is left is a single change to the sheet.
+        _excel.Window.Block = new ExcelFit(200, 1000, Row: 3, Column: 1, Rows: 38, Columns: 10, CursorRow: 3);
+
+        await Create().ZoomInAsync(Excel, Cursor, CancellationToken.None);
+
+        Assert.Equal([194], _excel.Window.ZoomHistory);
+        Assert.Equal((3, 1), _excel.Window.Scroll);
+    }
 
     [Fact]
     public async Task Zoom_in_keeps_the_fitting_zoom_and_scrolls_the_block_to_the_top_left()
@@ -86,6 +109,22 @@ public sealed class ExcelComAdapterTests
         Assert.Equal(ZoomReason.AlreadyFits, result.Reason);
         Assert.Equal(100, _excel.Window.Zoom);
         Assert.Equal((1, 1), _excel.Window.Scroll);
+    }
+
+    [Fact]
+    public async Task A_block_that_already_fits_leaves_the_worksheet_exactly_where_it_was()
+    {
+        // Measuring the fit scrolls the sheet to the block, and Excel does not follow a scroll set while it
+        // is not drawing, so a press that decides to do nothing has to put the view back itself. Without this
+        // the worksheet was left scrolled by a press that reported doing nothing at all.
+        _excel.Window.State = new ExcelViewState(145, 7, 1);
+        _excel.Window.Block = new ExcelFit(150, 1000, Row: 3, Column: 1, Rows: 56, Columns: 9, CursorRow: 9);
+
+        var result = await Create(minScale: 1.1).ZoomInAsync(Excel, Cursor, CancellationToken.None);
+
+        Assert.Equal(ZoomReason.AlreadyFits, result.Reason);
+        Assert.Equal(145, _excel.Window.Zoom);
+        Assert.Equal((7, 1), _excel.Window.Scroll);
     }
 
     [Fact]
@@ -163,21 +202,24 @@ public sealed class ExcelComAdapterTests
 
         public int Zoom { get; private set; } = 100;
 
+        /// <summary>Every zoom set on this window, in order.</summary>
+        public List<int> ZoomHistory { get; } = [];
+
         public (int Row, int Column) Scroll { get; private set; } = (1, 1);
+
+        /// <summary>The pane the gesture's contacts may use; empty means there is no grid to pinch.</summary>
+        public PixelRect Pane { get; set; } = PixelRect.FromSize(100, 100, 1200, 900);
 
         public ExcelViewState GetState() => State;
 
-        public ExcelFit? ApplyFitToBlockAt(ScreenPoint point)
+        public ExcelFit? MeasureFitAt(ScreenPoint point)
         {
-            if (Block is { } block)
-                Zoom = block.FitZoomPercent; // Excel applies the fitting zoom while measuring it
-
+            // The real one zooms, reads and undoes with the screen switched off, so from out here nothing
+            // moved. Recording a measurement that left no trace would make the history lie.
             return Block;
         }
 
-        public void SetZoom(int percent) => Zoom = percent;
-
-        public void ScrollTo(int row, int column)
+        public void ApplyView(int zoomPercent, int row, int column)
         {
             if (FailScroll)
             {
@@ -187,12 +229,15 @@ public sealed class ExcelComAdapterTests
 #pragma warning restore CA2201
             }
 
+            Zoom = zoomPercent;
+            ZoomHistory.Add(zoomPercent);
             Scroll = (row, column);
         }
 
         public void Restore(ExcelViewState state)
         {
             Zoom = state.ZoomPercent;
+            ZoomHistory.Add(Zoom);
             Scroll = (state.ScrollRow, state.ScrollColumn);
         }
 

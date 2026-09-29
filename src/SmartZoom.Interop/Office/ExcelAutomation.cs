@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
+using SmartZoom.Core.Zoom.Content;
 using SmartZoom.Core.Zoom.Office;
 using SmartZoom.Interop.Accessibility;
 using SmartZoom.Interop.Windows;
@@ -71,13 +72,15 @@ public sealed partial class ExcelAutomation(ILogger<ExcelAutomation> logger) : I
     /// <summary>One attached Excel <c>Window</c>. Every member marshals to the STA thread.</summary>
     private sealed class ExcelWindow(object window, HWND grid, StaThread sta) : IExcelWindow
     {
+        public PixelRect Pane => WindowInspector.Bounds(grid) ?? default;
+
         public ExcelViewState GetState() => sta.Run(() =>
         {
             dynamic w = window;
             return new ExcelViewState((int)w.Zoom, (int)w.ScrollRow, (int)w.ScrollColumn);
         });
 
-        public ExcelFit? ApplyFitToBlockAt(ScreenPoint point) => sta.Run(() =>
+        public ExcelFit? MeasureFitAt(ScreenPoint point) => sta.Run(() =>
         {
             dynamic w = window;
             dynamic app = w.Application;
@@ -105,36 +108,60 @@ public sealed partial class ExcelAutomation(ILogger<ExcelAutomation> logger) : I
             var cursorRow = CursorRow(hit, row);
 
             // Excel reports a fitting zoom only by performing one: "zoom to selection" on the block's first row
-            // fits its width, since a single row can never be the binding dimension. The user's selection is put
-            // back even if that fails half way, because losing it would be the most visible thing we ever did.
+            // fits its width, since a single row can never be the binding dimension. So the measurement is a
+            // zoom, a read and an undo — and with the screen live that is three visible jumps before the zoom
+            // the user asked for has even started. ScreenUpdating off keeps all of it off the glass; the view
+            // is put back inside that window, so the caller sees a worksheet that never moved.
+            //
+            // Everything is restored even if a step fails half way: losing the user's selection, or leaving
+            // their Excel with drawing switched off, would both be far worse than a missed zoom.
             var selection = Selected(app);
+            var zoomWas = (int)w.Zoom;
+            var rowWas = (int)w.ScrollRow;
+            var columnWas = (int)w.ScrollColumn;
+            var drawingWas = ScreenUpdating(app);
+
             int fit;
             try
             {
+                SetScreenUpdating(app, false);
+
                 dynamic firstRow = cells.Rows[1];
                 firstRow.Select();
                 w.Zoom = true;
                 fit = (int)w.Zoom;
+
+                w.Zoom = zoomWas;
+                w.ScrollRow = rowWas;
+                w.ScrollColumn = columnWas;
             }
             finally
             {
                 Reselect(selection);
+                SetScreenUpdating(app, drawingWas);
             }
 
             return new ExcelFit(fit, pane.Width, row, column, rows, columns, cursorRow);
         });
 
-        public void SetZoom(int percent) => sta.Run(() =>
+        public void ApplyView(int zoomPercent, int row, int column) => sta.Run(() =>
         {
             dynamic w = window;
-            w.Zoom = percent;
-        });
+            dynamic app = w.Application;
 
-        public void ScrollTo(int row, int column) => sta.Run(() =>
-        {
-            dynamic w = window;
-            w.ScrollRow = row;
-            w.ScrollColumn = column;
+            // Drawing off across all three, so the sheet moves once rather than once per property.
+            var drawingWas = ScreenUpdating(app);
+            try
+            {
+                SetScreenUpdating(app, false);
+                w.Zoom = zoomPercent;
+                w.ScrollRow = row;
+                w.ScrollColumn = column;
+            }
+            finally
+            {
+                SetScreenUpdating(app, drawingWas);
+            }
         });
 
         public void Restore(ExcelViewState state) => sta.Run(() =>
@@ -216,6 +243,38 @@ public sealed partial class ExcelAutomation(ILogger<ExcelAutomation> logger) : I
             catch (COMException)
             {
                 return fallback;
+            }
+        }
+
+        /// <summary>Whether Excel is currently drawing; true if it will not say.</summary>
+        private static bool ScreenUpdating(dynamic app)
+        {
+            try
+            {
+                return (bool)app.ScreenUpdating;
+            }
+            catch (RuntimeBinderException)
+            {
+                return true;
+            }
+            catch (COMException)
+            {
+                return true;
+            }
+        }
+
+        /// <summary>Turns Excel's drawing off or on; a refusal only costs the flicker this exists to avoid.</summary>
+        private static void SetScreenUpdating(dynamic app, bool updating)
+        {
+            try
+            {
+                app.ScreenUpdating = updating;
+            }
+            catch (RuntimeBinderException)
+            {
+            }
+            catch (COMException)
+            {
             }
         }
 

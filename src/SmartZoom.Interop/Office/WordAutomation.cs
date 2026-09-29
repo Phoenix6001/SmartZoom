@@ -96,12 +96,12 @@ public sealed partial class WordAutomation(ILogger<WordAutomation> logger) : IWo
             return new WordViewState((int)w.View.Zoom.Percentage, (int)w.VerticalPercentScrolled, (int)w.HorizontalPercentScrolled);
         });
 
-        public PixelRect? GetBlockAt(ScreenPoint point) => sta.Run(() =>
+        public WordBlock? GetBlockAt(ScreenPoint point) => sta.Run(() =>
         {
             dynamic w = window;
             dynamic? range = w.RangeFromPoint(point.X, point.Y);
             if (range is null)
-                return (PixelRect?)null;
+                return (WordBlock?)null;
 
             // A picture or table is the reading unit; otherwise the paragraph the point falls in.
             dynamic block = range.InlineShapes.Count > 0 ? range.InlineShapes[1].Range
@@ -110,7 +110,7 @@ public sealed partial class WordAutomation(ILogger<WordAutomation> logger) : IWo
 
             int left, top, width, height;
             w.GetPoint(out left, out top, out width, out height, block);
-            return PixelRect.FromSize(left, top, width, height);
+            return new WordBlock(PixelRect.FromSize(left, top, width, height), (int)block.Start);
         });
 
         public void SetZoom(int percent) => sta.Run(() =>
@@ -119,14 +119,12 @@ public sealed partial class WordAutomation(ILogger<WordAutomation> logger) : IWo
             w.View.Zoom.Percentage = percent;
         });
 
-        public void ScrollBlockIntoView(ScreenPoint point) => sta.Run(() =>
+        public void ScrollIntoView(int start) => sta.Run(() =>
         {
             dynamic w = window;
-            dynamic? range = w.RangeFromPoint(point.X, point.Y);
-            if (range is null)
-                return;
 
-            dynamic block = range.Paragraphs[1].Range;
+            // Built from the character position rather than from the screen, which has moved under us.
+            dynamic block = w.Document.Range(start, start).Paragraphs[1].Range;
             w.ScrollIntoView(block, true);
         });
 
