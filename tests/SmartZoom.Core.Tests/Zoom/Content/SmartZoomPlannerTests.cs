@@ -133,7 +133,7 @@ public sealed class SmartZoomPlannerTests
     }
 
     /// <summary>
-    /// How a browser press is planned: by the configured amount, around the cursor, wherever it lands.
+    /// How a browser press is planned: by the configured amount, bringing what was pointed at to the middle.
     /// </summary>
     public sealed class ByTheAmount
     {
@@ -142,13 +142,48 @@ public sealed class SmartZoomPlannerTests
 
         private readonly SmartZoomPlanner _planner = new(MinScale: 1.1, MaxScale: 2.0, Margin: 16);
 
+        /// <summary>Where a screen point ends up once the plan is applied.</summary>
+        private static ScreenPoint After(ZoomPlan plan, ScreenPoint point) => new(
+            (int)Math.Round(plan.Anchor.X + ((point.X - plan.Anchor.X) * plan.Scale)),
+            (int)Math.Round(plan.Anchor.Y + ((point.Y - plan.Anchor.Y) * plan.Scale)));
+
         [Fact]
-        public void The_cursor_is_the_one_point_that_does_not_move()
+        public void What_was_under_the_cursor_ends_up_in_the_middle_of_the_viewport()
         {
+            // A press below the middle used to leave its target below the middle, so the window filled with
+            // what was above it and the page read as jumping upwards.
             var plan = _planner.Magnify(Viewport, Cursor)!.Value;
+            var landed = After(plan, Cursor);
 
             Assert.Equal(2.0, plan.Scale, precision: 9);
-            Assert.Equal(Cursor, plan.Anchor);
+            Assert.Equal(Viewport.CenterX, landed.X, tolerance: 1);
+            Assert.Equal(Viewport.CenterY, landed.Y, tolerance: 1);
+        }
+
+        [Fact]
+        public void A_press_in_the_middle_holds_the_pixel_under_the_cursor()
+        {
+            // Centring and anchoring agree there, which is what makes the rule feel like one rule.
+            var middle = new ScreenPoint((int)Viewport.CenterX, (int)Viewport.CenterY);
+
+            var plan = _planner.Magnify(Viewport, middle)!.Value;
+
+            Assert.Equal(middle.X, plan.Anchor.X, tolerance: 1);
+            Assert.Equal(middle.Y, plan.Anchor.Y, tolerance: 1);
+        }
+
+        [Fact]
+        public void Near_an_edge_the_target_is_as_central_as_it_can_be_without_scrolling()
+        {
+            // Half a zoomed view above it does not exist, so the most the zoom can do is show the top of the
+            // viewport. Centring it would mean scrolling the page, which zooming back out does not undo.
+            var nearTop = new ScreenPoint(Cursor.X, Viewport.Top + 20);
+
+            var plan = _planner.Magnify(Viewport, nearTop)!.Value;
+            var landed = After(plan, nearTop);
+
+            Assert.Equal(Viewport.Top, plan.Anchor.Y);
+            Assert.InRange(landed.Y, Viewport.Top, Viewport.CenterY);
         }
 
         [Fact]

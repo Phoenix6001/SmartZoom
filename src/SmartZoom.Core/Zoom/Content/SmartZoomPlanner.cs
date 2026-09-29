@@ -61,9 +61,9 @@ public sealed record SmartZoomPlanner(double MinScale = 1.1, double MaxScale = 3
         return new ZoomPlan(scale, anchor);
     }
 
-    /// <summary>Zooms by <see cref="MaxScale"/> around the cursor.</summary>
+    /// <summary>Zooms by <see cref="MaxScale"/>, bringing what is under the cursor to the middle of the viewport.</summary>
     /// <param name="viewport">Visible area, physical pixels.</param>
-    /// <param name="cursor">Cursor position; the one point the zoom leaves where it is.</param>
+    /// <param name="cursor">Cursor position; what the zoom is meant to show.</param>
     /// <param name="insets">Extra keep-out from the viewport edges for the anchor.</param>
     /// <returns>The plan, or null when there is no viewport to zoom.</returns>
     /// <remarks>
@@ -74,10 +74,19 @@ public sealed record SmartZoomPlanner(double MinScale = 1.1, double MaxScale = 3
     /// window grew by a twelfth, which reads as the zoom being broken in places rather than as a rule.
     /// </para>
     /// <para>
-    /// Anchoring on the cursor is what makes it predictable: the pixel under the pointer is the one the zoom
-    /// holds still. The zoomed view is then a <c>1/MaxScale</c>-sized window around a point that is itself
-    /// inside the viewport, so it can never fall outside — the page is never asked to scroll, and zooming
-    /// back out is exact.
+    /// The amount says how much; this says what you end up looking at. Holding the pixel under the pointer
+    /// still is the obvious rule and is wrong away from the middle of the window: a press two thirds of the
+    /// way down leaves its target two thirds of the way down, so the screen fills with what was ABOVE it —
+    /// seven rows above the line you aimed at and four below it, measured at x3. The press reads as the page
+    /// jumping upwards. Centring the target is what a smart zoom does, and what the pointed-at line being
+    /// kept in view in <see cref="Plan"/> was already reaching for.
+    /// </para>
+    /// <para>
+    /// The region that will fill the screen is therefore centred on the cursor and then clamped inside the
+    /// viewport, exactly as in <see cref="Plan"/>: asking for anything outside would make the browser scroll
+    /// the page, which zooming back out does not undo. Near an edge the clamp wins and the target lands
+    /// off-centre, which is the most a zoom can do without scrolling. In the middle of the window the two
+    /// rules agree — the anchor is the cursor.
     /// </para>
     /// </remarks>
     public ZoomPlan? Magnify(PixelRect viewport, ScreenPoint cursor, AnchorInsets insets = default)
@@ -85,10 +94,19 @@ public sealed record SmartZoomPlanner(double MinScale = 1.1, double MaxScale = 3
         if (viewport.IsEmpty || MaxScale <= 1)
             return null;
 
+        var regionWidth = viewport.Width / MaxScale;
+        var regionHeight = viewport.Height / MaxScale;
+
+        var regionLeft = Math.Clamp(
+            cursor.X - viewport.Left - (regionWidth / 2), 0, Math.Max(0, viewport.Width - regionWidth));
+        var regionTop = Math.Clamp(
+            cursor.Y - viewport.Top - (regionHeight / 2), 0, Math.Max(0, viewport.Height - regionHeight));
+
+        // The anchor A that maps the region's top-left corner to the viewport's top-left: A + (R - A) * s = 0.
         return new ZoomPlan(
             MaxScale,
             new ScreenPoint(
-                PixelRect.ClampWithInset(cursor.X, viewport.Left, viewport.Right - 1, insets.X),
-                PixelRect.ClampWithInset(cursor.Y, viewport.Top, viewport.Bottom - 1, insets.Y)));
+                PixelRect.ClampWithInset(viewport.Left + (regionLeft * MaxScale / (MaxScale - 1)), viewport.Left, viewport.Right - 1, insets.X),
+                PixelRect.ClampWithInset(viewport.Top + (regionTop * MaxScale / (MaxScale - 1)), viewport.Top, viewport.Bottom - 1, insets.Y)));
     }
 }

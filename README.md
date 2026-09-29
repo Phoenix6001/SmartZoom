@@ -1,9 +1,9 @@
 # SmartZoom for Windows
 
 **Bringing macOS's smart zoom to Windows.** Press a mouse button and the application under the
-cursor zooms its *content* in on whatever you are pointing at — by the amount you choose in a browser,
-or to fit the paragraph, table or block of cells in Word and Excel. Press again to return to exactly
-where you were.
+cursor zooms its *content* in on whatever you are pointing at, and brings it to the middle of the window
+— by the amount you choose in a browser, or to fit the paragraph, table or block of cells in Word and
+Excel. Press again to return to exactly where you were.
 
 ![Before: a full Wikipedia page with the pointer resting in the article. After: the same page magnified three times around that point, the text large and crisp.](docs/media/before-after-readme.png)
 
@@ -16,8 +16,8 @@ trigger and routes it to a per-application zoom strategy:
 
 | Target | Strategy | Precision |
 |---|---|---|
-| Chrome, Edge, Brave, Opera, Vivaldi (any Chromium browser) | Native smart zoom: pinch-zooms the page by the amount you set, around the pixel under the cursor, using the browser's own touch handling — no extension needed | Aimed at the cursor, visual zoom (no reflow), exact restore |
-| Firefox | Native smart zoom, the same way, through a synthetic touch device that Firefox accepts as a touch screen | Aimed at the cursor, visual zoom (no reflow), exact restore |
+| Chrome, Edge, Brave, Opera, Vivaldi (any Chromium browser) | Native smart zoom: pinch-zooms the page by the amount you set and brings what you pointed at to the middle of the window, using the browser's own touch handling — no extension needed | Centred on what you aimed at, visual zoom (no reflow), exact restore |
+| Firefox | Native smart zoom, the same way, through a synthetic touch device that Firefox accepts as a touch screen | Centred on what you aimed at, visual zoom (no reflow), exact restore |
 | Word | Smart zoom through Word's object model: the paragraph, table or picture under the cursor is zoomed to fill the document pane; the previous zoom and scroll position are restored exactly | Element-aware, exact restore |
 | Excel | Smart zoom through Excel's object model: the block of data under the cursor — the surrounding island of filled cells, or the cells a chart or picture covers — is zoomed to fill the worksheet pane, and the view is scrolled to the row you pointed at | Element-aware, exact restore |
 | Acrobat, Acrobat Reader, SumatraPDF | An animated pinch around the cursor, the same gesture the browsers get: what you pointed at stays where it is and grows. The second press animates the magnification away and lands on the reader's own "fit page" | Animated, follows the cursor, never drifts |

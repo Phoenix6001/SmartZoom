@@ -41,8 +41,13 @@ public sealed class BrowserAdapterTests
             },
             NullLogger<BrowserAdapter>.Instance);
 
+    /// <summary>Where the pixel under the cursor ends up once the gesture has been performed.</summary>
+    private static ScreenPoint Lands((ScreenPoint Anchor, double Factor, TimeSpan Duration, PixelRect Bounds) pinch, ScreenPoint point) => new(
+        (int)Math.Round(pinch.Anchor.X + ((point.X - pinch.Anchor.X) * pinch.Factor)),
+        (int)Math.Round(pinch.Anchor.Y + ((point.Y - pinch.Anchor.Y) * pinch.Factor)));
+
     [Fact]
-    public async Task Zooms_by_the_configured_amount_around_the_cursor_and_remembers_the_plan()
+    public async Task Zooms_by_the_configured_amount_and_brings_the_target_to_the_middle()
     {
         _hits.Result = ParagraphHit;
 
@@ -55,7 +60,12 @@ public sealed class BrowserAdapterTests
         Assert.Single(_pinch.Calls);
         var pinch = _pinch.Calls[0];
         Assert.Equal(2.5, pinch.Factor, precision: 9);
-        Assert.Equal(Cursor, pinch.Anchor);
+
+        // The press is aimed below and right of the middle; what it aimed at ends up in the middle.
+        var landed = Lands(pinch, Cursor);
+        Assert.Equal(Viewport.CenterX, landed.X, tolerance: 1);
+        Assert.Equal(Viewport.CenterY, landed.Y, tolerance: 1);
+
         Assert.Equal(TimeSpan.FromMilliseconds(180), pinch.Duration);
         Assert.Equal(pinch.Factor, Assert.IsType<BrowserAdapter.RestoreState>(result.RestoreState).Plan.Scale);
     }
@@ -120,7 +130,10 @@ public sealed class BrowserAdapterTests
         Assert.Equal(ZoomInStatus.Applied, result.Status);
         var pinch = Assert.Single(_pinch.Calls);
         Assert.Equal(3.0, pinch.Factor, precision: 9);
-        Assert.Equal(Cursor, pinch.Anchor);
+
+        var landed = Lands(pinch, Cursor);
+        Assert.Equal(Viewport.CenterX, landed.X, tolerance: 1);
+        Assert.Equal(Viewport.CenterY, landed.Y, tolerance: 1);
     }
 
     [Fact]

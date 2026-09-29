@@ -90,6 +90,15 @@ All notable changes to SmartZoom are recorded here. The format follows
 
 ### Fixed
 
+- **A browser press brings what you pointed at to the middle of the window.** The zoom held the pixel under
+  the pointer still, which is the obvious rule and is wrong anywhere but the middle of the window: a press
+  two thirds of the way down left its target two thirds of the way down, so the screen filled with what had
+  been *above* it — seven rows above the line you aimed at against four below it, measured at x3 on a ruled
+  page. The press read as the page jumping upwards. The zoomed view is now centred on what the press was
+  aimed at, and clamped inside the window exactly as the old fit was: near an edge the target lands as
+  central as it can without the page scrolling, which zooming back out would not undo. In the middle of the
+  window nothing changes — there the two rules agree.
+
 - **A press low on the page of a Word document no longer jumps to the previous page.** The zoom was planned
   from the paragraph under the cursor, but the scroll that followed asked all over again what was under that
   point on screen — after the zoom had re-laid the document out, so the same pixel belonged to entirely
