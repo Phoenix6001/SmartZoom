@@ -89,7 +89,7 @@ A **tally, not a journal**. A journal of every event grows without limit and say
 | Kind | Raised when |
 |---|---|
 | `ZoomedNothing` | A press resolved to a window and produced no zoom. `Reason` distinguishes `NoContent`, `NoBlock`, `AlreadyFits`, `GestureRefused`, `AutomationFailed`, `NoAdapter` and `AdapterCouldNotAct` (the strategy could not act and the Ctrl+wheel fallback did not either). It is always set for a press that zoomed nothing. `NoAdapter` and `AlreadyFits` are correct behaviour rather than defects, and are counted because "people keep pressing in an application that is routed to nothing" is exactly question 2 |
-| `AdapterThrew` | An adapter raised an exception the dispatcher caught |
+| `AdapterThrew` | A zoom failed rather than merely doing nothing. `Reason` is the exception's type name, or `TimeoutException` for a zoom that was still running when its deadline passed and was abandoned — in that one case nothing threw, and the sample carries a sentence instead of a stack |
 | `NoWindow` | A trigger resolved to no window at all |
 | `Crashed` | An unhandled exception reached the top of the process, or the top of the UI thread's message loop. The process survives the second kind (`Application.SetUnhandledExceptionMode(CatchException)`), so the key's adapter slot tells them apart: `UiThread` for those, null for a crash that took the process down |
 
@@ -169,7 +169,9 @@ Following the existing split, and adding no new plumbing through the zoom pipeli
   from the engine. `ZoomedNothing` is derived there, through `DiagnosticSampleFactory`, which is the one
   place a live outcome is turned into a key and a sample.
 - `TriggerDispatcher` already catches adapter exceptions so a failed zoom cannot end the dispatcher.
-  `AdapterThrew` is raised from that catch.
+  `AdapterThrew` is raised from that catch, and from the one beside it that abandons a zoom which has run
+  past its deadline — a zoom holding the engine's gate for ever would otherwise drop every later press in
+  silence, so it is a finding and is recorded like any other failure.
 
 ## The user interface
 
