@@ -14,8 +14,8 @@
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
 
-    <!-- Nothing is released yet; the installer stamps this into the executable and its own filename. -->
-    <Version>0.3.0</Version>
+    <!-- The one place the version is written: the executable, the installer and the release assets read it. -->
+    <Version>0.4.0</Version>
 
     <Authors>SmartZoom contributors</Authors>
     <Product>SmartZoom</Product>

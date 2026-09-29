@@ -1,22 +1,23 @@
 # SmartZoom for Windows
 
 **Bringing macOS's smart zoom to Windows.** Press a mouse button and the application under the
-cursor zooms its *content* to fit the element you're pointing at. Press again to return to exactly
+cursor zooms its *content* in on whatever you are pointing at — by the amount you choose in a browser,
+or to fit the paragraph, table or block of cells in Word and Excel. Press again to return to exactly
 where you were.
 
-![Before: a full Wikipedia page with the cursor on a paragraph. After: that paragraph fills the browser window.](docs/media/before-after-readme.png)
+![Before: a full Wikipedia page with the pointer resting in the article. After: the same page magnified three times around that point, the text large and crisp.](docs/media/before-after-readme.png)
 
 The same press, in motion:
 
-![One press zooms the paragraph under the cursor to the window; the next press puts the page back exactly as it was.](docs/media/smart-zoom.gif)
+![One press magnifies the page around the pointer; the next press puts it back exactly as it was.](docs/media/smart-zoom.gif)
 
 Windows has no system gesture for this, so SmartZoom is a small tray app that captures a mouse or keyboard
 trigger and routes it to a per-application zoom strategy:
 
 | Target | Strategy | Precision |
 |---|---|---|
-| Chrome, Edge, Brave, Opera, Vivaldi (any Chromium browser) | Native smart zoom: finds the paragraph/image under the cursor through the browser's accessibility tree and pinch-zooms it to fill the window — no extension needed | Element-aware, visual zoom (no reflow), exact restore |
-| Firefox | Native smart zoom, the same way: the block under the cursor comes from Firefox's accessibility tree and is pinch-zoomed through a synthetic touch device that Firefox accepts as a touch screen | Element-aware, visual zoom (no reflow), exact restore |
+| Chrome, Edge, Brave, Opera, Vivaldi (any Chromium browser) | Native smart zoom: pinch-zooms the page by the amount you set, around the pixel under the cursor, using the browser's own touch handling — no extension needed | Aimed at the cursor, visual zoom (no reflow), exact restore |
+| Firefox | Native smart zoom, the same way, through a synthetic touch device that Firefox accepts as a touch screen | Aimed at the cursor, visual zoom (no reflow), exact restore |
 | Word | Smart zoom through Word's object model: the paragraph, table or picture under the cursor is zoomed to fill the document pane; the previous zoom and scroll position are restored exactly | Element-aware, exact restore |
 | Excel | Smart zoom through Excel's object model: the block of data under the cursor — the surrounding island of filled cells, or the cells a chart or picture covers — is zoomed to fill the worksheet pane, and the view is scrolled to the row you pointed at | Element-aware, exact restore |
 | Acrobat, Acrobat Reader, SumatraPDF | An animated pinch around the cursor, the same gesture the browsers get: what you pointed at stays where it is and grows. The second press animates the magnification away and lands on the reader's own "fit page" | Animated, follows the cursor, never drifts |
@@ -200,7 +201,8 @@ four-finger tap can instead be a *Custom shortcut*, which you point at one of yo
 Logs are written to `%LOCALAPPDATA%\SmartZoom\logs` (rolling daily, 14 days kept).
 
 Settings → Diagnostics keeps a small local record of what SmartZoom failed to do — presses that
-zoomed nothing, adapters that threw, and crashes — at `%LOCALAPPDATA%\SmartZoom\diagnostics.json`, and renders
+zoomed nothing, zooms that failed or ran too long, and crashes — at
+`%LOCALAPPDATA%\SmartZoom\diagnostics.json`, and renders
 it on demand as a report you can copy into a bug report. It's on by default; the same section has a switch to
 turn it off — written to your settings file at once, so it stays off — and a button to clear what's recorded.
 Nothing in it is sent anywhere — see [SECURITY.md](SECURITY.md) for exactly what it holds and what it never
@@ -260,18 +262,21 @@ depending on which window is focused.
   inside the window. An element that blocks the pinch (`touch-action: none`, common in dialogs and
   drag-and-drop UIs such as Jira's) hands the gesture to the page's own scripts; SmartZoom notices because the
   screen does not change, and immediately tries the same zoom again from an anchor outside that element —
-  first beside it, then at the middle of the window. What you get then is a **visual zoom of the whole page
-  centred near the cursor rather than a fit of the element**: the browser scales the viewport around the new
-  anchor, so what you pointed at is magnified and still in view, but not sized to the window. The second
-  press restores the page exactly, as always. Only when every anchor is refused — the page blocks pinch
+  first beside it, then at the middle of the window. The zoom is the same size either way; only the point it
+  is aimed at moves, so what you pointed at is magnified and still in view but no longer under the pointer.
+  The second press restores the page exactly, as always. A page that has already been zoomed as far as the
+  browser allows refuses a pinch in exactly the same way, so it is cleared and retried once before any of
+  this is believed. Only when every anchor is refused — the page blocks pinch
   gestures across the window — does SmartZoom fall back to Ctrl+wheel page zoom, or, with
   `Zoom.Browser.CtrlWheelWhenPinchBlocked` off, report it and do nothing.
-- Word smart zoom changes the document zoom level in steps, so the motion is not as fluid as the
-  browsers' pinch: Word re-lays out the page at every level. Word's own status-bar zoom slider shows
-  the change and the value returns to the original on the second trigger.
-- Excel smart zoom jumps straight to the fitting zoom rather than animating, because Excel reports a
-  fitting zoom only by performing one. An empty cell with no data around it is not a block, so a
-  trigger there does nothing.
+- Word smart zoom zooms in with Word's own pinch, which Word animates, and zooms back out by stepping the
+  document zoom instead. That is deliberate: Word applies a closing pinch about a second after the gesture
+  ends, long enough to overwrite the exact zoom being restored, which left the document a little larger
+  after every toggle. Stepping back out is not as fluid but it returns to the original value exactly.
+- Excel smart zoom changes the sheet in one step rather than animating. A pinch was tried and dropped:
+  Excel applies one about a second late and a quarter short of what is asked for, so correcting it to the
+  fitting zoom was a bigger jump than simply going there. An empty cell with no data around it is not a
+  block, so a trigger there does nothing.
 - The pinch in a PDF reader magnifies by a fixed amount rather than fitting the page to the window:
   readers do not say how big the page is, and the gesture is aimed, not computed. Raise or lower
   `Zoom.Reader.Magnification` to taste.
