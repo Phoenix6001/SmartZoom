@@ -6,6 +6,8 @@ All notable changes to SmartZoom are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-29
+
 ### Changed
 
 - **A browser press now zooms by the amount you set, everywhere on the page**
@@ -19,6 +21,15 @@ All notable changes to SmartZoom are recorded here. The format follows
   the same wherever the press lands, anchored on the pointer so the pixel you aimed at is the one that stays
   still. Word and Excel still fit the block they can identify, since they can re-flow rather than magnify,
   and fall back to the same amount when there is no fit worth having.
+
+- **Word and Excel move once, instead of stepping there.** Word renders a pinch itself, which is what makes a
+  zoom in a PDF reader look smooth, so that is now how a Word zoom travels; it steps back out again, because
+  Word applies a closing pinch about a second after the gesture ends, late enough to overwrite the exact zoom
+  being restored. Excel is a single change to the sheet: it will only report a fitting zoom by performing one,
+  so the measurement used to be visible as a zoom, a read and an undo before the real zoom had even started —
+  it now happens with Excel's drawing switched off — and the zoom and the scroll land together rather than as
+  two separate movements. Neither application's zoom *amount* changed: Word still fits the paragraph, table or
+  picture under the cursor, and Excel still fits the block of cells.
 
 - **Diagnostics is its own page.** The record of what did not work used to be the fourth section of Advanced,
   below zoom tuning, PDF readers and logging â€” but two other surfaces send people to it: the status card in the
@@ -78,6 +89,13 @@ All notable changes to SmartZoom are recorded here. The format follows
   arrow cursor; the motion is its whole answer to the pointer.
 
 ### Fixed
+
+- **A press low on the page of a Word document no longer jumps to the previous page.** The zoom was planned
+  from the paragraph under the cursor, but the scroll that followed asked all over again what was under that
+  point on screen — after the zoom had re-laid the document out, so the same pixel belonged to entirely
+  different text. Pressing near the bottom of page 2 could land you at the end of page 1. The block is now
+  followed by its position in the text, which a zoom does not move. Near the top of a document the wrong
+  answer and the right one nearly coincide, which is why this went unnoticed for so long.
 
 - **A page already zoomed as far as it goes is cleared rather than page-zoomed on top.** Chromium stops
   magnifying at four times, and a page sitting at that ceiling swallows a pinch in exactly the way a page
