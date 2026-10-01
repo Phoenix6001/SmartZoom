@@ -5,6 +5,10 @@ cursor zooms its *content* in on whatever you are pointing at, and brings it to 
 — by the amount you choose in a browser, or to fit the paragraph, table or block of cells in Word and
 Excel. Press again to return to exactly where you were.
 
+**Website:** [smartzoom.pages.dev](https://smartzoom.pages.dev) · **Download:**
+[SmartZoom-setup.exe](https://github.com/Phoenix6001/SmartZoom/releases/latest/download/SmartZoom-setup.exe)
+(always the latest release)
+
 ![Before: a full Wikipedia page with the pointer resting in the article. After: the same page magnified three times around that point, the text large and crisp.](docs/media/before-after-readme.png)
 
 The same press, in motion:
@@ -65,7 +69,9 @@ dotnet publish src/SmartZoom.App -c Release -r win-x64
 
 ## Install
 
-Releases live on the repository's **Releases** page, each with `SmartZoom-<version>-setup.exe`, a
+Releases live on the repository's **Releases** page, each with `SmartZoom-<version>-setup.exe` (also attached
+as `SmartZoom-setup.exe`, so [this link](https://github.com/Phoenix6001/SmartZoom/releases/latest/download/SmartZoom-setup.exe)
+always downloads the newest installer), a
 `SmartZoom-<version>-win-x64-framework-dependent.exe` single executable that needs the
 [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download) already installed, and a `SHA256SUMS.txt`
 to check a download against. Until the first one is published, build the installer yourself:

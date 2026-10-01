@@ -32,7 +32,7 @@ until a person reads the draft and clicks **Publish release**.
    ```
 
 5. **Read the draft.** The workflow takes about ten minutes (the self-contained publish and the Inno Setup
-   compile are most of it). Open the repository's Releases page, check the notes and the three assets, and
+   compile are most of it). Open the repository's Releases page, check the notes and the four assets, and
    press **Publish release**. If anything is wrong, delete the draft, fix, move the tag
    (`git tag -f vX.Y.Z && git push -f origin vX.Y.Z`) and it runs again.
 
@@ -47,8 +47,9 @@ until a person reads the draft and clicks **Publish release**.
 | File | What it is |
 |---|---|
 | `SmartZoom-X.Y.Z-setup.exe` | The installer: per-user, no administrator rights, carries its own .NET runtime. What almost everyone should download. |
+| `SmartZoom-setup.exe` | The same installer, byte for byte, under a name that never changes. `https://github.com/Phoenix6001/SmartZoom/releases/latest/download/SmartZoom-setup.exe` therefore always downloads the newest installer directly; the website's download button uses it. |
 | `SmartZoom-X.Y.Z-win-x64-framework-dependent.exe` | A single executable with no installer. Needs the .NET 10 Desktop Runtime already on the machine. For people who do not want anything installed. |
-| `SHA256SUMS.txt` | Checksums of the two files above, for verifying a download: `Get-FileHash .\SmartZoom-X.Y.Z-setup.exe` must match its line. |
+| `SHA256SUMS.txt` | Checksums of the files above, for verifying a download: `Get-FileHash .\SmartZoom-X.Y.Z-setup.exe` must match its line. |
 
 ## Building the same assets locally
 

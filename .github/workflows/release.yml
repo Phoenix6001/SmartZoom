@@ -74,6 +74,9 @@ jobs:
           $v = '${{ steps.version.outputs.version }}'
           Copy-Item (Get-ChildItem install/output -Filter '*-setup.exe' | Select-Object -First 1).FullName "release/SmartZoom-$v-setup.exe"
           Copy-Item publish/SmartZoom.exe "release/SmartZoom-$v-win-x64-framework-dependent.exe"
+          # The same installer under a name that never changes, so releases/latest/download/SmartZoom-setup.exe
+          # is a permanent direct download (the website's button) that always serves the newest release.
+          Copy-Item "release/SmartZoom-$v-setup.exe" release/SmartZoom-setup.exe
           Get-ChildItem release -File | ForEach-Object {
               "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)"
           } | Set-Content release/SHA256SUMS.txt -Encoding ascii
@@ -91,4 +94,5 @@ jobs:
           --notes-file release-notes.md
           release/SmartZoom-${{ steps.version.outputs.version }}-setup.exe
           release/SmartZoom-${{ steps.version.outputs.version }}-win-x64-framework-dependent.exe
+          release/SmartZoom-setup.exe
           release/SHA256SUMS.txt

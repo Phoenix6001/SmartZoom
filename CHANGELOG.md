@@ -6,6 +6,13 @@ All notable changes to SmartZoom are recorded here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **A permanent direct download link.** Every release now also attaches the installer as
+  `SmartZoom-setup.exe`, the same file under a name that never changes, so
+  `releases/latest/download/SmartZoom-setup.exe` always downloads the newest installer. The website
+  ([smartzoom.pages.dev](https://smartzoom.pages.dev)) links to it.
+
 ## [0.4.0] - 2026-09-29
 
 ### Changed
