@@ -1,1 +1,11 @@
 blank_issues_enabled: true
+contact_links:
+  - name: Question or idea
+    url: https://github.com/Phoenix6001/SmartZoom/discussions
+    about: Ask how something works, or float an idea before it becomes an issue.
+  - name: Security problem
+    url: https://github.com/Phoenix6001/SmartZoom/blob/main/SECURITY.md
+    about: Please report vulnerabilities privately, as SECURITY.md describes, not as a public issue.
+  - name: Website and download
+    url: https://smartzoom.pages.dev
+    about: The latest installer and an overview of what SmartZoom does.
