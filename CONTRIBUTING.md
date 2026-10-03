@@ -33,6 +33,17 @@ composition root. [docs/architecture.md](docs/architecture.md) walks one press f
 That split is the whole reason the project is testable. If you need a Win32 type in Core, declare an interface
 instead.
 
+## Branches
+
+SmartZoom uses GitHub flow: `main` is always releasable, and everything reaches it through a pull request.
+
+- Branch from `main` and name the branch for the change: `fix/corner-slide-5`, `feat/powerpoint`,
+  `docs/onboarding`, `ci/virustotal-scan`. One change per branch, kept short-lived.
+- Open the pull request against `main`. It merges once the `build` check passes and every review conversation
+  is resolved; the branch is deleted on merge.
+- There is no `develop` branch. Merging to `main` ships nothing to anyone: a release is a tag, and the tag
+  only produces a draft (see [Releases](#releases)).
+
 ## Before you open a pull request
 
 - `dotnet build` is warning-free. Warnings are errors here, analyzers run at `latest-recommended`, and public

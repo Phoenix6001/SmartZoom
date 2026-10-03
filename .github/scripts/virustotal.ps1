@@ -28,13 +28,37 @@ $ErrorActionPreference = 'Stop'
 $api = 'https://www.virustotal.com/api/v3'
 $script:lastCall = [datetime]::MinValue
 
-function Invoke-VirusTotal([string] $Method, [string] $Uri, [hashtable] $Form) {
+function Wait-ForRateLimit {
     $wait = 16 - ((Get-Date) - $script:lastCall).TotalSeconds
     if ($wait -gt 0) { Start-Sleep -Seconds ([math]::Ceiling($wait)) }
     $script:lastCall = Get-Date
-    $request = @{ Method = $Method; Uri = $Uri; Headers = @{ 'x-apikey' = $env:VT_API_KEY } }
-    if ($Form) { $request.Form = $Form }
-    Invoke-RestMethod @request
+}
+
+function Invoke-VirusTotal([string] $Uri) {
+    Wait-ForRateLimit
+    try {
+        Invoke-RestMethod -Uri $Uri -Headers @{ 'x-apikey' = $env:VT_API_KEY }
+    } catch {
+        if ($_.Exception.Response.StatusCode.value__ -eq 404) { throw }
+        # VirusTotal explains a refusal in the body ({"error": {"code", "message"}}); keep it, on one line.
+        $why = try { $e = ($_.ErrorDetails.Message | ConvertFrom-Json).error; "$($e.code): $($e.message)" } catch { $_.Exception.Message }
+        throw "$(([uri]$Uri).AbsolutePath.Split('/')[3]) lookup refused ($why)"
+    }
+}
+
+# The upload goes through curl rather than Invoke-RestMethod -Form: PowerShell's multipart encoding adds a
+# filename* parameter, and VirusTotal's upload endpoint answers that with 400 Bad Request.
+function Send-File([string] $Uri, [string] $File) {
+    Wait-ForRateLimit
+    # The key header goes in on standard input (--header @-), never on the command line, where any other
+    # process on the machine could read it.
+    $response = "x-apikey: $env:VT_API_KEY" | & curl.exe --silent --show-error --fail-with-body --request POST `
+        --url $Uri --header '@-' --form "file=@$File"
+    if ($LASTEXITCODE -ne 0) {
+        $why = try { $e = ($response | ConvertFrom-Json).error; "$($e.code): $($e.message)" } catch { "curl exit $LASTEXITCODE" }
+        throw "upload refused ($why)"
+    }
+    $response | ConvertFrom-Json
 }
 
 function Get-Report([string] $File) {
@@ -43,7 +67,7 @@ function Get-Report([string] $File) {
 
     # Already known: VirusTotal keeps one report per content, whoever uploaded it.
     try {
-        $stats = (Invoke-VirusTotal GET "$api/files/$hash").data.attributes.last_analysis_stats
+        $stats = (Invoke-VirusTotal "$api/files/$hash").data.attributes.last_analysis_stats
         if ($stats -and ($stats.malicious + $stats.suspicious + $stats.undetected + $stats.harmless) -gt 0) {
             return @{ Hash = $hash; Link = $link; Stats = $stats }
         }
@@ -51,12 +75,12 @@ function Get-Report([string] $File) {
         if ($_.Exception.Response.StatusCode.value__ -ne 404) { throw }
     }
 
-    $uploadUrl = (Invoke-VirusTotal GET "$api/files/upload_url").data
-    $analysisId = (Invoke-VirusTotal POST $uploadUrl @{ file = Get-Item $File }).data.id
+    $uploadUrl = (Invoke-VirusTotal "$api/files/upload_url").data
+    $analysisId = (Send-File $uploadUrl (Resolve-Path $File).Path).data.id
 
     $deadline = (Get-Date).AddMinutes($TimeoutMinutes)
     while ((Get-Date) -lt $deadline) {
-        $analysis = (Invoke-VirusTotal GET "$api/analyses/$analysisId").data.attributes
+        $analysis = (Invoke-VirusTotal "$api/analyses/$analysisId").data.attributes
         if ($analysis.status -eq 'completed') { return @{ Hash = $hash; Link = $link; Stats = $analysis.stats } }
     }
     return @{ Hash = $hash; Link = $link; Stats = $null }
