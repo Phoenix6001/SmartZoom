@@ -50,8 +50,10 @@ function Invoke-VirusTotal([string] $Uri) {
 # filename* parameter, and VirusTotal's upload endpoint answers that with 400 Bad Request.
 function Send-File([string] $Uri, [string] $File) {
     Wait-ForRateLimit
-    $response = & curl.exe --silent --show-error --fail-with-body --request POST --url $Uri `
-        --header "x-apikey: $env:VT_API_KEY" --form "file=@$File"
+    # The key header goes in on standard input (--header @-), never on the command line, where any other
+    # process on the machine could read it.
+    $response = "x-apikey: $env:VT_API_KEY" | & curl.exe --silent --show-error --fail-with-body --request POST `
+        --url $Uri --header '@-' --form "file=@$File"
     if ($LASTEXITCODE -ne 0) {
         $why = try { $e = ($response | ConvertFrom-Json).error; "$($e.code): $($e.message)" } catch { "curl exit $LASTEXITCODE" }
         throw "upload refused ($why)"
