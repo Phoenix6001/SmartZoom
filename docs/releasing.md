@@ -7,8 +7,10 @@ until a person reads the draft and clicks **Publish release**.
 
 ## Before the first release
 
-- The repository must be on GitHub with `main` pushed. The workflow needs nothing else: it publishes with
-  the workflow's own token, so there is no secret to configure.
+- The repository must be on GitHub with `main` pushed. It publishes with the workflow's own token; the one
+  secret is `VT_API_KEY`, a free [VirusTotal](https://www.virustotal.com) API key (your profile → API key),
+  under **Settings → Secrets and variables → Actions**. Without it the release still works, and the notes
+  say the files were not scanned.
 - Decide about code signing. Every asset the workflow produces is unsigned, so Windows SmartScreen warns
   about an unknown publisher on first run. That is acceptable for an early open-source release and the
   README says so; a certificate (or Azure Trusted Signing) can be added to the workflow as one step later.
@@ -32,8 +34,9 @@ until a person reads the draft and clicks **Publish release**.
    ```
 
 5. **Read the draft.** The workflow takes about ten minutes (the self-contained publish and the Inno Setup
-   compile are most of it). Open the repository's Releases page, check the notes and the four assets, and
-   press **Publish release**. If anything is wrong, delete the draft, fix, move the tag
+   compile are most of it, and the VirusTotal scan can add up to twenty minutes more). Open the
+   repository's Releases page, check the notes and the four assets, read the **VirusTotal** section at the
+   end of the notes (see below), and press **Publish release**. If anything is wrong, delete the draft, fix, move the tag
    (`git tag -f vX.Y.Z && git push -f origin vX.Y.Z`) and it runs again.
 
 ## What the workflow checks
@@ -41,6 +44,22 @@ until a person reads the draft and clicks **Publish release**.
 - The tag equals `<Version>` in `Directory.Build.props`; `v0.2.0` with `0.1.0` inside fails.
 - Formatting, build and the full test suite, the same gates as CI.
 - `CHANGELOG.md` has a non-empty `## [X.Y.Z]` section.
+
+## VirusTotal
+
+Before the draft is created, `.github/scripts/virustotal.ps1` uploads each `.exe` to VirusTotal, waits for
+the analysis, and appends a line per file to the notes: how many engines flagged it, out of how many, and a
+link to the report. Identical files (the versioned installer and `SmartZoom-setup.exe`) are scanned once. It
+never fails the release; a detection, a timeout or an API error is written into the notes instead.
+
+A new, unsigned installer for an app with a global keyboard hook is the classic false positive, so one to
+three minor engines flagging it is not unusual. Before publishing, open the report: if the flagging engines
+are minor and name a generic heuristic, report a false positive to each vendor (most have a web form),
+publish, and re-scan later. Anything a major engine names specifically is a reason to stop and look.
+
+To scan a release that already exists - one from before this step, or to re-check after a vendor has
+cleared a false positive - run the **VirusTotal** workflow from the Actions tab with the tag. Tick
+**update_notes** to replace the release's VirusTotal section with the new result.
 
 ## The assets
 

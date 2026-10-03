@@ -82,6 +82,16 @@ jobs:
           } | Set-Content release/SHA256SUMS.txt -Encoding ascii
           Get-Content release/SHA256SUMS.txt
 
+      # Every executable goes to VirusTotal and the result is appended to the notes, so it is in front of
+      # whoever reads the draft before anything is public. Never fails the release: a detection or an API
+      # problem is written into the notes for that person to judge (docs/releasing.md).
+      - name: Scan with VirusTotal
+        timeout-minutes: 30
+        continue-on-error: true
+        env:
+          VT_API_KEY: ${{ secrets.VT_API_KEY }}
+        run: & .github/scripts/virustotal.ps1 -Path (Get-ChildItem release -Filter *.exe).FullName -OutFile release-notes.md
+
       # gh is preinstalled on the runners and the workflow token is enough to publish a release; no
       # third-party action and no secret to manage.
       - name: Create draft release

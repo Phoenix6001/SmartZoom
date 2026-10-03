@@ -12,6 +12,9 @@ All notable changes to SmartZoom are recorded here. The format follows
   `SmartZoom-setup.exe`, the same file under a name that never changes, so
   `releases/latest/download/SmartZoom-setup.exe` always downloads the newest installer. The website
   ([smartzoom.pages.dev](https://smartzoom.pages.dev)) links to it.
+- **Every release is scanned with VirusTotal.** The release workflow uploads each executable before the draft
+  is created and appends the result - engines that flagged it, and a link to the report - to the release
+  notes. A manual **VirusTotal** workflow scans an existing release and can update its notes.
 
 ## [0.4.0] - 2026-09-29
 
