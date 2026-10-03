@@ -1,0 +1,51 @@
+name: VirusTotal
+
+# Scans the executables of a release that already exists, e.g. to check one published before the release
+# workflow scanned automatically, or to re-check after a vendor has cleared a false positive. The result is
+# shown in the run summary and, if asked, replaces the VirusTotal section of the release notes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to scan, e.g. v0.4.0
+        required: true
+      update_notes:
+        description: Write the result into the release notes
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  scan:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download the release's executables
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download '${{ inputs.tag }}' --pattern '*.exe' --dir release
+
+      - name: Scan with VirusTotal
+        timeout-minutes: 30
+        env:
+          VT_API_KEY: ${{ secrets.VT_API_KEY }}
+        run: |
+          New-Item scan.md -ItemType File | Out-Null
+          & .github/scripts/virustotal.ps1 -Path (Get-ChildItem release -Filter *.exe).FullName -OutFile scan.md
+          Get-Content scan.md | Add-Content $env:GITHUB_STEP_SUMMARY
+
+      - name: Update the release notes
+        if: inputs.update_notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = gh release view '${{ inputs.tag }}' --json body --jq .body
+          # Drop an earlier VirusTotal section (it is always last), then append the new one.
+          $notes = ($notes -split "`n## VirusTotal")[0].TrimEnd()
+          Set-Content notes.md -Value $notes -Encoding utf8
+          Get-Content scan.md | Add-Content notes.md
+          gh release edit '${{ inputs.tag }}' --notes-file notes.md
