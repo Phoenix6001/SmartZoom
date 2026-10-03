@@ -39,6 +39,20 @@ until a person reads the draft and clicks **Publish release**.
    end of the notes (see below), and press **Publish release**. If anything is wrong, delete the draft, fix, move the tag
    (`git tag -f vX.Y.Z && git push -f origin vX.Y.Z`) and it runs again.
 
+## Fixing an older release
+
+Releases are cut from `main`, so normally a fix is merged there and goes out in the next version. When an
+older version needs a fix that cannot wait, while `main` already holds unreleased work that should not ship
+yet:
+
+1. `git switch -c release/X.Y vX.Y.0` - branch from that release's tag.
+2. Fix through a pull request against `release/X.Y`, bump `<Version>` to `X.Y.1`, move the CHANGELOG entry
+   under `## [X.Y.1]`.
+3. Tag `vX.Y.1` on that branch and push the tag; the workflow builds from any tag.
+4. Bring the fix to `main` with its own pull request (cherry-pick), so the next release has it too.
+
+Create a `release/X.Y` branch only on the day it is needed; it is the exception, not part of every release.
+
 ## What the workflow checks
 
 - The tag equals `<Version>` in `Directory.Build.props`; `v0.2.0` with `0.1.0` inside fails.
