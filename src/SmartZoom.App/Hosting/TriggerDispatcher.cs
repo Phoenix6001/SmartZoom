@@ -20,7 +20,8 @@ internal sealed partial class TriggerDispatcher(
     DiagnosticRecorder recorder,
     TimeProvider time,
     ILogger<TriggerDispatcher> logger,
-    TimeSpan? zoomDeadline = null) : BackgroundService
+    TimeSpan? zoomDeadline = null,
+    TimeSpan? maxTriggerAge = null) : BackgroundService
 {
     /// <summary>
     /// How long one press gets. Everything legitimate is well inside it — a gesture is about 330 ms and a
@@ -30,11 +31,12 @@ internal sealed partial class TriggerDispatcher(
     /// </summary>
     internal static readonly TimeSpan ZoomDeadline = TimeSpan.FromSeconds(6);
 
-    // A trigger older than this was queued behind a slow zoom; acting on it now would surprise the user.
-    private static readonly TimeSpan MaxTriggerAge = TimeSpan.FromMilliseconds(750);
+    /// <summary>A trigger older than this was queued behind a slow zoom; acting on it now would surprise the user.</summary>
+    internal static readonly TimeSpan MaxTriggerAge = TimeSpan.FromMilliseconds(750);
 
-    // Only a test passes this; the container has no TimeSpan to hand and takes the default.
+    // Only tests pass these; the container has no TimeSpan to hand and takes the defaults.
     private readonly TimeSpan _zoomDeadline = zoomDeadline ?? ZoomDeadline;
+    private readonly TimeSpan _maxTriggerAge = maxTriggerAge ?? MaxTriggerAge;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -57,7 +59,7 @@ internal sealed partial class TriggerDispatcher(
 
         // Both clocks are GetTickCount-based, so the difference is valid across wraparound.
         var age = unchecked((uint)Environment.TickCount - trigger.TimestampMs);
-        if (age > MaxTriggerAge.TotalMilliseconds)
+        if (age > _maxTriggerAge.TotalMilliseconds)
         {
             LogStale(x, y, age);
             return;

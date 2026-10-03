@@ -169,9 +169,13 @@ public sealed class TriggerDispatcherTests
 
         var state = new WindowZoomStateStore();
         var engine = new ZoomEngine(PipelineFixtures.Pipeline(state, blocking), state, NullLogger<ZoomEngine>.Instance);
+        // The second press waits in the queue for the first one's whole deadline, measured on the real clock.
+        // Under the production staleness limit (750 ms) a busy CI runner could pick it up late enough to drop
+        // it as stale - which is what failed once on CI, as `windows.Calls` = 1 - and that rule is not what
+        // this test is about. A limit no scheduling delay can reach keeps it testing only the deadline.
         var dispatcher = new TriggerDispatcher(
             _source, windows, engine, _activity, recorder, TimeProvider.System, NullLogger<TriggerDispatcher>.Instance,
-            zoomDeadline: TimeSpan.FromMilliseconds(200));
+            zoomDeadline: TimeSpan.FromMilliseconds(200), maxTriggerAge: TimeSpan.FromMinutes(1));
 
         await dispatcher.StartAsync(CancellationToken.None);
         _source.Writer.TryWrite(new TriggerEvent(Point, unchecked((uint)Environment.TickCount)));
