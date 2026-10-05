@@ -23,6 +23,10 @@ All notable changes to SmartZoom are recorded here. The format follows
   with nothing while a page loads, and the press used to give up and do nothing. A browser zoom only needs the
   page's rectangle, so the browser window now stands in for it, as it already did for a tree that answered
   without a page node.
+- **A press no longer fails when a browser's page reader gives an answer that cannot be read.** Brave's
+  accessibility interface occasionally returns a value the runtime cannot convert, and only its other kind of
+  failure was being handled, so that press did nothing and logged `Zoom failed`. Both now mean "this part of
+  the page cannot answer right now" everywhere the page is read, and the press carries on.
 
 ## [0.4.0] - 2026-09-29
 

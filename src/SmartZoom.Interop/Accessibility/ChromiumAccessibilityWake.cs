@@ -115,7 +115,7 @@ public sealed partial class ChromiumAccessibilityWake(ILogger<ChromiumAccessibil
                 QueryAccessible2(first);
             }
         }
-        catch (COMException)
+        catch (Exception ex) when (AccessibleFailure.Is(ex))
         {
             // Some pages have no children yet, and a tree still being built answers with an error; the
             // caller's retry loop copes with both.
@@ -131,7 +131,7 @@ public sealed partial class ChromiumAccessibilityWake(ILogger<ChromiumAccessibil
             var uia = LazyInitializer.EnsureInitialized(ref _uia, static () => new CUIAutomation());
             _ = uia.ElementFromPoint(new tagPOINT { x = point.X, y = point.Y });
         }
-        catch (COMException)
+        catch (Exception ex) when (AccessibleFailure.Is(ex))
         {
             // UIA is best-effort here; the MSAA handshake still runs.
         }

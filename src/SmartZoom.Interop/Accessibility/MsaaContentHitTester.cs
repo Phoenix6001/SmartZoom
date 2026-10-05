@@ -87,7 +87,7 @@ public sealed partial class MsaaContentHitTester(ChromiumAccessibilityWake wake,
                             continue;
                     }
                 }
-                catch (COMException ex) when (attempt < MaxHitTestAttempts)
+                catch (Exception ex) when (AccessibleFailure.Is(ex) && attempt < MaxHitTestAttempts)
                 {
                     // A browser whose accessibility tree is still being built answers with an error rather than
                     // an empty tree. Forget the root, take another handshake and keep trying; only the last
@@ -105,7 +105,7 @@ public sealed partial class MsaaContentHitTester(ChromiumAccessibilityWake wake,
                 }
             }
         }
-        catch (COMException ex)
+        catch (Exception ex) when (AccessibleFailure.Is(ex))
         {
             // The window went away or the browser is busy; treat as "no content" and let the coordinator fall back.
             wake.Forget(render);
@@ -249,7 +249,7 @@ public sealed partial class MsaaContentHitTester(ChromiumAccessibilityWake wake,
             {
                 count = current.accChildCount;
             }
-            catch (COMException)
+            catch (Exception ex) when (AccessibleFailure.Is(ex))
             {
                 break;
             }
@@ -264,7 +264,7 @@ public sealed partial class MsaaContentHitTester(ChromiumAccessibilityWake wake,
                 {
                     child = current.get_accChild(i);
                 }
-                catch (COMException)
+                catch (Exception ex) when (AccessibleFailure.Is(ex))
                 {
                     continue;
                 }
@@ -300,14 +300,14 @@ public sealed partial class MsaaContentHitTester(ChromiumAccessibilityWake wake,
             bounds = GetBounds(node, child);
             return !bounds.IsEmpty;
         }
-        catch (COMException)
+        catch (Exception ex) when (AccessibleFailure.Is(ex))
         {
             bounds = default;
             return false;
         }
     }
 
-    private static (IAccessible Node, int Child) Descend(IAccessible from, ScreenPoint point)
+    internal static (IAccessible Node, int Child) Descend(IAccessible from, ScreenPoint point)
     {
         var current = from;
         for (var guard = 0; guard < MaxChainDepth; guard++)
@@ -317,7 +317,7 @@ public sealed partial class MsaaContentHitTester(ChromiumAccessibilityWake wake,
             {
                 hit = current.accHitTest(point.X, point.Y);
             }
-            catch (COMException)
+            catch (Exception ex) when (AccessibleFailure.Is(ex))
             {
                 break;
             }
@@ -364,7 +364,7 @@ public sealed partial class MsaaContentHitTester(ChromiumAccessibilityWake wake,
             {
                 current = current.accParent as IAccessible;
             }
-            catch (COMException)
+            catch (Exception ex) when (AccessibleFailure.Is(ex))
             {
                 break;
             }
@@ -391,7 +391,7 @@ public sealed partial class MsaaContentHitTester(ChromiumAccessibilityWake wake,
         {
             return node.get_accRole(child) is int role ? role : -1;
         }
-        catch (COMException)
+        catch (Exception ex) when (AccessibleFailure.Is(ex))
         {
             return -1;
         }
