@@ -302,15 +302,22 @@ depending on which window is focused.
 
 ## Roadmap
 
-1. **M1** — done: tray app, mouse hook, double-tap detection, target routing diagnostics
-2. **M2** — done: Ctrl+wheel strategy with per-window toggle state; keyboard hotkeys and multiple
-   simultaneous triggers
-3. **M3** — done: native smart zoom in Chromium browsers (accessibility hit-test + touch pinch)
-4. **M4** — done: Firefox, per-user installer
-5. **M5** — in progress: Office and PDF readers. Word, Acrobat and Excel are done; PowerPoint is unclaimed
-   (see [docs/adding-an-application.md](docs/adding-an-application.md))
-6. **M6** — in progress: settings window and live reload are done; multi-monitor and mixed-DPI polish
-   remains
+Releases are planned as [GitHub milestones](https://github.com/Phoenix6001/SmartZoom/milestones); each one
+says what "done" means and lists the issues in it.
+
+- **[0.5.0 — Dependable](https://github.com/Phoenix6001/SmartZoom/milestone/1)**: every press does what it
+  should, in every supported application and on any display (mixed DPI and multiple monitors included).
+- **[0.6.0 — Trusted to install](https://github.com/Phoenix6001/SmartZoom/milestone/2)**: code-signed
+  releases, the Microsoft Store and winget.
+- **[1.0.0 — Stable](https://github.com/Phoenix6001/SmartZoom/milestone/3)**: PowerPoint, PDF readers that
+  fit the block under the cursor, unit-tested hit-test policy, a settings window that works with a screen
+  reader.
+- **[Future](https://github.com/Phoenix6001/SmartZoom/milestone/4)**: ideas not committed to a release yet,
+  such as a touchpad trigger and Linux.
+
+Already done: the tray app and triggers (mouse buttons, keys, modifier + click), native smart zoom in
+Chromium browsers and Firefox, Word, Excel and PDF readers, the settings window with live reload, the
+per-user installer and diagnostics.
 
 ## Contributing
 
