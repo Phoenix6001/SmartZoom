@@ -168,20 +168,20 @@ public sealed partial class MsaaContentHitTester(ChromiumAccessibilityWake wake,
             if (document is null)
             {
                 // Some Chromium builds answer with a chain that never reaches a document node (seen with the
-                // native UI Automation provider enabled). The render window's rectangle is the page in every
-                // build, so it stands in for the document rather than the press doing nothing.
+                // native UI Automation provider enabled), and a page still loading can answer with no chain at
+                // all. The render window's rectangle is the page in every build, so it stands in for the
+                // document rather than the press doing nothing.
                 var window = WindowInspector.Bounds(render);
                 // Once per failed press, so the description is cheap enough to build unconditionally.
-                var path = ContentPath.Describe(chain);
-                if (chain.Count == 0 || window is null)
+                var path = chain.Count == 0 ? "(empty)" : ContentPath.Describe(chain);
+                if (ContentPath.WithWindowAsPage(chain, window) is not { } withPage)
                 {
                     LogNoDocument(target.ProcessName, path);
                     return HitTestAttempt.Nothing;
                 }
 
                 LogDocumentFromWindow(target.ProcessName, path);
-                var page = new ContentNode(ContentRole.Document, window.Value);
-                return HitTestAttempt.Found(new ContentHit([.. chain, page], Viewport(window.Value, render), stale?.Scale ?? 1));
+                return HitTestAttempt.Found(new ContentHit(withPage, Viewport(withPage[^1].Bounds, render), stale?.Scale ?? 1));
             }
 
             return HitTestAttempt.Found(new ContentHit(chain, Viewport(document.Bounds, render), stale?.Scale ?? 1));

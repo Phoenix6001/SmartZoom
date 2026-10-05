@@ -16,6 +16,14 @@ All notable changes to SmartZoom are recorded here. The format follows
   is created and appends the result - engines that flagged it, and a link to the report - to the release
   notes. A manual **VirusTotal** workflow scans an existing release and can update its notes.
 
+### Fixed
+
+- **The first press on a page that is still loading zooms**
+  ([#6](https://github.com/Phoenix6001/SmartZoom/issues/6)). A browser can answer every accessibility query
+  with nothing while a page loads, and the press used to give up and do nothing. A browser zoom only needs the
+  page's rectangle, so the browser window now stands in for it, as it already did for a tree that answered
+  without a page node.
+
 ## [0.4.0] - 2026-09-29
 
 ### Changed
