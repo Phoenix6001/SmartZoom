@@ -13,6 +13,39 @@ public sealed class ContentPathTests
         new ContentNode(ContentRole.Document, PixelRect.FromSize(0, 0, 3832, 2074)),
     ];
 
+    public sealed class The_window_standing_in_as_the_page
+    {
+        private static readonly PixelRect Window = PixelRect.FromSize(1910, 87, 1920, 1080);
+
+        [Fact]
+        public void Is_added_even_when_the_tree_had_nothing_to_say_yet()
+        {
+            // A page still loading can answer every attempt with an empty path. The zoom needs only the page's
+            // rectangle, and the render window is that rectangle in every build, so this is still a press that
+            // can zoom - it used to be one that did nothing (issue #6).
+            var page = ContentPath.WithWindowAsPage([], Window);
+
+            var node = Assert.Single(page!);
+            Assert.Equal(new ContentNode(ContentRole.Document, Window), node);
+        }
+
+        [Fact]
+        public void Ends_a_path_that_never_reached_a_document_and_keeps_it_leaf_first()
+        {
+            var group = new ContentNode(ContentRole.Group, PixelRect.FromSize(2000, 400, 600, 80));
+
+            var page = ContentPath.WithWindowAsPage([group], Window);
+
+            Assert.Equal([group, new ContentNode(ContentRole.Document, Window)], page);
+        }
+
+        [Fact]
+        public void Is_not_invented_when_there_is_no_window_to_measure()
+        {
+            Assert.Null(ContentPath.WithWindowAsPage([], window: null));
+        }
+    }
+
     public sealed class The_shape
     {
         [Fact]

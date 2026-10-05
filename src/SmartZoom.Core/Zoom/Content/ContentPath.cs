@@ -40,6 +40,22 @@ public static class ContentPath
             : $"{kept} < … [{chain.Count - MaxShapeNodes} more]";
     }
 
+    /// <summary>The path with the window standing in as its page, for a tree that never reached a document.</summary>
+    /// <param name="chain">What the tree answered, leaf first; may be empty.</param>
+    /// <param name="window">The render window's rectangle, or null when it could not be read.</param>
+    /// <returns>The chain ending in a document node with the window's bounds, or null when there is no window.</returns>
+    /// <remarks>
+    /// An empty chain still gets a page. A browser zoom needs only the page's rectangle, and a page that is
+    /// still loading can answer every attempt with nothing; giving up there was the press that did nothing on
+    /// a freshly opened page (issue #6).
+    /// </remarks>
+    public static IReadOnlyList<ContentNode>? WithWindowAsPage(IReadOnlyList<ContentNode> chain, PixelRect? window)
+    {
+        ArgumentNullException.ThrowIfNull(chain);
+
+        return window is { } page ? [.. chain, new ContentNode(ContentRole.Document, page)] : null;
+    }
+
     private static string RoleName(ContentNode node) =>
         node.Role == ContentRole.Other ? $"Other({node.RawRole})" : node.Role.ToString();
 }
