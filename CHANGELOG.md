@@ -27,6 +27,11 @@ All notable changes to SmartZoom are recorded here. The format follows
   accessibility interface occasionally returns a value the runtime cannot convert, and only its other kind of
   failure was being handled, so that press did nothing and logged `Zoom failed`. Both now mean "this part of
   the page cannot answer right now" everywhere the page is read, and the press carries on.
+- **Firefox leaves the mouse pointer where it was.** Every zoom in Firefox used to leave the pointer on the
+  left synthetic finger, about 236 px to the left, and it walked further with each press. Firefox is driven
+  through a synthetic touch device whose last contact position Windows applies to the pointer just after the
+  gesture ends, which overwrote SmartZoom putting it back. SmartZoom now waits for that move to land (at most
+  250 ms) and then restores the pointer. Other browsers and PDF readers are unchanged.
 
 ## [0.4.0] - 2026-09-29
 
