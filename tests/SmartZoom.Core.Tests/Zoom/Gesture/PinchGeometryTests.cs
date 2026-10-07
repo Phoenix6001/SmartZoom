@@ -193,6 +193,68 @@ public sealed class PinchGeometryTests
         }
     }
 
+    /// <summary>
+    /// Chromium ignores the scaling of a pinch while the contacts are closer than its minimum scaling span, and
+    /// measures the zoom from the moment they reach it. Measured in Brave and Edge at 100%, x3 asked: half gaps
+    /// of 50 / 40 / 30 / 20 / 12 px reached x2.89 / 2.48 / 2.03 / 1.54 / 1.20, which all put the start of
+    /// counting at a 61-65 px half span. Firefox reached x3.00 at every gap down to 14 px.
+    /// </summary>
+    public sealed class Chromiums_minimum_scaling_span
+    {
+        /// <summary>Chromium's span slop at 100%: 23 DIP.</summary>
+        private const double ChromiumSlopAt100 = 23;
+
+        private static readonly PixelRect Shallow = new(100, 100, 1900, 300);
+
+        [Fact]
+        public void The_zoom_starts_counting_no_closer_than_the_minimum_span()
+        {
+            var (_, preRolled, end) = PinchGeometry.ContactHalfSpread(3.0, halfSlop: 11.5, halfGap: 20, minimumHalfSpan: 63);
+
+            Assert.Equal(63, preRolled);
+            Assert.Equal(3.0, end / preRolled, 6);
+        }
+
+        [Fact]
+        public void A_gap_too_narrow_for_the_minimum_span_moves_the_focus_instead()
+        {
+            // 150 px beside the anchor: a narrowed gap would start the zoom at a 50 px half span, where Chromium
+            // counts none of it, and the press reached x1.5 of x3. Moving the focus reaches the whole zoom.
+            var anchor = new ScreenPoint(Shallow.Left + 150, Shallow.Top + 8);
+
+            var plan = PinchGeometry.Plan(anchor, 3.0, ChromiumSlopAt100, Shallow, minimumScalingSpan: 125);
+
+            Assert.Null(plan.NarrowedHalfGap);
+            Assert.NotEqual(anchor, plan.Focus);
+            Assert.NotEqual(0, plan.Pan.X);
+        }
+
+        [Fact]
+        public void Without_a_minimum_the_same_anchor_is_still_narrowed()
+        {
+            // Firefox and Windows' recognizer: nothing measured says they need it, and Firefox measured exact.
+            var anchor = new ScreenPoint(Shallow.Left + 150, Shallow.Top + 8);
+
+            var plan = PinchGeometry.Plan(anchor, 3.0, ChromiumSlopAt100, Shallow);
+
+            Assert.NotNull(plan.NarrowedHalfGap);
+            Assert.Equal(anchor, plan.Focus);
+        }
+
+        [Fact]
+        public void A_gap_that_leaves_the_minimum_span_is_narrowed_as_before()
+        {
+            var anchor = new ScreenPoint(Shallow.Left + 200, Shallow.Top + 8);
+
+            var plan = PinchGeometry.Plan(anchor, 3.0, ChromiumSlopAt100, Shallow, minimumScalingSpan: 125);
+
+            Assert.NotNull(plan.NarrowedHalfGap);
+            Assert.Equal(anchor, plan.Focus);
+            Assert.True(plan.PreRolledHalf >= 62.5, $"the zoom starts at a {plan.PreRolledHalf:0.#} px half span");
+            Assert.Equal(3.0, plan.EndHalf / plan.PreRolledHalf, 6);
+        }
+    }
+
     public sealed class The_drag
     {
         [Fact]
@@ -233,6 +295,13 @@ public sealed class PinchGeometryTests
         [InlineData(GestureEngine.Gecko, 1.0, 35)]
         public void Span_slop_matches_what_was_measured(GestureEngine engine, double dpiScale, double expected) =>
             Assert.Equal(expected, RecognizerProfile.SpanSlop(engine, dpiScale), 6);
+
+        [Theory]
+        [InlineData(GestureEngine.Chromium, 125)]
+        [InlineData(GestureEngine.Gecko, 0)]
+        [InlineData(GestureEngine.Windows, 0)]
+        public void Minimum_scaling_span_matches_what_was_measured(GestureEngine engine, double expected) =>
+            Assert.Equal(expected, RecognizerProfile.MinimumScalingSpan(engine), 6);
 
         [Theory]
         [InlineData(GestureEngine.Chromium, 2.0, 16)]

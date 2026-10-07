@@ -68,7 +68,7 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
 
         var dpiScale = DpiScaleAt(anchor);
         var frameMs = RefreshPeriodMs(anchor);
-        var plan = PinchGeometry.Plan(anchor, factor, RecognizerProfile.SpanSlop(engine, dpiScale), bounds);
+        var plan = PinchGeometry.Plan(anchor, factor, RecognizerProfile.SpanSlop(engine, dpiScale), bounds, RecognizerProfile.MinimumScalingSpan(engine));
 
         // Only when the gap shrank: the same path also handles "the same gap, turned the other way round",
         // which is not a narrowing and must not be logged as one.
