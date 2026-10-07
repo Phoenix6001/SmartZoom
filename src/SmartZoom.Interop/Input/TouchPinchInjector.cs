@@ -36,6 +36,10 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
     private const int MaxFrameMs = 20;
 
     private const int PanDurationMs = 140;
+
+    // How long the pointer may take to reach the gesture's last contact position before it is put back
+    // anyway. Firefox's synthetic touch device lands that move a few milliseconds after the gesture.
+    private static readonly TimeSpan PointerSettleTimeout = TimeSpan.FromMilliseconds(250);
     private const int PanSettleMs = 60;
     private const uint TouchMaskContactAreaOrientationPressure = 0x1 | 0x2 | 0x4;
 
@@ -77,20 +81,34 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
         // Windows moves the mouse pointer along with injected touch contacts; put it back afterwards so the
         // user's pointer (and therefore the target of their next press) stays where they left it.
         var hadCursor = PInvoke.GetCursorPos(out var cursorBefore);
+
+        // Where the first contact, which the pointer follows, last was; known only once a gesture completes.
+        ScreenPoint? lastTouch = null;
         try
         {
             if (!PinchAround(plan, duration, frameMs, engine, cancellationToken))
                 return false;
 
+            lastTouch = PinchGeometry.Contacts(plan.EndHalf, plan.Focus, plan.Vertical).First;
             if (plan.Pan.X == 0 && plan.Pan.Y == 0)
                 return true;
 
             LogPanning(anchor.X, anchor.Y, plan.Focus.X, plan.Focus.Y, plan.Pan.X, plan.Pan.Y);
-            return Pan(plan.Pan, bounds, RecognizerProfile.TouchSlop(engine, dpiScale), frameMs, engine, cancellationToken);
+            var legs = PinchGeometry.PanLegs(plan.Pan, bounds, RecognizerProfile.TouchSlop(engine, dpiScale));
+
+            // A drag that stops part-way leaves the pointer somewhere unknown: restore without waiting for it.
+            lastTouch = null;
+            if (!Pan(legs, frameMs, engine, cancellationToken))
+                return false;
+
+            lastTouch = legs[^1].To;
+            return true;
         }
         finally
         {
-            RestoreCursor(hadCursor, cursorBefore);
+            // Only the synthetic device moves the pointer after the gesture has ended; through InjectTouchInput
+            // it is already in place, and restoring at once is what every other engine has always done.
+            RestoreCursor(hadCursor, cursorBefore, engine == GestureEngine.Gecko ? lastTouch : null);
         }
     }
 
@@ -205,10 +223,10 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
         }
     }
 
-    // One-finger drag that moves the content by 'delta' (content follows the finger).
-    private bool Pan(ScreenPoint delta, PixelRect bounds, double touchSlop, int frameMs, GestureEngine engine, CancellationToken cancellationToken)
+    // One-finger drag that moves the content by the legs' total (content follows the finger).
+    private bool Pan(IReadOnlyList<PanLeg> legs, int frameMs, GestureEngine engine, CancellationToken cancellationToken)
     {
-        foreach (var leg in PinchGeometry.PanLegs(delta, bounds, touchSlop))
+        foreach (var leg in legs)
         {
             if (!Drag(leg, frameMs, engine, cancellationToken))
                 return false;
@@ -326,10 +344,23 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
         }
     }
 
-    private static void RestoreCursor(bool known, System.Drawing.Point position)
+    private void RestoreCursor(bool known, System.Drawing.Point position, ScreenPoint? lastTouch)
     {
-        if (known)
-            PInvoke.SetCursorPos(position.X, position.Y);
+        if (!known)
+            return;
+
+        var clock = Stopwatch.StartNew();
+        var settled = CursorReturn.Restore(
+            new ScreenPoint(position.X, position.Y),
+            lastTouch,
+            PointerSettleTimeout,
+            read: static () => PInvoke.GetCursorPos(out var at) ? new ScreenPoint(at.X, at.Y) : null,
+            move: static to => PInvoke.SetCursorPos(to.X, to.Y),
+            elapsed: () => clock.Elapsed,
+            pause: static () => Thread.Sleep(1));
+
+        if (lastTouch is not null && !settled)
+            LogPointerNotSettled(PointerSettleTimeout.TotalMilliseconds);
     }
 
     /// <summary>
@@ -351,6 +382,9 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
             LogPacingNotRecorded(ex);
         }
     }
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "The pointer had not reached the gesture's last contact after {TimeoutMs} ms; put it back anyway.")]
+    private partial void LogPointerNotSettled(double timeoutMs);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Could not lift the synthetic touch contacts after a completed gesture.")]
     private partial void LogLiftFailed();
