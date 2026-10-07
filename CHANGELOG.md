@@ -32,6 +32,11 @@ All notable changes to SmartZoom are recorded here. The format follows
   through a synthetic touch device whose last contact position Windows applies to the pointer just after the
   gesture ends, which overwrote SmartZoom putting it back. SmartZoom now waits for that move to land (at most
   250 ms) and then restores the pointer. Other browsers and PDF readers are unchanged.
+- **A press near a window edge zooms by the amount you set in Chrome, Edge, Brave and Opera.** With the
+  anchor roughly 75-220 px from an edge the synthetic fingers were brought closer together to fit, and
+  Chromium does not count a pinch's scaling while the fingers are less than about 125 px apart: those presses
+  reached between x1.2 and x2.5 of x3. They now keep the fingers at least that far apart, and use the same
+  slide toward the edge as the corners where that no longer fits. Firefox, which counts any gap, is unchanged.
 
 ## [0.4.0] - 2026-09-29
 

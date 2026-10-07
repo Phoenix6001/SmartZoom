@@ -50,6 +50,24 @@ public static class RecognizerProfile
         _ => ChromiumSpanSlopDips * dpiScale,
     };
 
+    /// <summary>
+    /// Chromium does not count a pinch's scaling while its contacts are closer than this, in physical pixels,
+    /// and measures the zoom from the moment they reach it. Measured in Brave and Edge at 100% with x3 asked:
+    /// half gaps of 50, 40, 30, 20 and 12 px reached x2.89, 2.48, 2.03, 1.54 and 1.20, which put the start of
+    /// counting at a 61-65 px half span every time. Chromium's gesture configuration has a minimum scaling span
+    /// of 125. Physical pixels rather than DIP: the 200% measurements behind the span slop fit that, not 250.
+    /// </summary>
+    public const double ChromiumMinimumScalingSpanPx = 125;
+
+    /// <summary>The span, in physical pixels, below which this engine does not count a pinch's scaling.</summary>
+    /// <param name="engine">The recognizer that will read the gesture.</param>
+    /// <remarks>
+    /// Gecko has none: Firefox reached exactly x3 with contacts 28 px apart. Windows' own recognizer has not
+    /// been measured narrowed, so it is left without one.
+    /// </remarks>
+    public static double MinimumScalingSpan(GestureEngine engine) =>
+        engine == GestureEngine.Chromium ? ChromiumMinimumScalingSpanPx : 0;
+
     /// <summary>The movement, in physical pixels, a single contact must make before this engine scrolls.</summary>
     /// <param name="engine">The recognizer that will read the gesture.</param>
     /// <param name="dpiScale">Device scale factor of the monitor.</param>

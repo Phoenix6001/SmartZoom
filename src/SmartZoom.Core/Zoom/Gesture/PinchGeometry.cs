@@ -28,10 +28,14 @@ public static class PinchGeometry
     /// <param name="factor">Zoom factor; above 1 magnifies, below 1 shrinks.</param>
     /// <param name="spanSlop">What the recognizer swallows, from <see cref="RecognizerProfile.SpanSlop"/>.</param>
     /// <param name="bounds">The content area the contacts must stay inside.</param>
-    public static PinchPlan Plan(ScreenPoint anchor, double factor, double spanSlop, PixelRect bounds)
+    /// <param name="minimumScalingSpan">
+    /// The span below which the recognizer does not count scaling (<see cref="RecognizerProfile.MinimumScalingSpan"/>).
+    /// </param>
+    public static PinchPlan Plan(ScreenPoint anchor, double factor, double spanSlop, PixelRect bounds, double minimumScalingSpan = 0)
     {
         var halfSlop = spanSlop / 2;
-        var (downHalf, preRolledHalf, endHalf) = ContactHalfSpread(factor, halfSlop, HalfGap);
+        var minimumHalf = minimumScalingSpan / 2;
+        var (downHalf, preRolledHalf, endHalf) = ContactHalfSpread(factor, halfSlop, HalfGap, minimumHalf);
         var maxHalf = Math.Max(downHalf, Math.Max(preRolledHalf, endHalf));
         var (focus, vertical, room) = factor < 1 ? PlaceFocusForZoomOut(anchor, maxHalf, bounds) : PlaceFocus(anchor, maxHalf, bounds);
         double? narrowed = null;
@@ -44,10 +48,14 @@ public static class PinchGeometry
         {
             var (roomAtAnchor, verticalAtAnchor) = RoomAround(anchor, bounds);
             var narrowGap = Math.Min(HalfGap, NarrowestGap(factor, halfSlop, roomAtAnchor));
-            if (narrowGap >= MinHalfGap)
+            var spread = ContactHalfSpread(factor, halfSlop, narrowGap, minimumHalf);
+
+            // A narrower gap is no use once the zoom would have to start below the recognizer's minimum scaling
+            // span: it would be counted from there, and the widened spread no longer fits beside the anchor.
+            if (narrowGap >= MinHalfGap && spread.End <= roomAtAnchor + 1)
             {
                 narrowed = narrowGap;
-                (downHalf, preRolledHalf, endHalf) = ContactHalfSpread(factor, halfSlop, narrowGap);
+                (downHalf, preRolledHalf, endHalf) = spread;
                 maxHalf = Math.Max(downHalf, Math.Max(preRolledHalf, endHalf));
                 (focus, vertical, room) = (anchor, verticalAtAnchor, roomAtAnchor);
             }
@@ -139,12 +147,14 @@ public static class PinchGeometry
     /// <param name="factor">Zoom factor.</param>
     /// <param name="halfSlop">Half the recognizer's span slop.</param>
     /// <param name="halfGap">Half the resting distance between the contacts.</param>
-    internal static (double Down, double PreRolled, double End) ContactHalfSpread(double factor, double halfSlop, double halfGap)
+    /// <param name="minimumHalfSpan">Half the span below which the recognizer does not count scaling.</param>
+    internal static (double Down, double PreRolled, double End) ContactHalfSpread(double factor, double halfSlop, double halfGap, double minimumHalfSpan = 0)
     {
         var crossing = halfSlop + 1; // one extra pixel so the threshold is definitely crossed
         if (factor >= 1)
         {
-            var preRolled = halfGap + crossing;
+            // The zoom is counted from the pre-rolled span, so it may not start below the minimum scaling span.
+            var preRolled = Math.Max(halfGap + crossing, minimumHalfSpan);
             return (halfGap, preRolled, factor * preRolled);
         }
 
