@@ -90,7 +90,10 @@ jobs:
         continue-on-error: true
         env:
           VT_API_KEY: ${{ secrets.VT_API_KEY }}
-        run: & .github/scripts/virustotal.ps1 -Path (Get-ChildItem release -Filter *.exe).FullName -OutFile release-notes.md
+        # A block scalar: a plain YAML value may not start with '&' (it is an anchor), which left this whole
+        # file unparseable and stopped every release.
+        run: |
+          & .github/scripts/virustotal.ps1 -Path (Get-ChildItem release -Filter *.exe).FullName -OutFile release-notes.md
 
       # gh is preinstalled on the runners and the workflow token is enough to publish a release; no
       # third-party action and no secret to manage.
