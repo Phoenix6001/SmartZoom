@@ -111,7 +111,10 @@ them predate the fix; the question is always *is this build broken for you*.
 **Written:** held in memory, flushed on a 30-second timer when dirty and once on clean shutdown. Flushes
 are serialised, so two that overlap cannot lose a record between them. A crash is the exception — an
 unhandled exception is written **synchronously in the handler**, because a crash record that dies with the
-crash is precisely the failure this is meant to eliminate.
+crash is precisely the failure this is meant to eliminate. The recorder is made in `Program.Main` before the
+host, from the paths alone (`StartupDiagnostics`), and the container is handed that same instance: a failure
+while the host is still being built (an unreadable settings file, say) is recorded like any later crash, and
+there is still one record.
 
 **Bounded:** 200 keys, 20 samples, and a hard 256 KB ceiling on the file, measured in bytes of the encoded
 JSON. A record that exceeds the ceiling is truncated from the detail ring first, counters last.
