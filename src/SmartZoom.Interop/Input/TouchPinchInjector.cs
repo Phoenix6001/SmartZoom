@@ -41,6 +41,10 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
     // anyway. Firefox's synthetic touch device lands that move a few milliseconds after the gesture.
     private static readonly TimeSpan PointerSettleTimeout = TimeSpan.FromMilliseconds(250);
 
+    // How long the pointer is watched after it is put back, for a late move of the synthetic device back onto the
+    // gesture's last contact position. It landed about a frame after the restore (15 ms at 59 Hz); six frames.
+    private static readonly TimeSpan PointerGuard = TimeSpan.FromMilliseconds(100);
+
     // How long the dragging finger is held still before it lifts, so the browser does not turn the drag into a
     // fling. It has to outlast the window a browser's velocity tracker looks back over, which is 100 ms in
     // Chromium: with 60 ms, the drag's last samples were still in it, and a fling carried the view on into the
@@ -371,6 +375,7 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
             new ScreenPoint(position.X, position.Y),
             lastTouch,
             PointerSettleTimeout,
+            PointerGuard,
             read: static () => PInvoke.GetCursorPos(out var at) ? new ScreenPoint(at.X, at.Y) : null,
             move: static to => PInvoke.SetCursorPos(to.X, to.Y),
             elapsed: () => clock.Elapsed,

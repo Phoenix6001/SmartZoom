@@ -45,6 +45,10 @@ All notable changes to SmartZoom are recorded here. The format follows
   by 4-6 px each time. The pinch now starts just above that band and the view is dragged down the rest of the
   way. A drag that has to go both sideways and down, in a bottom corner, is made one direction at a time,
   because Chromium locks a nearly sideways drag to sideways only.
+- **Firefox puts the mouse pointer back after a zoom near an edge.** The pointer follows the synthetic
+  fingers, and Firefox applies the last finger move a moment late; after a zoom that ends with a drag, that
+  move could land just after SmartZoom had put the pointer back, leaving it where the drag ended, so the next
+  press went to the wrong place. SmartZoom now watches for that late move and puts the pointer back again.
 
 ## [0.4.1] - 2026-10-08
 

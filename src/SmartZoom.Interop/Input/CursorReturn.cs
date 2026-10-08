@@ -4,12 +4,21 @@ namespace SmartZoom.Interop.Input;
 
 /// <summary>Puts the mouse pointer back after a gesture, once the gesture has finished moving it.</summary>
 /// <remarks>
+/// <para>
 /// Windows moves the pointer along with the first touch contact. Through <c>InjectTouchInput</c> that move has
 /// landed by the time the injector restores the pointer. Through a synthetic pointer device (Firefox's) the
 /// contact's last position is applied a few milliseconds after the gesture ends, and it overwrote an immediate
 /// restore: every Firefox zoom left the pointer on the left finger, 236 px from where it was. Waiting for the
-/// pointer to reach that last position orders the two moves instead of guessing a delay. No Win32 here, so
-/// the waiting is tested; the injector passes the real reads and moves.
+/// pointer to reach that last position orders the two moves instead of guessing a delay.
+/// </para>
+/// <para>
+/// Reaching it is not always the last move, though. A drag ends with the finger held still and lifted where it
+/// stopped, so the pointer is already there when the injector looks, and the lift's own move lands about a frame
+/// after the restore: an edge zoom in Firefox left the pointer on the drag's end in half the gestures measured.
+/// So the pointer is watched for a short while afterwards, and put back again if it is moved onto the last
+/// contact position; a move anywhere else is the user's, and ends the watch. No Win32 here, so the waiting is
+/// tested; the injector passes the real reads and moves.
+/// </para>
 /// </remarks>
 internal static class CursorReturn
 {
@@ -17,6 +26,7 @@ internal static class CursorReturn
     /// <param name="original">Where the pointer was before the gesture.</param>
     /// <param name="lastTouch">Where the first contact last was, or null when that is not known.</param>
     /// <param name="timeout">How long to wait for the pointer to get there.</param>
+    /// <param name="guard">How long to watch afterwards for a late move back onto <paramref name="lastTouch"/>.</param>
     /// <param name="read">Reads the pointer's position; null when it cannot be read.</param>
     /// <param name="move">Moves the pointer.</param>
     /// <param name="elapsed">Time since the wait started.</param>
@@ -26,6 +36,7 @@ internal static class CursorReturn
         ScreenPoint original,
         ScreenPoint? lastTouch,
         TimeSpan timeout,
+        TimeSpan guard,
         Func<ScreenPoint?> read,
         Action<ScreenPoint> move,
         Func<TimeSpan> elapsed,
@@ -36,14 +47,29 @@ internal static class CursorReturn
         ArgumentNullException.ThrowIfNull(elapsed);
         ArgumentNullException.ThrowIfNull(pause);
 
-        var arrived = false;
-        if (lastTouch is { } target)
+        if (lastTouch is not { } target)
         {
-            while (!(arrived = read() == target) && elapsed() < timeout)
-                pause();
+            move(original);
+            return false;
         }
 
+        bool arrived;
+        while (!(arrived = read() == target) && elapsed() < timeout)
+            pause();
+
         move(original);
+
+        var watchUntil = elapsed() + guard;
+        while (elapsed() < watchUntil)
+        {
+            pause();
+            var now = read();
+            if (now == target)
+                move(original);
+            else if (now != original)
+                break;
+        }
+
         return arrived;
     }
 }
