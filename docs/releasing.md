@@ -24,13 +24,17 @@ until a person reads the draft and clicks **Publish release**.
 3. **Move the CHANGELOG entries.** In `CHANGELOG.md`, rename `## [Unreleased]` to
    `## [X.Y.Z] - YYYY-MM-DD` and add a fresh, empty `## [Unreleased]` heading above it. The workflow
    refuses to release a version that has no CHANGELOG section, or an empty one.
-4. **Commit and tag.**
+4. **Commit, merge and tag.** `main` takes changes only through a pull request, so the release commit
+   goes through one like any other change; the tag goes on the merge commit once it is on `main`.
 
    ```powershell
+   git switch -c release/X.Y.Z-prep
    git add Directory.Build.props CHANGELOG.md
    git commit -m "Release X.Y.Z"
-   git tag vX.Y.Z
-   git push origin main vX.Y.Z
+   git push -u origin release/X.Y.Z-prep    # open the pull request, merge it once CI is green
+   git switch main; git pull --ff-only
+   git tag -s vX.Y.Z -m "SmartZoom X.Y.Z"
+   git push origin vX.Y.Z
    ```
 
 5. **Read the draft.** The workflow takes about ten minutes (the self-contained publish and the Inno Setup
