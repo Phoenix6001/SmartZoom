@@ -454,6 +454,20 @@ public sealed class BrowserAdapterTests
     }
 
     [Fact]
+    public async Task The_zoom_out_is_told_the_scale_it_is_undoing()
+    {
+        // Firefox needs it to put the page back exactly when the contacts cannot be centred on the anchor.
+        _hits.Result = ParagraphHit;
+        var adapter = Create(amount: 2.5);
+
+        var result = await adapter.ZoomInAsync(Brave, Cursor, CancellationToken.None);
+        await adapter.ZoomOutAsync(Brave, result.RestoreState!, CancellationToken.None);
+
+        Assert.Equal(2.5, _pinch.ZoomedScales[1]);
+        Assert.Equal(_pinch.Calls[0].Anchor, _pinch.Calls[1].Anchor);
+    }
+
+    [Fact]
     public async Task The_display_is_asked_about_where_the_press_is()
     {
         // Each display has its own scale; a window on the second one is measured by the second one.
@@ -611,10 +625,19 @@ public sealed class BrowserAdapterTests
 
         public List<(ScreenPoint Anchor, double Factor, TimeSpan Duration, PixelRect Bounds)> Calls { get; } = [];
 
+        // The scale each zoom-out was told it was undoing, by call index.
+        public Dictionary<int, double> ZoomedScales { get; } = [];
+
         public Task<bool> PinchAsync(ScreenPoint anchor, double factor, TimeSpan duration, PixelRect bounds, CancellationToken cancellationToken)
         {
             Calls.Add((anchor, factor, duration, bounds));
             return Task.FromResult(Succeeds);
+        }
+
+        public Task<bool> PinchOutAsync(ScreenPoint anchor, double factor, double zoomedScale, TimeSpan duration, PixelRect bounds, CancellationToken cancellationToken)
+        {
+            ZoomedScales[Calls.Count] = zoomedScale;
+            return PinchAsync(anchor, factor, duration, bounds, cancellationToken);
         }
     }
 }

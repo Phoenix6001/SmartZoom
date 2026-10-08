@@ -64,10 +64,19 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
         if (factor <= 0 || double.IsNaN(factor))
             throw new ArgumentOutOfRangeException(nameof(factor), factor, "Factor must be positive.");
 
-        return Task.Run(() => Pinch(anchor, factor, duration, bounds, cancellationToken), cancellationToken);
+        return Task.Run(() => Pinch(anchor, factor, duration, bounds, zoomedScale: 1, cancellationToken), cancellationToken);
     }
 
-    private bool Pinch(ScreenPoint anchor, double factor, TimeSpan duration, PixelRect bounds, CancellationToken cancellationToken)
+    /// <inheritdoc />
+    public Task<bool> PinchOutAsync(ScreenPoint anchor, double factor, double zoomedScale, TimeSpan duration, PixelRect bounds, CancellationToken cancellationToken)
+    {
+        if (factor <= 0 || double.IsNaN(factor))
+            throw new ArgumentOutOfRangeException(nameof(factor), factor, "Factor must be positive.");
+
+        return Task.Run(() => Pinch(anchor, factor, duration, bounds, zoomedScale, cancellationToken), cancellationToken);
+    }
+
+    private bool Pinch(ScreenPoint anchor, double factor, TimeSpan duration, PixelRect bounds, double zoomedScale, CancellationToken cancellationToken)
     {
         var engine = Recognize(anchor);
         if (!devices.Ensure(engine))
@@ -85,6 +94,14 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
         if (plan.Shortfall is { } shortfall)
             LogShrunk(anchor.X, anchor.Y, (int)Math.Ceiling(shortfall.NeededHalfSpread), (int)shortfall.Room);
 
+        // Gecko keeps the page point under the pinch's centre still to the very end of a zoom-out, scrolling the
+        // page to do it, so a zoom-out around a focus moved off the anchor brought the page back 141-152 px off.
+        // A drag while still zoomed moves only the zoomed view: make it first, and the zoom-out ends exactly where
+        // the page started. Chromium clamps the view into the page at 1.0 and needs none of this.
+        var undoPan = engine == GestureEngine.Gecko && factor < 1
+            ? PinchGeometry.UndoPan(anchor, plan.Focus, zoomedScale)
+            : default;
+
         // Windows moves the mouse pointer along with injected touch contacts; put it back afterwards so the
         // user's pointer (and therefore the target of their next press) stays where they left it.
         var hadCursor = PInvoke.GetCursorPos(out var cursorBefore);
@@ -93,6 +110,13 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
         ScreenPoint? lastTouch = null;
         try
         {
+            if (undoPan.X != 0 || undoPan.Y != 0)
+            {
+                LogUndoingPan(anchor.X, anchor.Y, plan.Focus.X, plan.Focus.Y, undoPan.X, undoPan.Y);
+                if (!Pan(PinchGeometry.PanLegs(undoPan, bounds, RecognizerProfile.TouchSlop(engine, dpiScale)), frameMs, engine, cancellationToken))
+                    return false;
+            }
+
             if (!PinchAround(plan, duration, frameMs, engine, cancellationToken))
                 return false;
 
@@ -392,4 +416,7 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Anchor ({AnchorX}, {AnchorY}) is too close to an edge for the contacts; pinched around ({FocusX}, {FocusY}) and panning by ({PanX}, {PanY}).")]
     private partial void LogPanning(int anchorX, int anchorY, int focusX, int focusY, int panX, int panY);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Zooming out around ({FocusX}, {FocusY}) rather than the anchor ({AnchorX}, {AnchorY}); dragged the zoomed view by ({PanX}, {PanY}) first so the page ends where it started.")]
+    private partial void LogUndoingPan(int anchorX, int anchorY, int focusX, int focusY, int panX, int panY);
 }

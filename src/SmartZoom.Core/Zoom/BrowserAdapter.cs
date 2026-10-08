@@ -312,7 +312,7 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
     protected override async Task ZoomOutAsync(TargetInfo target, RestoreState restoreState, CancellationToken cancellationToken)
     {
         var plan = restoreState.Plan;
-        await _pinch.PinchAsync(plan.Anchor, RestoreOvershoot / plan.Scale, _animation, restoreState.Bounds, cancellationToken).ConfigureAwait(false);
+        await _pinch.PinchOutAsync(plan.Anchor, RestoreOvershoot / plan.Scale, plan.Scale, _animation, restoreState.Bounds, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>What was applied, so the same gesture can be reversed.</summary>

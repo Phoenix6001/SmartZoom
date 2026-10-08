@@ -199,6 +199,111 @@ public sealed class PinchGeometryTests
     /// of 50 / 40 / 30 / 20 / 12 px reached x2.89 / 2.48 / 2.03 / 1.54 / 1.20, which all put the start of
     /// counting at a 61-65 px half span. Firefox reached x3.00 at every gap down to 14 px.
     /// </summary>
+    /// <summary>
+    /// Firefox keeps the page point under a pinch's centre where it is, even at the end of a zoom-out, where the
+    /// only way to do that is to scroll the page. Zooming out around any point but the one the zoom-in kept still
+    /// therefore leaves the page scrolled by (anchor - focus) * (1 - 1/scale), measured at 141-152 px near an edge,
+    /// where the contacts cannot straddle the anchor. Chromium clamps the view into the page at 1.0 instead, so it
+    /// is not affected. These tests drive a model of the Gecko behaviour.
+    /// </summary>
+    public sealed class Undoing_a_zoom_around_a_moved_focus
+    {
+        private const double Scale = 3;
+        private static readonly ScreenPoint Anchor = new(1560, 500);
+        private static readonly ScreenPoint Focus = new(1340, 500);
+
+        [Fact]
+        public void A_zoom_out_around_a_moved_focus_alone_leaves_the_page_scrolled()
+        {
+            var page = GeckoPage.ZoomedInAround(Anchor, Scale);
+
+            page.Pinch(Focus, 1 / Scale);
+
+            Assert.Equal((Anchor.X - Focus.X) * (1 - (1 / Scale)), page.Scroll, precision: 6);
+        }
+
+        [Fact]
+        public void Panning_back_first_brings_the_page_back_exactly()
+        {
+            var page = GeckoPage.ZoomedInAround(Anchor, Scale);
+
+            page.Drag(PinchGeometry.UndoPan(Anchor, Focus, Scale));
+            page.Pinch(Focus, 1 / Scale);
+
+            Assert.Equal(0, page.Scroll, precision: 0);
+        }
+
+        [Fact]
+        public void A_zoom_in_made_around_a_moved_focus_plus_a_pan_is_undone_the_same_way()
+        {
+            // How an edge zoom is made: a pinch around a focus with room, then a drag to where the anchor would be.
+            var page = new GeckoPage();
+            var zoomFocus = new ScreenPoint(1320, 500);
+            page.Pinch(zoomFocus, Scale);
+            page.Drag(new ScreenPoint((int)Math.Round((Anchor.X - zoomFocus.X) * (1 - Scale)), 0));
+
+            page.Drag(PinchGeometry.UndoPan(Anchor, Focus, Scale));
+            page.Pinch(Focus, 1 / Scale);
+
+            Assert.Equal(0, page.Scroll, precision: 0);
+        }
+
+        [Fact]
+        public void Nothing_is_panned_when_the_zoom_out_is_around_the_anchor_itself() =>
+            Assert.Equal(default, PinchGeometry.UndoPan(Anchor, Anchor, Scale));
+
+        [Fact]
+        public void Nothing_is_panned_when_the_page_is_not_zoomed() =>
+            Assert.Equal(default, PinchGeometry.UndoPan(Anchor, Focus, 1));
+
+        [Fact]
+        public void The_pan_back_is_the_zoom_ins_pan_reversed_when_the_focus_is_the_same()
+        {
+            var plan = PinchGeometry.Plan(new ScreenPoint(1568, 500), Scale, 23, PixelRect.FromSize(12, 12, 1544, 1000));
+
+            Assert.NotEqual(default, plan.Pan);
+            Assert.Equal(new ScreenPoint(-plan.Pan.X, -plan.Pan.Y), PinchGeometry.UndoPan(new ScreenPoint(1568, 500), plan.Focus, Scale));
+        }
+
+        /// <summary>
+        /// A page in Gecko, along one axis: the page's scroll, and the zoomed view's offset inside it. A pinch keeps
+        /// the page point under its centre still; at 1.0 the view is the page, so what is left goes to the scroll.
+        /// A drag while zoomed moves the view, and the content by the drag's length on screen.
+        /// </summary>
+        private sealed class GeckoPage
+        {
+            private double _scale = 1;
+            private double _view;
+
+            public double Scroll { get; private set; }
+
+            public static GeckoPage ZoomedInAround(ScreenPoint anchor, double scale)
+            {
+                var page = new GeckoPage();
+                page.Pinch(anchor, scale);
+                return page;
+            }
+
+            public void Pinch(ScreenPoint centre, double factor)
+            {
+                var held = Scroll + _view + (centre.X / _scale);
+                _scale *= factor;
+                if (_scale <= 1 + 1e-9)
+                {
+                    _scale = 1;
+                    _view = 0;
+                    Scroll = held - centre.X;
+                }
+                else
+                {
+                    _view = held - (centre.X / _scale) - Scroll;
+                }
+            }
+
+            public void Drag(ScreenPoint delta) => _view -= delta.X / _scale;
+        }
+    }
+
     public sealed class Chromiums_minimum_scaling_span
     {
         /// <summary>Chromium's span slop at 100%: 23 DIP.</summary>

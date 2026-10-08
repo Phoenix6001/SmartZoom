@@ -36,6 +36,10 @@ All notable changes to SmartZoom are recorded here. The format follows
   the browser read the drag as a flick and kept scrolling, past the zoomed view's edge and into the page,
   300 to 550 px sideways in Chrome, Edge, Brave and Firefox. Zooming back out did not undo it. The finger is
   now held still long enough for the browser to see it has stopped.
+- **Zooming back out near an edge in Firefox puts the page back where it was.** Firefox keeps the content
+  under the fingers still to the very end of a zoom-out, scrolling the page to do it, and near an edge the
+  fingers cannot be centred on the point the zoom-in kept still, so the page came back about 150 px off. The
+  zoomed view is now moved back first, so the zoom-out ends exactly where the page started.
 
 ## [0.4.1] - 2026-10-08
 

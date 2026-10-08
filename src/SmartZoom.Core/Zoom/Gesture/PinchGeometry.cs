@@ -86,6 +86,29 @@ public static class PinchGeometry
     }
 
     /// <summary>
+    /// The drag that makes a zoom-out around <paramref name="focus"/> undo a zoom made around
+    /// <paramref name="anchor"/>: it moves the zoomed view to where a zoom around the focus would have put it,
+    /// so the zoom-out ends exactly where the page started.
+    /// </summary>
+    /// <remarks>
+    /// Needed where the browser keeps the page point under the pinch's centre still to the very end of a zoom-out
+    /// (Gecko): at 1.0 that can only be done by scrolling the page, by (anchor - focus) * (1 - 1/scale). Near an
+    /// edge the contacts cannot straddle the anchor, so the zoom-out's focus is moved and the page came back
+    /// 141-152 px off. A drag made while still zoomed moves only the zoomed view, never the page. It is the zoom-in's
+    /// own correcting drag reversed, measured from the zoom-out's focus.
+    /// </remarks>
+    /// <param name="anchor">The point the zoom-in kept still.</param>
+    /// <param name="focus">Where the zoom-out's contacts are centred.</param>
+    /// <param name="zoomedScale">How far the page is zoomed when the drag is made.</param>
+    /// <returns>How far the content should move, in pixels; zero when there is nothing to make up.</returns>
+    public static ScreenPoint UndoPan(ScreenPoint anchor, ScreenPoint focus, double zoomedScale) =>
+        zoomedScale > 1 && focus != anchor
+            ? new ScreenPoint(
+                (int)Math.Round((anchor.X - focus.X) * (zoomedScale - 1)),
+                (int)Math.Round((anchor.Y - focus.Y) * (zoomedScale - 1)))
+            : default;
+
+    /// <summary>
     /// Splits a drag into legs that fit inside the bounds, each placed so that the leg and the slop it must
     /// cross first both stay inside. Content follows the finger, so a leg moves the content by its own vector.
     /// </summary>
