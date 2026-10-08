@@ -296,9 +296,6 @@ depending on which window is focused.
   because readers expose no scroll position; on a page it cannot read — a blank area, or one whose
   lines are too even to tell apart — it assumes the scroll went as asked, and the return may then be
   out by the difference.
-- A crash while SmartZoom is still starting up — before the diagnostics recorder exists — is written to the
-  log and shown in a message box, but is not recorded in `diagnostics.json`. Every crash after that point
-  is.
 
 ## Roadmap
 

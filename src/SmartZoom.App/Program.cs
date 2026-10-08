@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Serilog;
 using Serilog.Core;
 using Serilog.Events;
+using Serilog.Extensions.Logging;
 
 using SmartZoom.App.Diagnostics;
 using SmartZoom.App.Hosting;
@@ -79,27 +80,30 @@ internal static class Program
         var level = new LoggingLevelSwitch(LogEventLevel.Debug);
         Log.Logger = CreateLogger(paths, level);
 
+        // The diagnostics record exists before anything that can fail, so a failure while the host is built is
+        // recorded like any later one (issue #9). The container is handed this same instance, which keeps one
+        // record. Crashes are written synchronously rather than left to the flush timer, because the timer will
+        // not run again after this; a crash record that dies with the crash is the failure this prevents.
+        var recorder = StartupDiagnostics.Create(paths, new MachineFacts().AppVersion, new SerilogLoggerFactory(Log.Logger));
+
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
-        Application.ThreadException += (_, e) => Log.Error(e.Exception, "Unhandled exception on the UI thread.");
-        AppDomain.CurrentDomain.UnhandledException += (_, e) => Log.Fatal(e.ExceptionObject as Exception, "Unhandled exception; terminating.");
+        Application.ThreadException += (_, e) =>
+        {
+            Log.Error(e.Exception, "Unhandled exception on the UI thread.");
+
+            // The process survives these (CatchException above), so the record says which thread they were on.
+            Crash.Record(recorder, e.Exception, Crash.UiThread);
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            Log.Fatal(e.ExceptionObject as Exception, "Unhandled exception; terminating.");
+            if (e.ExceptionObject is Exception ex)
+                Crash.Record(recorder, ex);
+        };
 
         try
         {
-            using var host = BuildHost(paths, level);
-
-            // Wired here, once the DI container exists, rather than "before the host is built": the recorder
-            // is a singleton shared with the flush timer and the gesture-pacing sink, and a second, separately
-            // constructed one would split the record in two. Written synchronously in the handler rather than
-            // left to the flush timer, because the timer will not run again after this — a crash record that
-            // dies with the crash is exactly the failure this exists to prevent.
-            var recorder = host.Services.GetRequiredService<DiagnosticRecorder>();
-            AppDomain.CurrentDomain.UnhandledException += (_, e) =>
-            {
-                if (e.ExceptionObject is Exception ex)
-                    Crash.Record(recorder, ex);
-            };
-            // The process survives these (CatchException above), so the record says which thread they were on.
-            Application.ThreadException += (_, e) => Crash.Record(recorder, e.Exception, Crash.UiThread);
+            using var host = BuildHost(paths, level, recorder);
 
             // Built here, on the UI thread and before any hosted service can ask for it: the tray installs the
             // WinForms synchronization context it needs by creating its first control.
@@ -116,6 +120,7 @@ internal static class Program
         catch (Exception ex)
         {
             Log.Fatal(ex, "SmartZoom failed to start.");
+            Crash.Record(recorder, ex);
             MessageBox.Show($"SmartZoom failed to start:\n\n{ex.Message}\n\nDetails are in {paths.LogDirectory}.", "SmartZoom", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return 1;
         }
@@ -142,7 +147,8 @@ internal static class Program
             shared: true)
         .CreateLogger();
 
-    private static IHost BuildHost(AppPaths paths, LoggingLevelSwitch logLevel)
+    /// <summary>Builds the host around the diagnostics recorder <see cref="Main"/> made first.</summary>
+    internal static IHost BuildHost(AppPaths paths, LoggingLevelSwitch logLevel, DiagnosticRecorder recorder)
     {
         var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
         {
@@ -173,14 +179,13 @@ internal static class Program
         // The diagnostics record: local-only counters the injector reports its gesture pacing into. One
         // DiagnosticRecorder instance serves both DI-registered types so the totals accumulate in one place.
         builder.Services.AddSingleton<IMachineFacts, MachineFacts>();
-        builder.Services.AddSingleton<DiagnosticStore>();
-        builder.Services.AddSingleton(sp => new DiagnosticRecorder(
-            sp.GetRequiredService<DiagnosticStore>(),
-            sp.GetRequiredService<TimeProvider>(),
-            sp.GetRequiredService<IMachineFacts>().AppVersion)
+        // The recorder made before the host (see Main), so a startup failure and everything after it share one
+        // record. The settings file owns its switch, applied here once the file has been read; SettingsApplier
+        // carries later changes to it live.
+        builder.Services.AddSingleton(sp =>
         {
-            // The settings file owns this switch; SettingsApplier carries later changes to it live.
-            Enabled = sp.GetRequiredService<SettingsHolder>().Current.Diagnostics.Enabled,
+            recorder.Enabled = sp.GetRequiredService<SettingsHolder>().Current.Diagnostics.Enabled;
+            return recorder;
         });
         builder.Services.AddSingleton<IGesturePacingSink>(sp => sp.GetRequiredService<DiagnosticRecorder>());
         builder.Services.AddHostedService<DiagnosticFlushService>();

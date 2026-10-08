@@ -6,6 +6,14 @@ All notable changes to SmartZoom are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **A failure while SmartZoom is starting up is recorded in `diagnostics.json`**
+  ([#9](https://github.com/Phoenix6001/SmartZoom/issues/9)). The diagnostics recorder used to be built by the
+  host, so a failure before or while the host was built (an unreadable settings file, for example) reached
+  the log and a message box but not the record. The recorder is now made first, and the host uses that same
+  one.
+
 ## [0.4.1] - 2026-10-08
 
 ### Added
