@@ -31,6 +31,7 @@ disagrees with this table, the code is wrong, not the table.
 |---|---|---|---|
 | `ChromiumSpanSlopDips` | 23 | Chromium's documented value is 16 device-independent pixels. At 16, asking for 1.9× produced 1.75×. 23 is what the display actually needed | `& $probe pinch <x> <y> 1.9`, then `& $probe scale before.png after.png` |
 | `ChromiumTouchSlopDips` | 8 | How far one contact must move before Chromium calls it a scroll. Taken from Chromium's own default, not measured | — |
+| `ChromiumEdgeSnapDips` | 100 | Chromium moves a pinch's centre onto the viewport's edge when it is within this distance of it. At the bottom edge that snapped pinch scrolled the page up 4-6 px on every zoom-in (centres 32-90 px from the bottom at 100% leaked; 100 px and more did not). A zoom-in near the bottom is therefore centred just above the band and dragged down to its anchor (`PinchGeometry.KeepFocusAboveBottomSnap`), which leaks nothing. The top and the sides snap without leaking | `& $probe pinch <x> <bottom - d> 3 300 <l t r b>` on a page that reports `scrollY`, for d = 32..130 |
 | `GeckoSpanSlopPx` | 35 | Gecko's `PINCH_START_THRESHOLD`, in physical pixels and *not* scaled by DPI | as above, over a Firefox window |
 | `GeckoTouchSlopDips` | 9.6 | Gecko's `apz.touch_start_tolerance`, 0.1 inch | — |
 | `WindowsSpanSlopDips` | 6 | Windows' own recognizer, which every application that does not handle raw touch gets. Measured in Acrobat | as above, over a PDF reader |

@@ -40,6 +40,11 @@ All notable changes to SmartZoom are recorded here. The format follows
   under the fingers still to the very end of a zoom-out, scrolling the page to do it, and near an edge the
   fingers cannot be centred on the point the zoom-in kept still, so the page came back about 150 px off. The
   zoomed view is now moved back first, so the zoom-out ends exactly where the page started.
+- **A zoom near the bottom of a page in Chrome, Edge and Brave no longer scrolls the page a few pixels.**
+  Chromium moves a pinch that starts near the bottom edge onto the edge, and that left the page scrolled up
+  by 4-6 px each time. The pinch now starts just above that band and the view is dragged down the rest of the
+  way. A drag that has to go both sideways and down, in a bottom corner, is made one direction at a time,
+  because Chromium locks a nearly sideways drag to sideways only.
 
 ## [0.4.1] - 2026-10-08
 

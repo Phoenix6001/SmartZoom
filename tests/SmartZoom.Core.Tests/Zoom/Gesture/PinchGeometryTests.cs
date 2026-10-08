@@ -304,6 +304,77 @@ public sealed class PinchGeometryTests
         }
     }
 
+    /// <summary>
+    /// Chromium moves a pinch's centre onto the viewport's edge when it is within 100 DIP of it. At the bottom
+    /// that snapped pinch leaked 4-6 px into the page's scroll on every zoom-in (measured at 100%: centres 32-90 px
+    /// from the bottom leaked, 100 px and more did not), which zooming out does not undo. A zoom-in centred just
+    /// above the zone and dragged down to the anchor lands exactly where it was aimed and leaks nothing.
+    /// </summary>
+    public sealed class Chromiums_bottom_snap
+    {
+        private static readonly PixelRect Viewport = PixelRect.FromSize(608, 387, 1569, 1105);
+        private static readonly PixelRect Bounds = new(620, 399, 2149, 1464);
+        private const double Zone = 100;
+
+        [Fact]
+        public void A_zoom_in_centred_in_the_zone_is_pinched_just_above_it_and_dragged_down()
+        {
+            var anchor = new ScreenPoint(1388, Viewport.Bottom - 32);
+
+            var bounds = PinchGeometry.KeepFocusAboveBottomSnap(anchor, 3, Bounds, Viewport.Bottom, Zone);
+            var plan = PinchGeometry.Plan(anchor, 3, 23, bounds, 125);
+
+            Assert.True(plan.Focus.Y < Viewport.Bottom - Zone, $"focus y {plan.Focus.Y}");
+            Assert.True(plan.Focus.Y >= Viewport.Bottom - Zone - 2, "the focus moves no further up than it has to");
+            Assert.Equal(anchor.X, plan.Focus.X);
+            Assert.Equal((int)Math.Round((anchor.Y - plan.Focus.Y) * (1 - 3.0)), plan.Pan.Y);
+        }
+
+        [Fact]
+        public void A_zoom_in_centred_above_the_zone_is_left_alone()
+        {
+            var anchor = new ScreenPoint(1388, Viewport.Bottom - 130);
+
+            Assert.Equal(Bounds, PinchGeometry.KeepFocusAboveBottomSnap(anchor, 3, Bounds, Viewport.Bottom, Zone));
+        }
+
+        [Fact]
+        public void A_zoom_out_is_left_alone()
+        {
+            // The page ends clamped at 1.0, so where a zoom-out is centred does not matter in Chromium.
+            var anchor = new ScreenPoint(1388, Viewport.Bottom - 32);
+
+            Assert.Equal(Bounds, PinchGeometry.KeepFocusAboveBottomSnap(anchor, 0.3, Bounds, Viewport.Bottom, Zone));
+        }
+
+        [Fact]
+        public void An_engine_without_the_snap_is_left_alone()
+        {
+            var anchor = new ScreenPoint(1388, Viewport.Bottom - 32);
+
+            Assert.Equal(Bounds, PinchGeometry.KeepFocusAboveBottomSnap(anchor, 3, Bounds, Viewport.Bottom, 0));
+        }
+
+        [Fact]
+        public void A_viewport_shorter_than_the_zone_keeps_its_contact_area()
+        {
+            // Nowhere is out of the zone; a contact area squeezed to nothing would be worse than the leak.
+            var small = new PixelRect(620, 1400, 2149, 1464);
+            var anchor = new ScreenPoint(1388, Viewport.Bottom - 32);
+
+            Assert.Equal(small, PinchGeometry.KeepFocusAboveBottomSnap(anchor, 3, small, Viewport.Bottom, Zone));
+        }
+
+        [Theory]
+        [InlineData(GestureEngine.Chromium, 1.0, 100)]
+        [InlineData(GestureEngine.Chromium, 2.0, 200)]
+        [InlineData(GestureEngine.Chromium, 1.25, 125)]
+        [InlineData(GestureEngine.Gecko, 1.0, 0)]
+        [InlineData(GestureEngine.Windows, 1.0, 0)]
+        public void The_zone_is_chromiums_100_dip(GestureEngine engine, double dpiScale, double expected) =>
+            Assert.Equal(expected, RecognizerProfile.BottomSnapZone(engine, dpiScale));
+    }
+
     public sealed class Chromiums_minimum_scaling_span
     {
         /// <summary>Chromium's span slop at 100%: 23 DIP.</summary>
@@ -383,6 +454,18 @@ public sealed class PinchGeometryTests
                 Assert.InRange(leg.From.X, Viewport.Left, Viewport.Right - 1);
                 Assert.InRange(leg.To.X, Viewport.Left, Viewport.Right - 1);
             }
+        }
+
+        [Fact]
+        public void A_diagonal_drag_is_made_one_axis_at_a_time()
+        {
+            // Chromium locks a drag within about 20 degrees of an axis to that axis: in a bottom corner the
+            // (428, -136) drag moved the view sideways only, and the zoom fell short of the corner by 45 px.
+            var legs = PinchGeometry.PanLegs(new ScreenPoint(428, -136), Viewport, touchSlop: 16);
+
+            Assert.All(legs, leg => Assert.True(leg.From.X == leg.To.X || leg.From.Y == leg.To.Y, $"{leg} moves on both axes"));
+            Assert.Equal(428 + 16, legs.Where(l => l.From.Y == l.To.Y).Sum(l => l.To.X - l.From.X));
+            Assert.Equal(-136 - 16, legs.Where(l => l.From.X == l.To.X).Sum(l => l.To.Y - l.From.Y));
         }
 
         [Fact]

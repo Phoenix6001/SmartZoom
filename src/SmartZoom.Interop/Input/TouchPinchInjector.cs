@@ -84,6 +84,12 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
 
         var dpiScale = DisplayScale.At(anchor);
         var frameMs = RefreshPeriodMs(anchor);
+
+        // Chromium snaps a pinch centred near the bottom of its viewport onto the edge and leaks into the page's
+        // scroll; centre it above that and let the drag that follows reach the anchor.
+        if (engine == GestureEngine.Chromium && BrowserWindows.ChromiumRenderBottomAt(anchor) is { } viewportBottom)
+            bounds = PinchGeometry.KeepFocusAboveBottomSnap(anchor, factor, bounds, viewportBottom, RecognizerProfile.BottomSnapZone(engine, dpiScale));
+
         var plan = PinchGeometry.Plan(anchor, factor, RecognizerProfile.SpanSlop(engine, dpiScale), bounds, RecognizerProfile.MinimumScalingSpan(engine));
 
         // Only when the gap shrank: the same path also handles "the same gap, turned the other way round",

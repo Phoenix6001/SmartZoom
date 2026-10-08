@@ -28,6 +28,16 @@ internal static class BrowserWindows
         return !window.IsNull && string.Equals(WindowInspector.GetClassName(window), ChromiumRenderWindowClass, StringComparison.Ordinal);
     }
 
+    /// <summary>The bottom edge of the Chromium render window under a screen point, or null when it is not one.</summary>
+    public static int? ChromiumRenderBottomAt(ScreenPoint point)
+    {
+        var window = WindowInspector.WindowUnder(point);
+        if (window.IsNull || !string.Equals(WindowInspector.GetClassName(window), ChromiumRenderWindowClass, StringComparison.Ordinal))
+            return null;
+
+        return WindowInspector.Bounds(window)?.Bottom;
+    }
+
     // The same lookup the trigger used, decorations and all: asking the raw hit-test again would let a 5 px
     // window parked over a browser decide that the browser is not one, and the gesture would be tuned for the
     // wrong recognizer.
