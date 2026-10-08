@@ -13,6 +13,19 @@ All notable changes to SmartZoom are recorded here. The format follows
   host, so a failure before or while the host was built (an unreadable settings file, for example) reached
   the log and a message box but not the record. The recorder is now made first, and the host uses that same
   one.
+- **SmartZoom starts when its settings file is locked by another program** (an editor saving it, an
+  antivirus scan, a backup or a sync client). It used to stop at "SmartZoom failed to start". It now waits up
+  to two seconds for the file. If the file is still locked, SmartZoom starts on the default settings and
+  checks every few seconds until it can read the file, then uses your settings. Until then, a change takes
+  effect but is not saved, and SmartZoom says so once in a notification and on the settings page, so your file
+  is never replaced by the defaults. A file that turns out to be invalid once it can be read is left as it is,
+  and used as soon as you correct it. The installer's trigger step waits out a brief
+  lock the same way, and leaves a settings file it cannot read, or that is not valid JSON, as it is instead of
+  replacing it with the defaults.
+- **The settings window shows changes made elsewhere while it is open**: a toggle in the tray panel, a reload
+  of the settings file, or the file being put into force after a lock. It used to show what it had read when
+  it was opened until it was closed and opened again, and a change made on such a page could write those old
+  values back.
 
 ## [0.4.1] - 2026-10-08
 

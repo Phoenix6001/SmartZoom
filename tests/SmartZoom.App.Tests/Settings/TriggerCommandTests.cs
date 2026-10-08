@@ -219,6 +219,63 @@ public sealed class TriggerCommandTests
             Assert.Equal(MouseButton.Left, trigger.Mouse);
             Assert.Equal("Ctrl", trigger.Modifiers);
         }
+
+        [Fact]
+        public void Leaves_a_settings_file_it_cannot_read_alone()
+        {
+            // The installer's trigger step after a startup on defaults would otherwise write the defaults, plus
+            // the new trigger, over everything else the user had.
+            using var temp = new TempDirectory();
+            var paths = DiagnosticFixtures.Paths(temp.Path);
+            const string usersFile = """{ "Zoom": { "MaxScale": 2.5 } }""";
+            File.WriteAllText(paths.SettingsFile, usersFile);
+            var store = new SettingsStore(paths, NullLogger<SettingsStore>.Instance, attempts: 2, retryDelay: TimeSpan.FromMilliseconds(10));
+
+            int exitCode;
+            using (new FileStream(paths.SettingsFile, FileMode.Open, FileAccess.ReadWrite, FileShare.Delete))
+                exitCode = TriggerCommand.Persist(new TriggerSettings { Mouse = MouseButton.XButton1, TapCount = 1 }, store, SystemDoubleClickMs);
+
+            Assert.Equal(1, exitCode);
+            Assert.Equal(usersFile, File.ReadAllText(paths.SettingsFile));
+        }
+
+        [Fact]
+        public async Task Waits_out_a_file_held_for_a_moment()
+        {
+            // An antivirus scan of the file setup has just touched: the wizard's choice must not be lost to it.
+            using var temp = new TempDirectory();
+            var paths = DiagnosticFixtures.Paths(temp.Path);
+            File.WriteAllText(paths.SettingsFile, """{ "Zoom": { "MaxScale": 2.5 } }""");
+            var store = new SettingsStore(paths, NullLogger<SettingsStore>.Instance, attempts: 40, retryDelay: TimeSpan.FromMilliseconds(25));
+
+            int exitCode;
+            using (var held = new FileStream(paths.SettingsFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                var persist = Task.Run(() => TriggerCommand.Persist(new TriggerSettings { Mouse = MouseButton.XButton1, TapCount = 1 }, store, SystemDoubleClickMs));
+                await Task.Delay(150);
+                held.Close();
+                exitCode = await persist.WaitAsync(TimeSpan.FromSeconds(10));
+            }
+
+            Assert.Equal(0, exitCode);
+            Assert.True(store.TryLoad(out var written, out _));
+            Assert.Equal(MouseButton.XButton1, Assert.Single(written.Triggers).Mouse);
+            Assert.Equal(2.5, written.Zoom.MaxScale);
+        }
+
+        [Fact]
+        public void Leaves_a_settings_file_that_is_not_valid_json_alone()
+        {
+            using var temp = new TempDirectory();
+            var paths = DiagnosticFixtures.Paths(temp.Path);
+            const string usersFile = "{ \"Zoom\": { \"MaxScale\": 2.5 ";
+            File.WriteAllText(paths.SettingsFile, usersFile);
+
+            var exitCode = TriggerCommand.Persist(new TriggerSettings { Mouse = MouseButton.XButton1, TapCount = 1 }, CreateStore(temp), SystemDoubleClickMs);
+
+            Assert.Equal(1, exitCode);
+            Assert.Equal(usersFile, File.ReadAllText(paths.SettingsFile));
+        }
     }
 
     public sealed class Existing

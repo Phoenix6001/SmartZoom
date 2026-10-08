@@ -134,6 +134,11 @@ internal sealed partial class SettingsShell(
             _window = new ShellWindow(_shell);
             _window.Show();
 
+            // Settings can change while the window is open without anyone touching it: the settings file put into
+            // force after a lock, a reload from the tray, a toggle in the panel. A page left showing the old
+            // values would write them back with the next change made on it.
+            holder.Changed += OnSettingsChanged;
+
             // Only now does the window have a handle for the frame's theme and the colour broadcast.
             theme.Follow(_window);
             LogWindowOpened();
@@ -150,9 +155,13 @@ internal sealed partial class SettingsShell(
         _window.Activate();
     }
 
+    private void OnSettingsChanged(object? sender, EventArgs e) =>
+        _window?.Dispatcher.BeginInvoke(() => _shell?.Refresh());
+
     /// <inheritdoc />
     public void Dispose()
     {
+        holder.Changed -= OnSettingsChanged;
         _panel?.CloseForShutdown();
         _window?.CloseForShutdown();
         _panel = null;

@@ -207,6 +207,7 @@ internal static class Program
             sp.GetRequiredService<WindowZoomStateStore>(),
             sp.GetRequiredService<ILogger<ZoomEngine>>()));
         builder.Services.AddSingleton<SettingsApplier>();
+        builder.Services.AddHostedService<SettingsFileRetry>();
 
         // Hosted services start in registration order: capture must be running before the dispatcher reads from it.
         builder.Services.AddSingleton<ZoomActivity>();

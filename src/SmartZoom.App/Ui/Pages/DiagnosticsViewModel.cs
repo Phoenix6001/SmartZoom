@@ -281,6 +281,9 @@ internal sealed partial class DiagnosticsViewModel : ObservableObject, IPageMode
     /// <inheritdoc />
     public void Refresh()
     {
+        // What the last change said may no longer be true of the settings re-read here.
+        Problems = [];
+
         _loading = true;
         try
         {
@@ -327,17 +330,7 @@ internal sealed partial class DiagnosticsViewModel : ObservableObject, IPageMode
             try
             {
                 var result = await _applier.ApplyAsync(change).ConfigureAwait(false);
-                problems = ProblemLine.From(result.Problems);
-                if (result.Outcome == SettingsApplyOutcome.AppliedButNotSaved)
-                {
-                    problems =
-                    [
-                        .. problems,
-                        new ProblemLine(
-                            "Settings file: the change is in force but could not be written, so it will be lost on restart.",
-                            IsError: true),
-                    ];
-                }
+                problems = ProblemLine.From(result);
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {

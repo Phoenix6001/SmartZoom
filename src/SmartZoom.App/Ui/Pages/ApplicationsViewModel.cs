@@ -160,13 +160,19 @@ internal sealed partial class ApplicationsViewModel : ObservableObject, IPageMod
     /// <inheritdoc />
     public void Refresh()
     {
+        // What the last change said may no longer be true of the settings re-read here.
+        Problems = [];
+
         var settings = _holder.Current;
         var adapters = _engine.Current.Router.Adapters;
 
         Strategies = [.. adapters.Select(StrategyChoice.From).OrderBy(s => s.DisplayName, StringComparer.CurrentCulture), StrategyChoice.NotHandled];
-        // Ctrl+wheel, because an application worth an exception is usually one that does nothing today and a
-        // crude zoom is the improvement. Routing something to "Browsers" by accident would be a silent puzzle.
-        _newStrategy = Strategies.FirstOrDefault(s => s.Id == CtrlWheelAdapter.Descriptor.Id)
+        // A strategy already picked for an application being added survives a refresh: the window now refreshes
+        // whenever the settings change, which can be in the middle of filling the form in. Otherwise Ctrl+wheel,
+        // because an application worth an exception is usually one that does nothing today and a crude zoom is
+        // the improvement. Routing something to "Browsers" by accident would be a silent puzzle.
+        _newStrategy = Strategies.FirstOrDefault(s => _newStrategy is not null && s.Id == _newStrategy.Id)
+            ?? Strategies.FirstOrDefault(s => s.Id == CtrlWheelAdapter.Descriptor.Id)
             ?? Strategies.FirstOrDefault(s => s.Id != AdapterId.None)
             ?? StrategyChoice.NotHandled;
         Raise(nameof(NewStrategy));
@@ -286,17 +292,7 @@ internal sealed partial class ApplicationsViewModel : ObservableObject, IPageMod
             try
             {
                 var result = await _applier.ApplyAsync(change).ConfigureAwait(false);
-                problems = ProblemLine.From(result.Problems);
-                if (result.Outcome == SettingsApplyOutcome.AppliedButNotSaved)
-                {
-                    problems =
-                    [
-                        .. problems,
-                        new ProblemLine(
-                            "Settings file: the change is in force but could not be written, so it will be lost on restart.",
-                            IsError: true),
-                    ];
-                }
+                problems = ProblemLine.From(result);
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {

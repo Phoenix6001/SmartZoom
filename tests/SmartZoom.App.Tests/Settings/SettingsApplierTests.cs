@@ -286,6 +286,290 @@ public sealed class SettingsApplierTests
     }
 
     /// <summary>Everything the applier is built from, with the initial settings already in force.</summary>
+    /// <summary>
+    /// After a startup on defaults because the settings file was locked, the user's own file is still the truth:
+    /// nothing may be written over it, and it is put into force as soon as it can be read.
+    /// </summary>
+    public sealed class While_the_file_could_not_be_read
+    {
+        private const string UsersFile = """{ "Zoom": { "MaxScale": 2.5 } }""";
+
+        // Read, but refused by the settings check.
+        private const string Refused = """{ "Zoom": { "Smart": { "MarginPx": -1 } } }""";
+
+        [Fact]
+        public async Task A_change_is_put_into_force_but_not_written_over_the_users_file()
+        {
+            using var harness = new Harness();
+            harness.FallBackOnALockedFile(UsersFile);
+
+            var result = await harness.Applier.ApplyAsync(Using(MouseButton.XButton1));
+
+            Assert.Equal(SettingsApplyOutcome.AppliedButNotSaved, result.Outcome);
+            Assert.Equal(MouseButton.XButton1, Assert.Single(harness.Holder.Current.Triggers).Mouse);
+            Assert.Equal(UsersFile, File.ReadAllText(harness.Paths.SettingsFile));
+        }
+
+        [Fact]
+        public async Task The_users_settings_are_put_into_force_once_the_file_can_be_read()
+        {
+            using var harness = new Harness();
+            harness.FallBackOnALockedFile(UsersFile);
+            using var retry = new SettingsFileRetry(harness.Store, harness.Applier, NullLogger<SettingsFileRetry>.Instance, interval: TimeSpan.FromMilliseconds(20));
+
+            await retry.StartAsync(CancellationToken.None);
+            await retry.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(10));
+
+            Assert.Equal(2.5, harness.Holder.Current.Zoom.MaxScale);
+            Assert.False(harness.Store.FileUnreadable);
+        }
+
+        [Fact]
+        public async Task Nothing_is_reloaded_when_the_file_was_read_at_startup()
+        {
+            using var harness = new Harness();
+            using var retry = new SettingsFileRetry(harness.Store, harness.Applier, NullLogger<SettingsFileRetry>.Instance, interval: TimeSpan.FromMilliseconds(20));
+
+            await retry.StartAsync(CancellationToken.None);
+            await retry.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(10));
+
+            Assert.Same(harness.Initial, harness.Holder.Current);
+        }
+
+        [Fact]
+        public async Task Putting_the_file_into_force_does_not_write_it_back()
+        {
+            // The file is the user's, comments and all; reading it is not a reason to reformat it.
+            using var harness = new Harness();
+            const string commented = """
+                // mine
+                { "Zoom": { "MaxScale": 2.5 } }
+                """;
+            harness.FallBackOnALockedFile(commented);
+
+            var result = await harness.Applier.ReloadAsync();
+
+            Assert.Equal(SettingsApplyOutcome.Applied, result.Outcome);
+            Assert.Equal(2.5, harness.Holder.Current.Zoom.MaxScale);
+            Assert.False(harness.Store.FileUnreadable);
+            Assert.Equal(commented, File.ReadAllText(harness.Paths.SettingsFile));
+        }
+
+        [Fact]
+        public async Task A_file_that_is_read_but_refused_is_still_not_written_over()
+        {
+            using var harness = new Harness();
+            harness.FallBackOnALockedFile(UsersFile);
+            File.WriteAllText(harness.Paths.SettingsFile, Refused);
+
+            var reload = await harness.Applier.ReloadAsync();
+            var change = await harness.Applier.ApplyAsync(Using(MouseButton.XButton1));
+
+            Assert.Equal(SettingsApplyOutcome.Rejected, reload.Outcome);
+            Assert.True(harness.Store.FileUnreadable);
+            Assert.Equal(SettingsApplyOutcome.AppliedButNotSaved, change.Outcome);
+            Assert.Equal(Refused, File.ReadAllText(harness.Paths.SettingsFile));
+        }
+
+        [Fact]
+        public async Task A_file_deleted_meanwhile_is_written_again_from_the_settings_in_force()
+        {
+            // Nothing is left to protect, so holding writes back would only lose this session's changes too.
+            using var harness = new Harness();
+            harness.FallBackOnALockedFile(UsersFile);
+            await harness.Applier.ApplyAsync(Using(MouseButton.XButton1));
+            File.Delete(harness.Paths.SettingsFile);
+
+            // Missing twice in a row: once could be an editor between deleting it and putting its new copy in place.
+            await harness.Applier.ReloadAsync();
+            var result = await harness.Applier.ReloadAsync();
+
+            Assert.Equal(SettingsApplyOutcome.Applied, result.Outcome);
+            Assert.False(harness.Store.FileUnreadable);
+            Assert.True(harness.Store.TryLoad(out var written, out _));
+            Assert.Equal(MouseButton.XButton1, Assert.Single(written.Triggers).Mouse);
+        }
+
+        [Fact]
+        public async Task A_refused_file_is_kept_out_of_force_until_it_is_corrected()
+        {
+            using var harness = new Harness();
+            harness.FallBackOnALockedFile(UsersFile);
+            File.WriteAllText(harness.Paths.SettingsFile, Refused);
+            using var retry = new SettingsFileRetry(harness.Store, harness.Applier, NullLogger<SettingsFileRetry>.Instance, interval: TimeSpan.FromMilliseconds(20));
+
+            await retry.StartAsync(CancellationToken.None);
+            await Task.Delay(200);
+            Assert.Same(harness.Initial, harness.Holder.Current);
+            Assert.True(harness.Store.FileUnreadable);
+            Assert.Equal(Refused, File.ReadAllText(harness.Paths.SettingsFile));
+
+            File.WriteAllText(harness.Paths.SettingsFile, UsersFile);
+            await retry.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(10));
+
+            Assert.Equal(2.5, harness.Holder.Current.Zoom.MaxScale);
+            Assert.False(harness.Store.FileUnreadable);
+        }
+
+        [Fact]
+        public async Task After_the_file_is_refused_the_reason_given_says_it_needs_correcting()
+        {
+            // It can be read now, so "SmartZoom will use it as soon as it can be read" would no longer be true.
+            using var harness = new Harness();
+            harness.FallBackOnALockedFile(UsersFile);
+            File.WriteAllText(harness.Paths.SettingsFile, Refused);
+            await harness.Applier.ReloadAsync();
+
+            var result = await harness.Applier.ApplyAsync(Using(MouseButton.XButton1));
+
+            Assert.Equal(SettingsApplyOutcome.AppliedButNotSaved, result.Outcome);
+            Assert.Contains("as soon as it is corrected", result.Detail, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task The_user_is_told_once_while_the_file_cannot_be_read_and_again_when_it_is_refused()
+        {
+            using var harness = new Harness();
+            harness.FallBackOnALockedFile(UsersFile);
+            var notices = new List<string>();
+            harness.Applier.SavingHeldBack += (_, text) => notices.Add(text);
+
+            await harness.Applier.ApplyAsync(Using(MouseButton.XButton1));
+            await harness.Applier.SetEnabledAsync(false);
+            Assert.Single(notices);
+
+            File.WriteAllText(harness.Paths.SettingsFile, Refused);
+            await harness.Applier.ReloadAsync();
+            await harness.Applier.SetEnabledAsync(true);
+
+            Assert.Equal(2, notices.Count);
+            Assert.Contains("refused", notices[1], StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task A_file_that_is_not_valid_json_once_it_can_be_read_is_refused_and_left_alone_but_still_tried()
+        {
+            using var harness = new Harness();
+            harness.FallBackOnALockedFile(UsersFile);
+            const string broken = """{ "Zoom": { "MaxScale": 2.5 """;
+            File.WriteAllText(harness.Paths.SettingsFile, broken);
+
+            // Not given up on: a file read while it was half written is complete by the next attempt.
+            var done = await harness.Applier.RetryUnreadableFileAsync();
+            var change = await harness.Applier.ApplyAsync(Using(MouseButton.XButton1));
+
+            Assert.False(done);
+            Assert.True(harness.Store.FileUnreadable);
+            Assert.Equal(SettingsApplyOutcome.AppliedButNotSaved, change.Outcome);
+            Assert.Equal(broken, File.ReadAllText(harness.Paths.SettingsFile));
+        }
+
+        [Fact]
+        public async Task A_file_missing_only_while_an_editor_puts_its_new_copy_in_place_is_not_taken_as_deleted()
+        {
+            using var harness = new Harness();
+            harness.FallBackOnALockedFile(UsersFile);
+            File.Delete(harness.Paths.SettingsFile);
+
+            var missing = await harness.Applier.RetryUnreadableFileAsync();
+            File.WriteAllText(harness.Paths.SettingsFile, UsersFile);
+            var back = await harness.Applier.RetryUnreadableFileAsync();
+
+            Assert.False(missing);
+            Assert.True(back);
+            Assert.Equal(2.5, harness.Holder.Current.Zoom.MaxScale);
+            Assert.Equal(UsersFile, File.ReadAllText(harness.Paths.SettingsFile));
+        }
+
+        [Fact]
+        public async Task A_file_missing_on_every_other_attempt_is_never_taken_as_deleted()
+        {
+            // A slow sync client: gone at one attempt, back at the next. Only two misses in a row count.
+            using var harness = new Harness();
+            harness.FallBackOnALockedFile(UsersFile);
+            using (new FileStream(harness.Paths.SettingsFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+            {
+                await harness.Applier.RetryUnreadableFileAsync();
+            }
+
+            for (var i = 0; i < 3; i++)
+            {
+                File.Move(harness.Paths.SettingsFile, harness.Paths.SettingsFile + ".moving");
+                Assert.False(await harness.Applier.RetryUnreadableFileAsync());
+                File.Move(harness.Paths.SettingsFile + ".moving", harness.Paths.SettingsFile);
+                using (new FileStream(harness.Paths.SettingsFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                    Assert.False(await harness.Applier.RetryUnreadableFileAsync());
+            }
+
+            Assert.True(harness.Store.FileUnreadable);
+            Assert.Equal(UsersFile, File.ReadAllText(harness.Paths.SettingsFile));
+        }
+
+        [Fact]
+        public async Task A_file_saved_again_between_two_attempts_that_both_find_it_missing_is_not_taken_as_deleted()
+        {
+            // Each attempt sees one instant. An editor saving by delete and rename, over and over, can be missing
+            // at both; what it cannot hide is that a file appeared in between.
+            using var harness = new Harness();
+            harness.FallBackOnALockedFile(UsersFile);
+            File.Delete(harness.Paths.SettingsFile);
+
+            Assert.False(await harness.Applier.RetryUnreadableFileAsync());
+            File.WriteAllText(harness.Paths.SettingsFile, UsersFile);
+            File.Delete(harness.Paths.SettingsFile);
+            await Task.Delay(500); // the watcher reports on its own thread
+            Assert.False(await harness.Applier.RetryUnreadableFileAsync());
+
+            Assert.False(File.Exists(harness.Paths.SettingsFile));
+            Assert.True(harness.Store.FileUnreadable);
+        }
+
+        [Fact]
+        public async Task The_retry_leaves_alone_a_file_already_put_into_force_from_the_tray()
+        {
+            // Reload settings file as soon as the lock clears, before the retry's next attempt: that attempt must
+            // not reload it again as an ordinary reload, which writes the file back and drops its comments.
+            using var harness = new Harness();
+            const string commented = """
+                // mine
+                { "Zoom": { "MaxScale": 2.5 } }
+                """;
+            harness.FallBackOnALockedFile(commented);
+            await harness.Applier.ReloadAsync();
+            var inForce = harness.Holder.Current;
+
+            Assert.True(await harness.Applier.RetryUnreadableFileAsync());
+
+            Assert.Same(inForce, harness.Holder.Current);
+            Assert.Equal(commented, File.ReadAllText(harness.Paths.SettingsFile));
+        }
+
+        [Fact]
+        public async Task A_listener_that_calls_back_into_the_settings_does_not_deadlock()
+        {
+            using var harness = new Harness();
+            harness.FallBackOnALockedFile(UsersFile);
+            Task<SettingsApplyResult>? inner = null;
+            harness.Applier.SavingHeldBack += (_, _) => inner = harness.Applier.SetEnabledAsync(true);
+
+            await harness.Applier.SetEnabledAsync(false).WaitAsync(TimeSpan.FromSeconds(10));
+
+            Assert.NotNull(inner);
+            await inner.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+
+        [Fact]
+        public async Task A_change_that_is_not_saved_says_why()
+        {
+            using var harness = new Harness();
+            harness.FallBackOnALockedFile(UsersFile);
+
+            var result = await harness.Applier.ApplyAsync(Using(MouseButton.XButton1));
+
+            Assert.Contains("could not be read", result.Detail, StringComparison.Ordinal);
+        }
+    }
+
     private sealed class Harness : IDisposable
     {
         private readonly TempDirectory _temp = new();
@@ -293,7 +577,7 @@ public sealed class SettingsApplierTests
         public Harness(IZoomAdapter? initialAdapter = null, TimeSpan? replaceTimeout = null)
         {
             Paths = DiagnosticFixtures.Paths(_temp.Path);
-            Store = new SettingsStore(Paths, NullLogger<SettingsStore>.Instance);
+            Store = new SettingsStore(Paths, NullLogger<SettingsStore>.Instance, attempts: 2, retryDelay: TimeSpan.FromMilliseconds(10));
             Holder = new SettingsHolder(Initial);
             Recorder = DiagnosticFixtures.CreateRecorder(_temp.Path);
 
@@ -323,6 +607,15 @@ public sealed class SettingsApplierTests
         public ZoomEngine Engine { get; }
 
         public SettingsApplier Applier { get; }
+
+        /// <summary>Starts the way a locked settings file leaves it: defaults in memory, the user's file on disk.</summary>
+        public void FallBackOnALockedFile(string contents)
+        {
+            Directory.CreateDirectory(Paths.SettingsDirectory);
+            File.WriteAllText(Paths.SettingsFile, contents);
+            using (new FileStream(Paths.SettingsFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                Store.Load();
+        }
 
         public void Dispose()
         {
