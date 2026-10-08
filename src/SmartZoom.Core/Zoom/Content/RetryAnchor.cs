@@ -42,15 +42,16 @@ public static class RetryAnchor
     /// <param name="block">Bounds of the element that refused the gesture, in physical pixels.</param>
     /// <param name="viewport">The page's viewport, in physical pixels.</param>
     /// <param name="anchor">The anchor the refused pinch used.</param>
+    /// <param name="edges">How far contacts keep from the viewport's edges on this display.</param>
     /// <returns>
     /// At most <see cref="MaxCandidates"/> anchors, all inside the area the contacts may use. The list is
     /// built once per refused press, never per frame.
     /// </returns>
-    public static IReadOnlyList<ScreenPoint> Candidates(PixelRect block, PixelRect viewport, ScreenPoint anchor)
+    public static IReadOnlyList<ScreenPoint> Candidates(PixelRect block, PixelRect viewport, ScreenPoint anchor, EdgeAllowances edges)
     {
         // Where the contacts may land at all; a candidate outside it would be pinched around a substitute
         // focus plus a compensating pan, which is exactly what the retry is trying to avoid.
-        var usable = BrowserAdapter.ContactBounds(viewport);
+        var usable = edges.ContactBounds(viewport);
 
         // The coordinate the candidate does not move keeps the original anchor's value, so the zoom stays
         // aimed at the same row (for a candidate beside the block) or column (for one above or below it).

@@ -26,6 +26,11 @@ All notable changes to SmartZoom are recorded here. The format follows
   of the settings file, or the file being put into force after a lock. It used to show what it had read when
   it was opened until it was closed and opened again, and a change made on such a page could write those old
   values back.
+- **The browser zoom's distance from the window's edges follows the display's scaling.** The synthetic
+  fingers keep clear of the scrollbar and the window's resize border by fixed pixel amounts that were sized
+  for a 200% display, so at 100% they stayed twice as far from the edges as needed, and at 250% or 300% the
+  resize border could be closer than its allowance. Both now scale with the display under the cursor, and the
+  fingers also keep clear of the horizontal scrollbar at the bottom of a page that scrolls sideways.
 
 ## [0.4.1] - 2026-10-08
 

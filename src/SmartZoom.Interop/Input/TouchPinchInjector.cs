@@ -66,7 +66,7 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
         if (!devices.Ensure(engine))
             return false;
 
-        var dpiScale = DpiScaleAt(anchor);
+        var dpiScale = DisplayScale.At(anchor);
         var frameMs = RefreshPeriodMs(anchor);
         var plan = PinchGeometry.Plan(anchor, factor, RecognizerProfile.SpanSlop(engine, dpiScale), bounds, RecognizerProfile.MinimumScalingSpan(engine));
 
@@ -305,26 +305,6 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
     {
         contact.pointerInfo.ptPixelLocation = new System.Drawing.Point(x, y);
         contact.rcContact = new RECT { left = x - ContactHalfSize, top = y - ContactHalfSize, right = x + ContactHalfSize, bottom = y + ContactHalfSize };
-    }
-
-    /// <summary>Device scale factor of the monitor showing the point (1.0 at 96 DPI, 2.0 at 200%).</summary>
-    /// <remarks>
-    /// Asked of the monitor, not of the window under the point. <c>GetDpiForWindow</c> answers "what DPI is
-    /// this window being scaled for", which depends on the window's own DPI awareness: a system-aware
-    /// application reports the primary display's DPI wherever it is, and an unaware one always reports 96.
-    /// That is the wrong question here — the slop this feeds is a distance in physical pixels on the display
-    /// the gesture lands on, so a system-aware PDF reader on a differently scaled second monitor would be
-    /// paced for the wrong recognizer threshold. <c>MonitorFromPoint</c> + <c>GetDpiForMonitor</c> answer
-    /// about the display, which is what the question is. 1.0 means "not reported", not "confirmed 100%".
-    /// </remarks>
-    private static double DpiScaleAt(ScreenPoint point)
-    {
-        var monitor = PInvoke.MonitorFromPoint(new System.Drawing.Point(point.X, point.Y), MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
-        if (monitor.IsNull)
-            return 1.0;
-
-        var hr = PInvoke.GetDpiForMonitor(monitor, MONITOR_DPI_TYPE.MDT_EFFECTIVE_DPI, out var dpiX, out _);
-        return hr.Succeeded && dpiX > 0 ? dpiX / 96.0 : 1.0;
     }
 
     // Sleep while there is comfortably more than a timer tick to go, then spin the last stretch: Thread.Sleep

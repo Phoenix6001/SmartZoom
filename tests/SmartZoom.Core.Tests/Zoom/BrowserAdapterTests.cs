@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
 using SmartZoom.Core.Settings;
+using SmartZoom.Core.Windows;
 using SmartZoom.Core.Zoom;
 using SmartZoom.Core.Zoom.Content;
 
@@ -27,11 +28,15 @@ public sealed class BrowserAdapterTests
     private readonly FakePinch _pinch = new();
     private readonly FakeScreenSampler _screen = new();
 
+    // The 200% display the allowances in these tests were measured on.
+    private readonly FakeDisplayScale _display = new() { Scale = 2.0 };
+
     private IZoomAdapter Create(bool animate = true, bool ctrlWheelWhenPinchBlocked = true, double amount = 3.0) =>
         new BrowserAdapter(
             _hits,
             _pinch,
             _screen,
+            _display,
             new ZoomSettings
             {
                 Animate = animate,
@@ -419,22 +424,70 @@ public sealed class BrowserAdapterTests
     }
 
     [Fact]
-    public void Contacts_keep_clear_of_the_window_resize_border_on_every_side()
+    public async Task On_a_100_percent_display_the_contacts_may_come_closer_to_the_edges()
     {
-        // A touch contact on the viewport's outermost pixels grabs the window's resize border (measured: 8 px
-        // inside the window rect resizes, 12 px does not) and a pinch then drags the window edge instead.
-        var bounds = BrowserAdapter.ContactBounds(PixelRect.FromSize(1891, 85, 1793, 1527));
+        // A 100% scrollbar is half the width of a 200% one; the 200% allowance kept the fingers needlessly far in.
+        _display.Scale = 1.0;
+        var image = new ContentNode(ContentRole.Image, PixelRect.FromSize(Viewport.Right - 270, 700, 250, 160));
+        _hits.Result = new ContentHit([image, new ContentNode(ContentRole.Document, Viewport)], Viewport);
 
-        Assert.Equal(new PixelRect(1891 + 24, 85 + 24, 1891 + 1793 - 56, 85 + 1527 - 24), bounds);
+        await Create().ZoomInAsync(Brave, new ScreenPoint(Viewport.Right - 150, 780), CancellationToken.None);
+
+        var call = _pinch.Calls[0];
+        Assert.Equal(Viewport.Right - 28, call.Bounds.Right);
+        Assert.Equal(Viewport.Left + 12, call.Bounds.Left);
+        Assert.Equal(Viewport.Top + 12, call.Bounds.Top);
     }
 
     [Fact]
-    public void Contact_bounds_of_a_tiny_viewport_never_collapse()
+    public async Task On_a_300_percent_display_the_contacts_keep_further_from_the_edges()
     {
-        var bounds = BrowserAdapter.ContactBounds(PixelRect.FromSize(100, 100, 30, 30));
+        _display.Scale = 3.0;
+        _hits.Result = ParagraphHit;
 
-        Assert.Equal(1, bounds.Width);
-        Assert.Equal(1, bounds.Height);
+        await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None);
+
+        var call = _pinch.Calls[0];
+        Assert.Equal(Viewport.Right - 84, call.Bounds.Right);
+        Assert.Equal(Viewport.Bottom - 84, call.Bounds.Bottom);
+        Assert.Equal(Viewport.Top + 36, call.Bounds.Top);
+    }
+
+    [Fact]
+    public async Task The_display_is_asked_about_where_the_press_is()
+    {
+        // Each display has its own scale; a window on the second one is measured by the second one.
+        _hits.Result = ParagraphHit;
+        await Create().ZoomInAsync(Brave, Cursor, CancellationToken.None);
+
+        Assert.Equal(Cursor, Assert.Single(_display.AskedAbout));
+    }
+
+    [Fact]
+    public async Task The_anchor_keeps_clear_of_the_edge_by_the_allowance_for_the_display()
+    {
+        // A press in the top-left corner: the anchor is held inside the contact area plus the injector's margin.
+        _display.Scale = 1.0;
+        _hits.Result = new ContentHit([new ContentNode(ContentRole.Document, Viewport)], Viewport);
+
+        await Create().ZoomInAsync(Brave, new ScreenPoint(Viewport.Left + 2, Viewport.Top + 2), CancellationToken.None);
+
+        var anchor = _pinch.Calls[0].Anchor;
+        Assert.True(anchor.X >= Viewport.Left + EdgeAllowances.For(1.0).AnchorInset, $"anchor x {anchor.X}");
+        Assert.True(anchor.Y >= Viewport.Top + EdgeAllowances.For(1.0).AnchorInsetVertical, $"anchor y {anchor.Y}");
+    }
+
+    [Fact]
+    public async Task A_press_at_the_bottom_edge_is_anchored_inside_where_the_contacts_may_go()
+    {
+        // Below the contact area the gesture would need a vertical pan, which leaks into the page's scroll.
+        _display.Scale = 1.0;
+        _hits.Result = new ContentHit([new ContentNode(ContentRole.Document, Viewport)], Viewport);
+
+        await Create().ZoomInAsync(Brave, new ScreenPoint((Viewport.Left + Viewport.Right) / 2, Viewport.Bottom - 3), CancellationToken.None);
+
+        var call = _pinch.Calls[0];
+        Assert.True(call.Anchor.Y < call.Bounds.Bottom, $"anchor y {call.Anchor.Y}, contact bottom {call.Bounds.Bottom}");
     }
 
     [Fact]
@@ -499,6 +552,19 @@ public sealed class BrowserAdapterTests
     // otherwise. The cells alternate, because a sample has to carry the structure a real page has: on a
     // featureless one, nothing can change and "nothing changed" answers no question. Set Featureless to get
     // that case deliberately.
+    private sealed class FakeDisplayScale : IDisplayScale
+    {
+        public double Scale { get; set; } = 1.0;
+
+        public List<ScreenPoint> AskedAbout { get; } = [];
+
+        public double ScaleAt(ScreenPoint point)
+        {
+            AskedAbout.Add(point);
+            return Scale;
+        }
+    }
+
     private sealed class FakeScreenSampler : IScreenSampler
     {
         private byte _luma;

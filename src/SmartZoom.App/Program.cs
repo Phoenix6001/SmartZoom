@@ -21,6 +21,7 @@ using SmartZoom.Core.Diagnostics;
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
 using SmartZoom.Core.Settings;
+using SmartZoom.Core.Windows;
 using SmartZoom.Core.Zoom;
 using SmartZoom.Core.Zoom.Content;
 using SmartZoom.Core.Zoom.Office;
@@ -194,6 +195,7 @@ internal static class Program
         builder.Services.AddSingleton<IWindowActivator, WindowActivator>();
         builder.Services.AddSingleton<IReaderView, ReaderView>();
         builder.Services.AddSingleton<IScreenSampler, ScreenSampler>();
+        builder.Services.AddSingleton<IDisplayScale, DisplayScale>();
         builder.Services.AddSingleton<ShortcutSender>();
         builder.Services.AddSingleton<IWordAutomation, WordAutomation>();
         builder.Services.AddSingleton<IExcelAutomation, ExcelAutomation>();

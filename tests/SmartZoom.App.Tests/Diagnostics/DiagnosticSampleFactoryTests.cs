@@ -4,6 +4,7 @@ using SmartZoom.App.Diagnostics;
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
 using SmartZoom.Core.Settings;
+using SmartZoom.Core.Windows;
 using SmartZoom.Core.Zoom;
 using SmartZoom.Core.Zoom.Content;
 
@@ -40,6 +41,7 @@ public sealed class DiagnosticSampleFactoryTests
             new FakeHitTester { Result = NothingToZoom },
             new FakePinch(),
             new FakeScreenSampler(),
+            new OneHundredPercent(),
             // An amount of 1 is not a zoom, which is the one way a browser press still records having done
             // nothing; this test needs a genuine "zoomed nothing" outcome to build a sample from.
             new ZoomSettings
@@ -122,6 +124,11 @@ public sealed class DiagnosticSampleFactoryTests
     }
 
     // Every sample looks different from the last, so a pinch always reads as taken.
+    private sealed class OneHundredPercent : IDisplayScale
+    {
+        public double ScaleAt(ScreenPoint point) => 1.0;
+    }
+
     private sealed class FakeScreenSampler : IScreenSampler
     {
         private byte _luma;
