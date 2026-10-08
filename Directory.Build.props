@@ -15,7 +15,7 @@
     <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
 
     <!-- The one place the version is written: the executable, the installer and the release assets read it. -->
-    <Version>0.4.0</Version>
+    <Version>0.4.1</Version>
 
     <Authors>SmartZoom contributors</Authors>
     <Product>SmartZoom</Product>

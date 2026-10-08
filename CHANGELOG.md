@@ -6,6 +6,8 @@ All notable changes to SmartZoom are recorded here. The format follows
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-10-08
+
 ### Added
 
 - **A permanent direct download link.** Every release now also attaches the installer as
