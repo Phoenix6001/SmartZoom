@@ -1,22 +1,24 @@
 using SmartZoom.Core.Input;
+using SmartZoom.Core.Zoom;
 using SmartZoom.Core.Zoom.Content;
 
 namespace SmartZoom.Core.Tests.Zoom.Content;
 
 public sealed class RetryAnchorTests
 {
-    // Contacts may use the viewport minus 24 px of resize border on three sides and 56 px of scrollbar strip
-    // on the right, so the usable area here is (24, 24) to (1944, 1176).
+    // On a 200% display contacts may use the viewport minus 24 px of resize border on the left and at the top and
+    // 56 px of scrollbar strip on the right and at the bottom, so the usable area here is (24, 24) to (1944, 1144).
+    private static readonly EdgeAllowances Edges = EdgeAllowances.For(2.0);
     private static readonly PixelRect Viewport = PixelRect.FromSize(0, 0, 2000, 1200);
     private static readonly ScreenPoint Centre = new(1000, 600);
 
     [Fact]
     public void First_candidate_is_outside_the_block_on_the_side_with_the_most_room()
     {
-        // 776 px of room to the left, 744 to the right, 376 above and below.
+        // 776 px of room to the left, 744 to the right, 376 above and 344 below.
         var block = PixelRect.FromSize(800, 400, 400, 400);
 
-        var candidates = RetryAnchor.Candidates(block, Viewport, new ScreenPoint(1000, 600));
+        var candidates = RetryAnchor.Candidates(block, Viewport, new ScreenPoint(1000, 600), Edges);
 
         Assert.Equal(new ScreenPoint(800 - RetryAnchor.OutsideGap, 600), candidates[0]);
         Assert.False(block.Contains(candidates[0]));
@@ -29,7 +31,7 @@ public sealed class RetryAnchorTests
         var block = PixelRect.FromSize(200, 400, 400, 400);
 
         // Room to the right (1344 px) beats room to the left (176 px), so the candidate goes there.
-        var candidates = RetryAnchor.Candidates(block, Viewport, new ScreenPoint(400, 700));
+        var candidates = RetryAnchor.Candidates(block, Viewport, new ScreenPoint(400, 700), Edges);
 
         Assert.Equal(new ScreenPoint(600 + RetryAnchor.OutsideGap, 700), candidates[0]);
     }
@@ -40,7 +42,7 @@ public sealed class RetryAnchorTests
         // A wide, short block: the room is above (376 px) and below (376 px), and above wins the tie.
         var block = PixelRect.FromSize(40, 400, 1880, 400);
 
-        var candidates = RetryAnchor.Candidates(block, Viewport, new ScreenPoint(900, 600));
+        var candidates = RetryAnchor.Candidates(block, Viewport, new ScreenPoint(900, 600), Edges);
 
         Assert.Equal(new ScreenPoint(900, 400 - RetryAnchor.OutsideGap), candidates[0]);
     }
@@ -50,16 +52,16 @@ public sealed class RetryAnchorTests
     {
         var block = PixelRect.FromSize(800, 400, 400, 400);
 
-        // An anchor in the bottom resize border: the candidate keeps its row as far down as contacts may go.
-        var candidates = RetryAnchor.Candidates(block, Viewport, new ScreenPoint(1000, 1190));
+        // An anchor in the bottom scrollbar strip: the candidate keeps its row as far down as contacts may go.
+        var candidates = RetryAnchor.Candidates(block, Viewport, new ScreenPoint(1000, 1190), Edges);
 
-        Assert.Equal(new ScreenPoint(block.Left - RetryAnchor.OutsideGap, 1175), candidates[0]);
+        Assert.Equal(new ScreenPoint(block.Left - RetryAnchor.OutsideGap, 1143), candidates[0]);
     }
 
     [Fact]
     public void A_block_that_fills_the_viewport_leaves_only_the_centre()
     {
-        var candidates = RetryAnchor.Candidates(Viewport, Viewport, new ScreenPoint(1000, 600));
+        var candidates = RetryAnchor.Candidates(Viewport, Viewport, new ScreenPoint(1000, 600), Edges);
 
         Assert.Equal(Centre, Assert.Single(candidates));
     }
@@ -71,7 +73,7 @@ public sealed class RetryAnchorTests
         // right edge is under the scrollbar strip.
         var block = new PixelRect(30, 30, 1930, 1170);
 
-        var candidates = RetryAnchor.Candidates(block, Viewport, new ScreenPoint(1000, 600));
+        var candidates = RetryAnchor.Candidates(block, Viewport, new ScreenPoint(1000, 600), Edges);
 
         Assert.Equal(Centre, Assert.Single(candidates));
     }
@@ -81,7 +83,7 @@ public sealed class RetryAnchorTests
     {
         var block = PixelRect.FromSize(800, 400, 400, 400);
 
-        var candidates = RetryAnchor.Candidates(block, Viewport, new ScreenPoint(1000, 600));
+        var candidates = RetryAnchor.Candidates(block, Viewport, new ScreenPoint(1000, 600), Edges);
 
         Assert.Equal(2, candidates.Count);
         Assert.Equal(Centre, candidates[^1]);
@@ -98,7 +100,7 @@ public sealed class RetryAnchorTests
             Viewport,
         })
         {
-            var candidates = RetryAnchor.Candidates(block, Viewport, new ScreenPoint(1000, 600));
+            var candidates = RetryAnchor.Candidates(block, Viewport, new ScreenPoint(1000, 600), Edges);
 
             Assert.InRange(candidates.Count, 1, RetryAnchor.MaxCandidates);
         }
@@ -110,7 +112,7 @@ public sealed class RetryAnchorTests
         // A block hugging the left edge whose roomier side is the right: its candidate lands on the centre.
         var block = new PixelRect(0, 400, (2000 / 2) - RetryAnchor.OutsideGap, 800);
 
-        var candidates = RetryAnchor.Candidates(block, Viewport, new ScreenPoint(1000, 600));
+        var candidates = RetryAnchor.Candidates(block, Viewport, new ScreenPoint(1000, 600), Edges);
 
         Assert.Equal(Centre, Assert.Single(candidates));
     }

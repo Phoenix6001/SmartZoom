@@ -20,4 +20,22 @@ public interface IPinchInjector
     /// <param name="cancellationToken">Cancels the gesture; contacts are always lifted.</param>
     /// <returns>False if the OS rejected the injection (e.g. the target window is elevated).</returns>
     Task<bool> PinchAsync(ScreenPoint anchor, double factor, TimeSpan duration, PixelRect bounds, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Undoes a zoom made with <see cref="PinchAsync"/> around the same anchor: pinches by
+    /// <paramref name="factor"/> (below 1), knowing the page is zoomed by <paramref name="zoomedScale"/>.
+    /// </summary>
+    /// <remarks>
+    /// The scale lets an injector put the page back where it was when the contacts cannot be centred on the
+    /// anchor (see <see cref="Gesture.PinchGeometry.UndoPan"/>). Without it, this is <see cref="PinchAsync"/>.
+    /// </remarks>
+    /// <param name="anchor">The anchor the zoom-in used.</param>
+    /// <param name="factor">Less than 1.</param>
+    /// <param name="zoomedScale">The scale the zoom-in reached, as planned.</param>
+    /// <param name="duration">Gesture length.</param>
+    /// <param name="bounds">Area the contacts must stay inside; the one the zoom-in used.</param>
+    /// <param name="cancellationToken">Cancels the gesture; contacts are always lifted.</param>
+    /// <returns>False if the OS rejected the injection.</returns>
+    Task<bool> PinchOutAsync(ScreenPoint anchor, double factor, double zoomedScale, TimeSpan duration, PixelRect bounds, CancellationToken cancellationToken) =>
+        PinchAsync(anchor, factor, duration, bounds, cancellationToken);
 }
