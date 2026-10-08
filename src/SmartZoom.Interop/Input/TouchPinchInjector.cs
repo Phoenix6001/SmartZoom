@@ -40,7 +40,14 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
     // How long the pointer may take to reach the gesture's last contact position before it is put back
     // anyway. Firefox's synthetic touch device lands that move a few milliseconds after the gesture.
     private static readonly TimeSpan PointerSettleTimeout = TimeSpan.FromMilliseconds(250);
-    private const int PanSettleMs = 60;
+
+    // How long the dragging finger is held still before it lifts, so the browser does not turn the drag into a
+    // fling. It has to outlast the window a browser's velocity tracker looks back over, which is 100 ms in
+    // Chromium: with 60 ms, the drag's last samples were still in it, and a fling carried the view on into the
+    // page's own edge and then scrolled the page, hundreds of pixels sideways on a page that scrolls that way
+    // (zooming out does not undo a page scroll). Measured on a page that reports its own scroll: 60 ms leaked
+    // every time in Chrome and Firefox; 100, 150 and 200 ms never did, and the view landed where it was aimed.
+    private const int PanSettleMs = 150;
     private const uint TouchMaskContactAreaOrientationPressure = 0x1 | 0x2 | 0x4;
 
     // The shape of a synthetic finger. Chosen, not measured: any plausible contact is accepted, and every
@@ -262,7 +269,7 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
                     return false;
             }
 
-            // Hold still before lifting so the browser doesn't turn the drag into a fling.
+            // Hold still before lifting so the browser doesn't turn the drag into a fling (see PanSettleMs).
             WaitUntil(clock, (frames * frameMs) + PanSettleMs);
             if (!devices.Inject(contacts, UpdateFlags, engine))
                 return false;

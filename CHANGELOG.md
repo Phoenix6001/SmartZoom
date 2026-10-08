@@ -31,6 +31,11 @@ All notable changes to SmartZoom are recorded here. The format follows
   for a 200% display, so at 100% they stayed twice as far from the edges as needed, and at 250% or 300% the
   resize border could be closer than its allowance. Both now scale with the display under the cursor, and the
   fingers also keep clear of the horizontal scrollbar at the bottom of a page that scrolls sideways.
+- **A browser zoom at the edge of a page that scrolls sideways no longer scrolls the page.** Near the left or
+  right edge the zoom is finished with a short one-finger drag, and the finger was lifted too soon after it:
+  the browser read the drag as a flick and kept scrolling, past the zoomed view's edge and into the page,
+  300 to 550 px sideways in Chrome, Edge, Brave and Firefox. Zooming back out did not undo it. The finger is
+  now held still long enough for the browser to see it has stopped.
 
 ## [0.4.1] - 2026-10-08
 
