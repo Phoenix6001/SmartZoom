@@ -23,6 +23,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The release and VirusTotal workflows never run on a pull request, so nothing else would notice one that
+      # no longer parses: release.yml once sat broken on main for five days and stopped a release. Valid YAML is
+      # not everything GitHub checks, but it is what broke.
+      - name: Workflow files parse
+        run: |
+          python -m pip install --quiet --disable-pip-version-check pyyaml
+          python -c "import glob, yaml; [yaml.safe_load(open(f, encoding='utf-8')) or print(f) for f in sorted(glob.glob('.github/workflows/*.yml'))]; print('all workflow files parse')"
+
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
