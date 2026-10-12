@@ -40,7 +40,18 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
     // How long the pointer may take to reach the gesture's last contact position before it is put back
     // anyway. Firefox's synthetic touch device lands that move a few milliseconds after the gesture.
     private static readonly TimeSpan PointerSettleTimeout = TimeSpan.FromMilliseconds(250);
-    private const int PanSettleMs = 60;
+
+    // How long the pointer is watched after it is put back, for a late move of the synthetic device back onto the
+    // gesture's last contact position. It landed about a frame after the restore (15 ms at 59 Hz); six frames.
+    private static readonly TimeSpan PointerGuard = TimeSpan.FromMilliseconds(100);
+
+    // How long the dragging finger is held still before it lifts, so the browser does not turn the drag into a
+    // fling. It has to outlast the window a browser's velocity tracker looks back over, which is 100 ms in
+    // Chromium: with 60 ms, the drag's last samples were still in it, and a fling carried the view on into the
+    // page's own edge and then scrolled the page, hundreds of pixels sideways on a page that scrolls that way
+    // (zooming out does not undo a page scroll). Measured on a page that reports its own scroll: 60 ms leaked
+    // every time in Chrome and Firefox; 100, 150 and 200 ms never did, and the view landed where it was aimed.
+    private const int PanSettleMs = 150;
     private const uint TouchMaskContactAreaOrientationPressure = 0x1 | 0x2 | 0x4;
 
     // The shape of a synthetic finger. Chosen, not measured: any plausible contact is accepted, and every
@@ -57,17 +68,32 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
         if (factor <= 0 || double.IsNaN(factor))
             throw new ArgumentOutOfRangeException(nameof(factor), factor, "Factor must be positive.");
 
-        return Task.Run(() => Pinch(anchor, factor, duration, bounds, cancellationToken), cancellationToken);
+        return Task.Run(() => Pinch(anchor, factor, duration, bounds, zoomedScale: 1, cancellationToken), cancellationToken);
     }
 
-    private bool Pinch(ScreenPoint anchor, double factor, TimeSpan duration, PixelRect bounds, CancellationToken cancellationToken)
+    /// <inheritdoc />
+    public Task<bool> PinchOutAsync(ScreenPoint anchor, double factor, double zoomedScale, TimeSpan duration, PixelRect bounds, CancellationToken cancellationToken)
+    {
+        if (factor <= 0 || double.IsNaN(factor))
+            throw new ArgumentOutOfRangeException(nameof(factor), factor, "Factor must be positive.");
+
+        return Task.Run(() => Pinch(anchor, factor, duration, bounds, zoomedScale, cancellationToken), cancellationToken);
+    }
+
+    private bool Pinch(ScreenPoint anchor, double factor, TimeSpan duration, PixelRect bounds, double zoomedScale, CancellationToken cancellationToken)
     {
         var engine = Recognize(anchor);
         if (!devices.Ensure(engine))
             return false;
 
-        var dpiScale = DpiScaleAt(anchor);
+        var dpiScale = DisplayScale.At(anchor);
         var frameMs = RefreshPeriodMs(anchor);
+
+        // Chromium snaps a pinch centred near the bottom of its viewport onto the edge and leaks into the page's
+        // scroll; centre it above that and let the drag that follows reach the anchor.
+        if (engine == GestureEngine.Chromium && BrowserWindows.ChromiumRenderBottomAt(anchor) is { } viewportBottom)
+            bounds = PinchGeometry.KeepFocusAboveBottomSnap(anchor, factor, bounds, viewportBottom, RecognizerProfile.BottomSnapZone(engine, dpiScale));
+
         var plan = PinchGeometry.Plan(anchor, factor, RecognizerProfile.SpanSlop(engine, dpiScale), bounds, RecognizerProfile.MinimumScalingSpan(engine));
 
         // Only when the gap shrank: the same path also handles "the same gap, turned the other way round",
@@ -78,6 +104,14 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
         if (plan.Shortfall is { } shortfall)
             LogShrunk(anchor.X, anchor.Y, (int)Math.Ceiling(shortfall.NeededHalfSpread), (int)shortfall.Room);
 
+        // Gecko keeps the page point under the pinch's centre still to the very end of a zoom-out, scrolling the
+        // page to do it, so a zoom-out around a focus moved off the anchor brought the page back 141-152 px off.
+        // A drag while still zoomed moves only the zoomed view: make it first, and the zoom-out ends exactly where
+        // the page started. Chromium clamps the view into the page at 1.0 and needs none of this.
+        var undoPan = engine == GestureEngine.Gecko && factor < 1
+            ? PinchGeometry.UndoPan(anchor, plan.Focus, zoomedScale)
+            : default;
+
         // Windows moves the mouse pointer along with injected touch contacts; put it back afterwards so the
         // user's pointer (and therefore the target of their next press) stays where they left it.
         var hadCursor = PInvoke.GetCursorPos(out var cursorBefore);
@@ -86,6 +120,13 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
         ScreenPoint? lastTouch = null;
         try
         {
+            if (undoPan.X != 0 || undoPan.Y != 0)
+            {
+                LogUndoingPan(anchor.X, anchor.Y, plan.Focus.X, plan.Focus.Y, undoPan.X, undoPan.Y);
+                if (!Pan(PinchGeometry.PanLegs(undoPan, bounds, RecognizerProfile.TouchSlop(engine, dpiScale)), frameMs, engine, cancellationToken))
+                    return false;
+            }
+
             if (!PinchAround(plan, duration, frameMs, engine, cancellationToken))
                 return false;
 
@@ -262,7 +303,7 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
                     return false;
             }
 
-            // Hold still before lifting so the browser doesn't turn the drag into a fling.
+            // Hold still before lifting so the browser doesn't turn the drag into a fling (see PanSettleMs).
             WaitUntil(clock, (frames * frameMs) + PanSettleMs);
             if (!devices.Inject(contacts, UpdateFlags, engine))
                 return false;
@@ -307,26 +348,6 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
         contact.rcContact = new RECT { left = x - ContactHalfSize, top = y - ContactHalfSize, right = x + ContactHalfSize, bottom = y + ContactHalfSize };
     }
 
-    /// <summary>Device scale factor of the monitor showing the point (1.0 at 96 DPI, 2.0 at 200%).</summary>
-    /// <remarks>
-    /// Asked of the monitor, not of the window under the point. <c>GetDpiForWindow</c> answers "what DPI is
-    /// this window being scaled for", which depends on the window's own DPI awareness: a system-aware
-    /// application reports the primary display's DPI wherever it is, and an unaware one always reports 96.
-    /// That is the wrong question here — the slop this feeds is a distance in physical pixels on the display
-    /// the gesture lands on, so a system-aware PDF reader on a differently scaled second monitor would be
-    /// paced for the wrong recognizer threshold. <c>MonitorFromPoint</c> + <c>GetDpiForMonitor</c> answer
-    /// about the display, which is what the question is. 1.0 means "not reported", not "confirmed 100%".
-    /// </remarks>
-    private static double DpiScaleAt(ScreenPoint point)
-    {
-        var monitor = PInvoke.MonitorFromPoint(new System.Drawing.Point(point.X, point.Y), MONITOR_FROM_FLAGS.MONITOR_DEFAULTTONEAREST);
-        if (monitor.IsNull)
-            return 1.0;
-
-        var hr = PInvoke.GetDpiForMonitor(monitor, MONITOR_DPI_TYPE.MDT_EFFECTIVE_DPI, out var dpiX, out _);
-        return hr.Succeeded && dpiX > 0 ? dpiX / 96.0 : 1.0;
-    }
-
     // Sleep while there is comfortably more than a timer tick to go, then spin the last stretch: Thread.Sleep
     // alone quantizes to 15.6 ms on Windows, which is what made the gesture look steppy.
     private static void WaitUntil(Stopwatch clock, double targetMs)
@@ -354,6 +375,7 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
             new ScreenPoint(position.X, position.Y),
             lastTouch,
             PointerSettleTimeout,
+            PointerGuard,
             read: static () => PInvoke.GetCursorPos(out var at) ? new ScreenPoint(at.X, at.Y) : null,
             move: static to => PInvoke.SetCursorPos(to.X, to.Y),
             elapsed: () => clock.Elapsed,
@@ -405,4 +427,7 @@ public sealed partial class TouchPinchInjector(TouchDevices devices, ILogger<Tou
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Anchor ({AnchorX}, {AnchorY}) is too close to an edge for the contacts; pinched around ({FocusX}, {FocusY}) and panning by ({PanX}, {PanY}).")]
     private partial void LogPanning(int anchorX, int anchorY, int focusX, int focusY, int panX, int panY);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Zooming out around ({FocusX}, {FocusY}) rather than the anchor ({AnchorX}, {AnchorY}); dragged the zoomed view by ({PanX}, {PanY}) first so the page ends where it started.")]
+    private partial void LogUndoingPan(int anchorX, int anchorY, int focusX, int focusY, int panX, int panY);
 }

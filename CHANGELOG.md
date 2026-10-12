@@ -13,6 +13,42 @@ All notable changes to SmartZoom are recorded here. The format follows
   host, so a failure before or while the host was built (an unreadable settings file, for example) reached
   the log and a message box but not the record. The recorder is now made first, and the host uses that same
   one.
+- **SmartZoom starts when its settings file is locked by another program** (an editor saving it, an
+  antivirus scan, a backup or a sync client). It used to stop at "SmartZoom failed to start". It now waits up
+  to two seconds for the file. If the file is still locked, SmartZoom starts on the default settings and
+  checks every few seconds until it can read the file, then uses your settings. Until then, a change takes
+  effect but is not saved, and SmartZoom says so once in a notification and on the settings page, so your file
+  is never replaced by the defaults. A file that turns out to be invalid once it can be read is left as it is,
+  and used as soon as you correct it. The installer's trigger step waits out a brief
+  lock the same way, and leaves a settings file it cannot read, or that is not valid JSON, as it is instead of
+  replacing it with the defaults.
+- **The settings window shows changes made elsewhere while it is open**: a toggle in the tray panel, a reload
+  of the settings file, or the file being put into force after a lock. It used to show what it had read when
+  it was opened until it was closed and opened again, and a change made on such a page could write those old
+  values back.
+- **The browser zoom's distance from the window's edges follows the display's scaling.** The synthetic
+  fingers keep clear of the scrollbar and the window's resize border by fixed pixel amounts that were sized
+  for a 200% display, so at 100% they stayed twice as far from the edges as needed, and at 250% or 300% the
+  resize border could be closer than its allowance. Both now scale with the display under the cursor, and the
+  fingers also keep clear of the horizontal scrollbar at the bottom of a page that scrolls sideways.
+- **A browser zoom at the edge of a page that scrolls sideways no longer scrolls the page.** Near the left or
+  right edge the zoom is finished with a short one-finger drag, and the finger was lifted too soon after it:
+  the browser read the drag as a flick and kept scrolling, past the zoomed view's edge and into the page,
+  300 to 550 px sideways in Chrome, Edge, Brave and Firefox. Zooming back out did not undo it. The finger is
+  now held still long enough for the browser to see it has stopped.
+- **Zooming back out near an edge in Firefox puts the page back where it was.** Firefox keeps the content
+  under the fingers still to the very end of a zoom-out, scrolling the page to do it, and near an edge the
+  fingers cannot be centred on the point the zoom-in kept still, so the page came back about 150 px off. The
+  zoomed view is now moved back first, so the zoom-out ends exactly where the page started.
+- **A zoom near the bottom of a page in Chrome, Edge and Brave no longer scrolls the page a few pixels.**
+  Chromium moves a pinch that starts near the bottom edge onto the edge, and that left the page scrolled up
+  by 4-6 px each time. The pinch now starts just above that band and the view is dragged down the rest of the
+  way. A drag that has to go both sideways and down, in a bottom corner, is made one direction at a time,
+  because Chromium locks a nearly sideways drag to sideways only.
+- **Firefox puts the mouse pointer back after a zoom near an edge.** The pointer follows the synthetic
+  fingers, and Firefox applies the last finger move a moment late; after a zoom that ends with a drag, that
+  move could land just after SmartZoom had put the pointer back, leaving it where the drag ended, so the next
+  press went to the wrong place. SmartZoom now watches for that late move and puts the pointer back again.
 
 ## [0.4.1] - 2026-10-08
 

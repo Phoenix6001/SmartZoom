@@ -9,6 +9,6 @@ internal enum SettingsApplyOutcome
     /// <summary>In force and written to the settings file.</summary>
     Applied,
 
-    /// <summary>In force, but the file could not be written, so they will be lost on restart.</summary>
+    /// <summary>In force, but not written to the settings file; <see cref="SettingsApplyResult.Detail"/> says why.</summary>
     AppliedButNotSaved,
 }

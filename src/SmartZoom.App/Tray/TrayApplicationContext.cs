@@ -127,6 +127,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
         // Zooms are reported from the dispatcher's thread; the tooltip belongs to the UI thread.
         _activity.Happened += OnZoomHappened;
         _holder.Changed += OnSettingsChanged;
+        _applier.SavingHeldBack += OnSavingHeldBack;
         _tooltipClock.Tick += (_, _) => UpdateTrayState();
         _tooltipClock.Start();
     }
@@ -144,6 +145,7 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
         {
             _activity.Happened -= OnZoomHappened;
             _holder.Changed -= OnSettingsChanged;
+            _applier.SavingHeldBack -= OnSavingHeldBack;
             _tooltipClock.Dispose();
             _hostStoppingRegistration.Dispose();
             _shell.Dispose();
@@ -385,6 +387,10 @@ internal sealed partial class TrayApplicationContext : ApplicationContext, ISett
     // Switching off from the tray panel or the settings window reaches the tray only as a settings change;
     // without this the icon would keep its colour until the clock next ticked, half a minute later.
     private void OnSettingsChanged(object? sender, EventArgs e) => _uiContext.Post(_ => UpdateTrayState(), null);
+
+    // The tray toggles and the panel have nowhere of their own to say that a change was not saved; the settings
+    // window's pages say it as well, and the applier raises this once per state, so it is not a nag.
+    private void OnSavingHeldBack(object? sender, string text) => _uiContext.Post(_ => Notify(text, good: false), null);
 
     private void UpdateTrayState()
     {

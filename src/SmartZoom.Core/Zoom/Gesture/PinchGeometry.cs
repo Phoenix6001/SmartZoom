@@ -86,13 +86,73 @@ public static class PinchGeometry
     }
 
     /// <summary>
+    /// The contact area for a zoom-in whose anchor is within the engine's bottom snap zone, lowered to keep the
+    /// pinch's centre just above it; the anchor is then reached with a downward drag, as at any other edge.
+    /// </summary>
+    /// <remarks>
+    /// Chromium moves a pinch's centre onto the viewport's edge when it is within 100 DIP of it. At the bottom
+    /// that snapped pinch leaked 4-6 px into the page's scroll on every zoom-in, which zooming out does not undo;
+    /// a pinch just above the zone followed by the drag lands exactly where it was aimed and leaks nothing
+    /// (measured at 100%). The top and the sides snap without leaking, so they are left to snap.
+    /// </remarks>
+    /// <param name="anchor">The point the zoom should keep still.</param>
+    /// <param name="factor">The zoom factor; only a zoom-in is affected.</param>
+    /// <param name="bounds">The contact area the caller allows.</param>
+    /// <param name="viewportBottom">The bottom edge of the page's viewport, which the zone is measured from.</param>
+    /// <param name="snapZone">The zone's height in pixels, from <see cref="RecognizerProfile.BottomSnapZone"/>.</param>
+    /// <returns>The contact area to plan with; <paramref name="bounds"/> itself when nothing needs to change.</returns>
+    public static PixelRect KeepFocusAboveBottomSnap(ScreenPoint anchor, double factor, PixelRect bounds, int viewportBottom, double snapZone)
+    {
+        if (factor <= 1 || snapZone <= 0)
+            return bounds;
+
+        // The lowest row the focus may sit on, and the contact area whose clamp puts it there.
+        var floor = viewportBottom - (int)Math.Ceiling(snapZone) - 1;
+        var bottom = floor + EdgeMargin + 1;
+        if (anchor.Y <= floor || bottom >= bounds.Bottom || bottom - bounds.Top < (2 * EdgeMargin) + 2)
+            return bounds;
+
+        return bounds with { Bottom = bottom };
+    }
+
+    /// <summary>
+    /// The drag that makes a zoom-out around <paramref name="focus"/> undo a zoom made around
+    /// <paramref name="anchor"/>: it moves the zoomed view to where a zoom around the focus would have put it,
+    /// so the zoom-out ends exactly where the page started.
+    /// </summary>
+    /// <remarks>
+    /// Needed where the browser keeps the page point under the pinch's centre still to the very end of a zoom-out
+    /// (Gecko): at 1.0 that can only be done by scrolling the page, by (anchor - focus) * (1 - 1/scale). Near an
+    /// edge the contacts cannot straddle the anchor, so the zoom-out's focus is moved and the page came back
+    /// 141-152 px off. A drag made while still zoomed moves only the zoomed view, never the page. It is the zoom-in's
+    /// own correcting drag reversed, measured from the zoom-out's focus.
+    /// </remarks>
+    /// <param name="anchor">The point the zoom-in kept still.</param>
+    /// <param name="focus">Where the zoom-out's contacts are centred.</param>
+    /// <param name="zoomedScale">How far the page is zoomed when the drag is made.</param>
+    /// <returns>How far the content should move, in pixels; zero when there is nothing to make up.</returns>
+    public static ScreenPoint UndoPan(ScreenPoint anchor, ScreenPoint focus, double zoomedScale) =>
+        zoomedScale > 1 && focus != anchor
+            ? new ScreenPoint(
+                (int)Math.Round((anchor.X - focus.X) * (zoomedScale - 1)),
+                (int)Math.Round((anchor.Y - focus.Y) * (zoomedScale - 1)))
+            : default;
+
+    /// <summary>
     /// Splits a drag into legs that fit inside the bounds, each placed so that the leg and the slop it must
     /// cross first both stay inside. Content follows the finger, so a leg moves the content by its own vector.
     /// </summary>
     /// <param name="delta">How far the content should move.</param>
     /// <param name="bounds">The content area the finger must stay inside.</param>
     /// <param name="touchSlop">What the recognizer swallows, from <see cref="RecognizerProfile.TouchSlop"/>.</param>
-    public static IReadOnlyList<PanLeg> PanLegs(ScreenPoint delta, PixelRect bounds, double touchSlop)
+    /// <remarks>
+    /// A drag on both axes is made as two, sideways first: Chromium locks a drag within about 20 degrees of an
+    /// axis to that axis, so a diagonal one near a bottom corner moved the view sideways only.
+    /// </remarks>
+    public static IReadOnlyList<PanLeg> PanLegs(ScreenPoint delta, PixelRect bounds, double touchSlop) =>
+        [.. AxisLegs(new ScreenPoint(delta.X, 0), bounds, touchSlop), .. AxisLegs(new ScreenPoint(0, delta.Y), bounds, touchSlop)];
+
+    private static List<PanLeg> AxisLegs(ScreenPoint delta, PixelRect bounds, double touchSlop)
     {
         var legs = new List<PanLeg>(4);
         var remaining = delta;

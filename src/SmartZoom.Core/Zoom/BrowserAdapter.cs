@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
 using SmartZoom.Core.Settings;
+using SmartZoom.Core.Windows;
 using SmartZoom.Core.Zoom.Content;
 
 namespace SmartZoom.Core.Zoom;
@@ -18,24 +19,6 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
 {
     // Pinch slightly past 1.0 so rounding in the gesture can't leave the page at 1.02x.
     private const double RestoreOvershoot = 0.9;
-
-    // A contact that lands on the browser's vertical scrollbar drags it instead of pinching. Classic scrollbars
-    // are 17 px at 100% scaling and 51 px at 300%; the injector keeps contacts out of this strip.
-    private const int ScrollbarAllowance = 56;
-
-    // Windows gives touch a generous grip on a window's resize borders: a contact that goes down on the
-    // viewport's outermost pixels (the viewport starts 8 px inside the window rect in Chromium, and a contact
-    // 8 px inside the rect still grabbed the border on a 200% display, 12 px did not) resizes the window
-    // instead of pinching, and a converging zoom-out then drags the window edge ~150 px inward. Contacts stay
-    // this far inside the viewport on the sides the window frame can touch.
-    private const int ResizeBorderAllowance = 24;
-
-    // The anchor stays where the contacts may go: inside the resize-border allowance plus the injector's own 4 px
-    // edge margin. A pinch around an anchor outside the contact area is done around a substitute focus plus a
-    // one-finger pan, and a pan that pushes the content past the layout viewport's edge scrolls the page, which
-    // zooming back out does not undo (an 8 px residual scroll was measured). A slightly inset anchor is free:
-    // the browser clamps the visual viewport at the page edge, so the block lands a few pixels further in.
-    private const int EdgeInset = ResizeBorderAllowance + 4;
 
     // After resetting a stuck visual zoom, the browser needs a moment before its accessibility rects are right
     // again. One more look is all it gets: the reset is instant, and a cold accessibility tree costs the hit tester
@@ -60,9 +43,10 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
     private readonly IContentHitTester _hitTester;
     private readonly IPinchInjector _pinch;
     private readonly IScreenSampler _screen;
+    private readonly IDisplayScale _display;
     private readonly bool _ctrlWheelWhenPinchBlocked;
     private readonly SmartZoomPlanner _planner;
-    private readonly AnchorInsets _insets;
+    private readonly int _anchorInsetPx;
     private readonly TimeSpan _animation;
     private readonly ILogger<BrowserAdapter> _logger;
 
@@ -70,9 +54,10 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
     /// <param name="hitTester">Finds content under the cursor.</param>
     /// <param name="pinch">Performs the zoom gesture.</param>
     /// <param name="screen">Reads the screen, to tell whether the page took the gesture.</param>
+    /// <param name="display">The scale of the display a press is on, which the edge allowances follow.</param>
     /// <param name="zoom">Zoom limits and animation preference.</param>
     /// <param name="logger">Logger.</param>
-    public BrowserAdapter(IContentHitTester hitTester, IPinchInjector pinch, IScreenSampler screen, ZoomSettings zoom, ILogger<BrowserAdapter> logger)
+    public BrowserAdapter(IContentHitTester hitTester, IPinchInjector pinch, IScreenSampler screen, IDisplayScale display, ZoomSettings zoom, ILogger<BrowserAdapter> logger)
         : base(Descriptor)
     {
         ArgumentNullException.ThrowIfNull(zoom);
@@ -80,12 +65,12 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
         _hitTester = hitTester ?? throw new ArgumentNullException(nameof(hitTester));
         _pinch = pinch ?? throw new ArgumentNullException(nameof(pinch));
         _screen = screen ?? throw new ArgumentNullException(nameof(screen));
+        _display = display ?? throw new ArgumentNullException(nameof(display));
         _ctrlWheelWhenPinchBlocked = zoom.Browser.CtrlWheelWhenPinchBlocked;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _planner = new SmartZoomPlanner(zoom.MinScale, zoom.MaxScale, zoom.Smart.MarginPx);
 
-        var inset = Math.Max(EdgeInset, zoom.Browser.AnchorInsetPx);
-        _insets = new AnchorInsets(inset, inset);
+        _anchorInsetPx = zoom.Browser.AnchorInsetPx;
         _animation = zoom.Animate ? TimeSpan.FromMilliseconds(zoom.Smart.AnimationMs) : TimeSpan.Zero;
     }
 
@@ -110,6 +95,10 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
             return ZoomInResult.Handled(ZoomReason.NoContent);
         }
 
+        // Read where the press is, every press: a window can be dragged to a differently scaled display at any time.
+        var edges = EdgeAllowances.For(_display.ScaleAt(point));
+        var insets = Insets(edges);
+
         // A zoom is already on the screen that this process is not remembering - it was restarted, switched off
         // while the page was zoomed, or a restore did not take. It cannot simply be zoomed on top of: Chromium
         // clamps the visual viewport at x4, so the gesture would be refused, and a refused gesture is
@@ -119,7 +108,7 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
         if (hit.PageScale > 1)
         {
             LogForgottenZoom(target.ProcessName, hit.PageScale);
-            hit = await ResetAsync(target, point, hit, cancellationToken).ConfigureAwait(false);
+            hit = await ResetAsync(target, point, hit, edges, cancellationToken).ConfigureAwait(false);
             if (hit is null)
             {
                 LogNoContent(target.ProcessName);
@@ -132,7 +121,7 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
         // point at is, so a narrow image grew threefold and a paragraph most of the width of the window grew
         // by a twelfth — the same press doing visibly different things a few pixels apart. The zoom is the
         // amount in the settings, and the cursor is the one point it leaves where it is.
-        var plan = _planner.Magnify(hit.Viewport, point, _insets);
+        var plan = _planner.Magnify(hit.Viewport, point, insets);
         if (plan is not { } p)
         {
             // A viewport with no area (the page has gone), or an amount that is not a zoom. Role and size
@@ -145,7 +134,7 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
 
         LogPlan(target.ProcessName, p.Scale, p.Anchor.X, p.Anchor.Y);
 
-        var bounds = ContactBounds(hit.Viewport);
+        var bounds = edges.ContactBounds(hit.Viewport);
 
         // The first gesture is the zoom itself: Edge renders a pinch-out below 1.0 as a visible
         // shrink-and-rebound, so no preparatory gesture may precede it (see docs/decisions.md, "Browsers").
@@ -162,7 +151,7 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
         // most two such retries. The element that refused is whatever sits under the anchor; a point rather
         // than a rectangle still puts every candidate the required clearance away from it.
         var refused = new PixelRect(p.Anchor.X, p.Anchor.Y, p.Anchor.X, p.Anchor.Y);
-        var candidates = RetryAnchor.Candidates(refused, hit.Viewport, p.Anchor);
+        var candidates = RetryAnchor.Candidates(refused, hit.Viewport, p.Anchor, edges);
         foreach (var candidate in candidates)
         {
             var retry = await PinchAndVerifyAsync(target, candidate, p.Scale, hit.Viewport, bounds, cancellationToken).ConfigureAwait(false);
@@ -186,10 +175,10 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
         // slips through. Telling them apart is worth one more gesture, because getting it wrong is expensive:
         // page zoom would stack a second, separate zoom on top of the first, and the next press would take
         // only one of the two back off.
-        var cleared = await ResetAsync(target, point, hit, cancellationToken).ConfigureAwait(false);
-        if (cleared is not null && _planner.Magnify(cleared.Viewport, point, _insets) is { } replanned)
+        var cleared = await ResetAsync(target, point, hit, edges, cancellationToken).ConfigureAwait(false);
+        if (cleared is not null && _planner.Magnify(cleared.Viewport, point, insets) is { } replanned)
         {
-            var clearedBounds = ContactBounds(cleared.Viewport);
+            var clearedBounds = edges.ContactBounds(cleared.Viewport);
             var afterReset = await PinchAndVerifyAsync(target, replanned.Anchor, replanned.Scale, cleared.Viewport, clearedBounds, cancellationToken).ConfigureAwait(false);
             if (afterReset.Outcome == PinchOutcome.Took)
             {
@@ -302,35 +291,28 @@ public sealed partial class BrowserAdapter : ZoomAdapter<BrowserAdapter.RestoreS
     /// it must not appear in the gesture-health totals (the injector excludes zero-duration pinches for exactly
     /// that reason).
     /// </remarks>
-    private async Task<ContentHit?> ResetAsync(TargetInfo target, ScreenPoint point, ContentHit hit, CancellationToken cancellationToken)
+    private async Task<ContentHit?> ResetAsync(TargetInfo target, ScreenPoint point, ContentHit hit, EdgeAllowances edges, CancellationToken cancellationToken)
     {
-        await _pinch.PinchAsync(ClampInto(point, hit.Viewport), RestoreOvershoot / _planner.MaxScale, TimeSpan.Zero, ContactBounds(hit.Viewport), cancellationToken).ConfigureAwait(false);
+        await _pinch.PinchAsync(ClampInto(point, hit.Viewport, Insets(edges)), RestoreOvershoot / _planner.MaxScale, TimeSpan.Zero, edges.ContactBounds(hit.Viewport), cancellationToken).ConfigureAwait(false);
         await Task.Delay(ResetSettle, cancellationToken).ConfigureAwait(false);
         return await _hitTester.HitTestAsync(target, point, cancellationToken).ConfigureAwait(false);
     }
 
-    private static ScreenPoint ClampInto(ScreenPoint point, PixelRect rect) => new(
-        PixelRect.ClampWithInset(point.X, rect.Left, rect.Right - 1, EdgeInset),
-        PixelRect.ClampWithInset(point.Y, rect.Top, rect.Bottom - 1, EdgeInset));
+    private static ScreenPoint ClampInto(ScreenPoint point, PixelRect rect, AnchorInsets insets) => new(
+        PixelRect.ClampWithInset(point.X, rect.Left, rect.Right - 1, insets.X),
+        PixelRect.ClampWithInset(point.Y, rect.Top, rect.Bottom - 1, insets.Y));
 
-    // Where synthetic contacts may land: the viewport minus the vertical scrollbar strip on the right and minus
-    // the window's touch resize zone on the other sides (the scrollbar strip already covers it on the right).
-    internal static PixelRect ContactBounds(PixelRect viewport)
-    {
-        var left = viewport.Left + ResizeBorderAllowance;
-        var top = viewport.Top + ResizeBorderAllowance;
-        return new PixelRect(
-            left,
-            top,
-            Math.Max(left + 1, viewport.Right - ScrollbarAllowance),
-            Math.Max(top + 1, viewport.Bottom - ResizeBorderAllowance));
-    }
+    // How far in the anchor stays (see EdgeAllowances.AnchorInset and AnchorInsetVertical), or further in when
+    // the settings file asks for more.
+    private AnchorInsets Insets(EdgeAllowances edges) => new(
+        Math.Max(edges.AnchorInset, _anchorInsetPx),
+        Math.Max(edges.AnchorInsetVertical, _anchorInsetPx));
 
     /// <inheritdoc />
     protected override async Task ZoomOutAsync(TargetInfo target, RestoreState restoreState, CancellationToken cancellationToken)
     {
         var plan = restoreState.Plan;
-        await _pinch.PinchAsync(plan.Anchor, RestoreOvershoot / plan.Scale, _animation, restoreState.Bounds, cancellationToken).ConfigureAwait(false);
+        await _pinch.PinchOutAsync(plan.Anchor, RestoreOvershoot / plan.Scale, plan.Scale, _animation, restoreState.Bounds, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>What was applied, so the same gesture can be reversed.</summary>

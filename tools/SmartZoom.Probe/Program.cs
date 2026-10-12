@@ -52,10 +52,10 @@ internal static class Program
                 return HitTest(Point(args, 1));
 
             case "plan":
-                return Plan(Point(args, 1), Number(args, 3), args.Length > 4 ? args[4] : "Chromium");
+                return Plan(Point(args, 1), Number(args, 3), args.Length > 4 ? args[4] : "Chromium", Bounds(args, 5));
 
             case "pinch":
-                return Pinch(Point(args, 1), Number(args, 3), Integer(args, 4, 300));
+                return Pinch(Point(args, 1), Number(args, 3), Integer(args, 4, 300), Bounds(args, 5));
 
             case "wheel":
                 return Wheel(Point(args, 1), Integer(args, 3, 0));
@@ -159,7 +159,7 @@ internal static class Program
         return true;
     }
 
-    private static bool Plan(ScreenPoint point, double factor, string engineName)
+    private static bool Plan(ScreenPoint point, double factor, string engineName, PixelRect? given)
     {
         if (!Enum.TryParse<GestureEngine>(engineName, ignoreCase: true, out var engine))
         {
@@ -167,12 +167,14 @@ internal static class Program
             return false;
         }
 
-        var bounds = Under(point);
-        var slop = RecognizerProfile.SpanSlop(engine, 2.0);
-        var plan = PinchGeometry.Plan(point, factor, slop, bounds);
+        // The same inputs the injector uses: the display's own scale and the recognizer's minimum scaling span.
+        var bounds = given ?? Under(point);
+        var scale = new DisplayScale().ScaleAt(point);
+        var slop = RecognizerProfile.SpanSlop(engine, scale);
+        var plan = PinchGeometry.Plan(point, factor, slop, bounds, RecognizerProfile.MinimumScalingSpan(engine));
 
-        Console.WriteLine(Invariant($"window    {Describe(bounds)}"));
-        Console.WriteLine(Invariant($"engine    {engine}, span slop {slop} px at 200%"));
+        Console.WriteLine(Invariant($"bounds    {Describe(bounds)}"));
+        Console.WriteLine(Invariant($"engine    {engine}, span slop {slop:F1} px at {scale:P0}"));
         Console.WriteLine(Invariant($"focus     ({plan.Focus.X}, {plan.Focus.Y}) {(plan.Vertical ? "vertical" : "horizontal")}"));
         Console.WriteLine(Invariant($"spans     down {plan.DownHalf:F1} -> pre-roll {plan.PreRolledHalf:F1} -> end {plan.EndHalf:F1} (half, px)"));
         Console.WriteLine(Invariant($"pan       ({plan.Pan.X}, {plan.Pan.Y})"));
@@ -188,13 +190,15 @@ internal static class Program
 
     // ------------------------------------------------------------------ acting
 
-    private static bool Pinch(ScreenPoint point, double factor, int milliseconds)
+    private static bool Pinch(ScreenPoint point, double factor, int milliseconds, PixelRect? bounds)
     {
         if (!Aim(point, Invariant($"pinch x{factor:F2} over {milliseconds} ms")))
             return false;
 
         var injector = new TouchPinchInjector(new TouchDevices(NullLogger<TouchDevices>.Instance), NullLogger<TouchPinchInjector>.Instance);
-        var ok = injector.PinchAsync(point, factor, TimeSpan.FromMilliseconds(milliseconds), Under(point), CancellationToken.None)
+        // Bounds given on the command line replay what an adapter passed (the browser's contact area, say);
+        // otherwise the content area of the window under the point.
+        var ok = injector.PinchAsync(point, factor, TimeSpan.FromMilliseconds(milliseconds), bounds ?? Under(point), CancellationToken.None)
             .GetAwaiter().GetResult();
 
         Console.WriteLine(ok ? "gesture delivered" : "the gesture was rejected");
@@ -416,6 +420,12 @@ internal static class Program
             ? new PixelRect(Integer(args, index, 0), Integer(args, index + 1, 0), Integer(args, index + 2, 0), Integer(args, index + 3, 0))
             : null;
 
+    /// <summary>Four integers from <paramref name="index"/> on as left, top, right, bottom; null when absent.</summary>
+    private static PixelRect? Bounds(string[] args, int index) =>
+        args.Length > index + 3
+            ? new PixelRect(Integer(args, index, 0), Integer(args, index + 1, 0), Integer(args, index + 2, 0), Integer(args, index + 3, 0))
+            : null;
+
     private static int Integer(string[] args, int index, int fallback) =>
         args.Length > index && int.TryParse(args[index], NumberStyles.Integer, CultureInfo.InvariantCulture, out var value) ? value : fallback;
 
@@ -433,10 +443,10 @@ internal static class Program
         Reading (harmless):
           windows <x> <y>                       what SmartZoom sees under a point
           hittest <x> <y>                       the accessibility chain a browser exposes there
-          plan    <x> <y> <factor> [engine]     where a pinch would put its fingers, and why
+          plan    <x> <y> <factor> [engine] [l t r b]  where a pinch would put its fingers, and why
 
         Acting (injects input; names the target and counts down first):
-          pinch   <x> <y> <factor> [ms]         one pinch gesture around a point
+          pinch   <x> <y> <factor> [ms] [l t r b]  one pinch gesture around a point, optionally inside these bounds
           wheel   <x> <y> <pixels>              scroll a reader and measure how far it really moved
           keys    <x> <y> "<combination>"       send a shortcut the way the reader adapter does
           excel   <x> <y>                       report the block under the cursor and the fit Excel computes
