@@ -21,7 +21,10 @@ public sealed class LockedSettingsFileTests
         using var temp = new TempDirectory();
         var paths = DiagnosticFixtures.Paths(temp.Path);
         File.WriteAllText(paths.SettingsFile, UsersFile);
-        var store = new SettingsStore(paths, NullLogger<SettingsStore>.Instance, attempts: 40, retryDelay: TimeSpan.FromMilliseconds(25));
+        // The lock is let go after an await, which a busy runner can resume a second or more late; a wait shorter than
+        // that gave up on the defaults (CI: MaxScale 3, not 2.5). The wait ends the moment the file can be read, so a
+        // budget as long as the test's own 10 s bound costs nothing when the machine is quick.
+        var store = new SettingsStore(paths, NullLogger<SettingsStore>.Instance, attempts: 400, retryDelay: TimeSpan.FromMilliseconds(25));
 
         SmartZoomSettings loaded;
         using (var held = new FileStream(paths.SettingsFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
