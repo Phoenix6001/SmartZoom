@@ -92,8 +92,12 @@ public sealed class TriggerDispatcherTests
         using var temp = new TempDirectory();
         var recorder = DiagnosticFixtures.CreateRecorder(temp.Path, new ThrowingTimeProvider());
 
+        // Both presses must be read, however late a busy runner gets to them: under the production staleness
+        // limit (750 ms) this failed on CI with `windows.Calls` = 0, both dropped as stale, which is not what
+        // this test is about.
         var dispatcher = new TriggerDispatcher(
-            _source, windows, ScriptedEngine(), _activity, recorder, TimeProvider.System, NullLogger<TriggerDispatcher>.Instance);
+            _source, windows, ScriptedEngine(), _activity, recorder, TimeProvider.System, NullLogger<TriggerDispatcher>.Instance,
+            maxTriggerAge: TimeSpan.FromMinutes(1));
 
         await dispatcher.StartAsync(CancellationToken.None);
         _source.Writer.TryWrite(new TriggerEvent(Point, unchecked((uint)Environment.TickCount)));
@@ -123,7 +127,7 @@ public sealed class TriggerDispatcherTests
 
         var dispatcher = new TriggerDispatcher(
             _source, windows, ThrowingEngine(new InvalidOperationException("adapter boom")), _activity, recorder,
-            TimeProvider.System, NullLogger<TriggerDispatcher>.Instance);
+            TimeProvider.System, NullLogger<TriggerDispatcher>.Instance, maxTriggerAge: TimeSpan.FromMinutes(1));
 
         await dispatcher.StartAsync(CancellationToken.None);
         _source.Writer.TryWrite(new TriggerEvent(Point, unchecked((uint)Environment.TickCount)));
@@ -209,7 +213,8 @@ public sealed class TriggerDispatcherTests
     private async Task RunOneTriggerAsync(FakeWindowInspector windows, ZoomEngine engine, DiagnosticRecorder recorder)
     {
         var dispatcher = new TriggerDispatcher(
-            _source, windows, engine, _activity, recorder, TimeProvider.System, NullLogger<TriggerDispatcher>.Instance);
+            _source, windows, engine, _activity, recorder, TimeProvider.System, NullLogger<TriggerDispatcher>.Instance,
+            maxTriggerAge: TimeSpan.FromMinutes(1));
 
         await dispatcher.StartAsync(CancellationToken.None);
         _source.Writer.TryWrite(new TriggerEvent(Point, unchecked((uint)Environment.TickCount)));

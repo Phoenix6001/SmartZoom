@@ -49,6 +49,20 @@ All notable changes to SmartZoom are recorded here. The format follows
   fingers, and Firefox applies the last finger move a moment late; after a zoom that ends with a drag, that
   move could land just after SmartZoom had put the pointer back, leaving it where the drag ended, so the next
   press went to the wrong place. SmartZoom now watches for that late move and puts the pointer back again.
+- **The settings window, the tray panel and the trigger recorder work with a screen reader.**
+  - The navigation rail's rows were announced as code (`NavigationItem { Id = Overview, Glyph = …, Label =
+    Overview, Content = … }`), and so were the rows of every drop-down list. They now read "Overview",
+    "Ctrl+wheel", "Debug" and so on.
+  - Many controls had no name at all: the title bar's buttons, the Overview cards, the status card, the
+    sliders, the drop-down lists themselves, the text boxes and the tray panel's settings button. Each now
+    says what it is, and a repeated button says what it acts on ("Remove XButton2 x1").
+  - The on/off switches were announced as unnamed buttons with no state. They are now switches that say what
+    they control and whether they are on, and turning one from a screen reader changes the setting, as a
+    click does.
+  - The tray panel's chosen zoom amount reports itself as selected, and each slider reads its value as the
+    page shows it ("3× bigger").
+  - What the recorder caught, a refused change and the Diagnostics page's status line are read out when they
+    appear.
 
 ## [0.4.1] - 2026-10-08
 

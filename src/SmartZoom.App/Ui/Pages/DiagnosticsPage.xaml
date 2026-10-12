@@ -1,6 +1,7 @@
 <UserControl x:Class="SmartZoom.App.Ui.Pages.DiagnosticsPage"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:SmartZoom.App.Ui.Controls"
              x:ClassModifier="internal">
     <UserControl.Resources>
 
@@ -139,6 +140,7 @@
                         BorderThickness="1"
                         CornerRadius="8">
                     <TextBox Height="430"
+                             AutomationProperties.Name="Diagnostic report"
                              Padding="12"
                              Background="Transparent"
                              BorderThickness="0"
@@ -189,7 +191,10 @@
                               IsChecked="{Binding IncludeLog}" />
                 </WrapPanel>
 
-                <TextBlock Margin="0,2,0,0" FontSize="12.5" Text="{Binding Status}">
+                <TextBlock Margin="0,2,0,0"
+                           controls:LiveRegion.Announce="True"
+                           FontSize="12.5"
+                           Text="{Binding Status}">
                     <TextBlock.Style>
                         <Style TargetType="TextBlock" BasedOn="{StaticResource Text.Muted}">
                             <Setter Property="Visibility" Value="Collapsed" />
@@ -213,14 +218,15 @@
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0" Margin="0,0,20,0">
-                        <TextBlock Style="{StaticResource RowTitle}" Text="Record what doesn't work" />
+                        <TextBlock x:Name="RecordTitle" Style="{StaticResource RowTitle}" Text="Record what doesn't work" />
                         <TextBlock Style="{StaticResource RowNote}" Text="Counts presses that zoomed nothing, adapters that failed and crashes, so a problem can be described without reading a log file. It never leaves this machine." />
                     </StackPanel>
-                    <Button Grid.Column="1"
-                            Style="{StaticResource Switch}"
-                            VerticalAlignment="Center"
-                            Command="{Binding ToggleRecording}"
-                            Tag="{Binding RecordEnabled}" />
+                    <controls:Switch Grid.Column="1"
+                                     Style="{StaticResource Switch}"
+                                     VerticalAlignment="Center"
+                                     AutomationProperties.LabeledBy="{Binding ElementName=RecordTitle}"
+                                     Command="{Binding ToggleRecording}"
+                                     IsChecked="{Binding RecordEnabled, Mode=OneWay}" />
                 </Grid>
             </StackPanel>
         </Border>
