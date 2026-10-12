@@ -13,6 +13,38 @@ public sealed class ContentPathTests
         new ContentNode(ContentRole.Document, PixelRect.FromSize(0, 0, 3832, 2074)),
     ];
 
+    public sealed class Finding_the_page
+    {
+        private static readonly ContentNode Text = new(ContentRole.Text, PixelRect.FromSize(2400, 600, 631, 37));
+        private static readonly ContentNode Frame = new(ContentRole.Document, PixelRect.FromSize(2390, 400, 656, 980));
+        private static readonly ContentNode Inner = new(ContentRole.Document, PixelRect.FromSize(2395, 500, 640, 400));
+        private static readonly ContentNode Page = new(ContentRole.Document, PixelRect.FromSize(0, 0, 3832, 2074));
+        private static readonly ContentNode Chrome = new(ContentRole.Other, PixelRect.FromSize(0, 0, 3840, 2160), 9);
+
+        [Fact]
+        public void Every_document_below_the_outermost_is_a_box_on_the_page()
+        {
+            var page = ContentPath.ToPage([Text, Inner, Frame, Page]);
+
+            Assert.Equal([ContentRole.Text, ContentRole.Group, ContentRole.Group, ContentRole.Document], page.Select(n => n.Role));
+            Assert.Equal(Inner.Bounds, page[1].Bounds);
+        }
+
+        [Fact]
+        public void What_lies_above_the_page_is_the_browser_and_is_dropped()
+        {
+            Assert.Equal([Text, Page], ContentPath.ToPage([Text, Page, Chrome]));
+        }
+
+        [Fact]
+        public void A_path_with_no_document_is_left_as_it_is()
+        {
+            IReadOnlyList<ContentNode> path = [Text, Chrome];
+
+            Assert.Same(path, ContentPath.ToPage(path));
+        }
+    }
+
     public sealed class The_window_standing_in_as_the_page
     {
         private static readonly PixelRect Window = PixelRect.FromSize(1910, 87, 1920, 1080);

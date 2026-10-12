@@ -100,7 +100,7 @@ delta unit, against 48 px per 120 otherwise), which is why corrections use whole
 | `KeyDeliverySettle` | 120 ms | same | Time for the target to take the shortcut out of its queue before the foreground moves on |
 | `KeyHold` | 30 ms | `Interop/Input/SendInputInjector.cs` | Acrobat ignores a press and release that arrive in the same batch, and ignored the generic Control virtual key entirely |
 | `ActivationTimeout` / `FocusSettle` | 300 / 60 ms | `Interop/Windows/WindowActivator.cs` | Waiting for a window to report itself as foreground, then for its own focus handling |
-| `MaxHitTestAttempts` × delay | 12 × 50 ms | `Interop/Accessibility/MsaaContentHitTester.cs` | A cold accessibility tree needs roughly 600 ms of retries. `& $probe hittest <x> <y>` shows what it finds |
+| `MaxAttempts` × `RetryDelay` | 12 × 50 ms | `Core/Zoom/Content/HitTestPolicy.cs` | A cold accessibility tree needs roughly 600 ms of retries. `& $probe hittest <x> <y>` shows what it finds |
 
 ## Re-measuring
 
