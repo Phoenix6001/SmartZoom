@@ -40,6 +40,37 @@ public static class ContentPath
             : $"{kept} < … [{chain.Count - MaxShapeNodes} more]";
     }
 
+    /// <summary>
+    /// The path from the element under the cursor out to the page, with every nested document above the
+    /// leaf turned into an ordinary container and everything above the page dropped.
+    /// </summary>
+    /// <param name="path">The path as the tree reported it, leaf first, out to the tree's root.</param>
+    /// <returns>The path ending at the outermost document, or the path unchanged when it has no document.</returns>
+    /// <remarks>
+    /// A page assembled from iframes — a news site with embedded cards and advertisements is the usual case —
+    /// has a document at every frame boundary. Stopping at the first one makes an advertisement's 656 px
+    /// frame "the page": the viewport becomes the frame, the real containers above it are never seen, and a
+    /// paragraph that fills its little frame is rejected for being wider than 90% of "the viewport". The
+    /// press then does nothing at all. Only the outermost document is the page; the rest are boxes on it, and
+    /// what lies above it is the browser's own window.
+    /// </remarks>
+    public static IReadOnlyList<ContentNode> ToPage(IReadOnlyList<ContentNode> path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+
+        var page = -1;
+        for (var i = path.Count - 1; i >= 0 && page < 0; i--)
+        {
+            if (path[i].Role == ContentRole.Document)
+                page = i;
+        }
+
+        if (page < 0)
+            return path;
+
+        return [.. path.Take(page + 1).Select((n, i) => i < page && n.Role == ContentRole.Document ? n with { Role = ContentRole.Group } : n)];
+    }
+
     /// <summary>The path with the window standing in as its page, for a tree that never reached a document.</summary>
     /// <param name="chain">What the tree answered, leaf first; may be empty.</param>
     /// <param name="window">The render window's rectangle, or null when it could not be read.</param>

@@ -82,9 +82,13 @@ exactly where it started. And every gesture constant was measured, not derived â
   performs. Contacts must stay clear of scrollbars and of the window's resize border, and the gesture is
   oriented along the row where it can be, because a vertical drag leaks into the page's scroll position. Every
   gesture regression in this project has been in that one file, which is why it is in the testable project.
-- **What the accessibility tree says**: `Interop/Accessibility/MsaaContentHitTester.cs`. Chromium builds its
-  tree lazily, so the first question has to wake it up, and a tree that was serialized during a pinch answers
-  in the wrong coordinates until the page next scrolls (`Core/Zoom/Content/StalePageZoom.cs`).
+- **What the accessibility tree says**: `Core/Zoom/Content/HitTestPolicy.cs` decides,
+  `Interop/Accessibility/MsaaContentHitTester.cs` asks. Chromium builds its tree lazily, so the first question
+  has to wake it up; a tree still being built throws, or stops at a page-wide placeholder; a tree that was
+  serialized during a pinch answers in the wrong coordinates until the page next scrolls
+  (`StalePageZoom.cs`); only the outermost document on the path is the page (`ContentPath.ToPage`). The
+  Interop side hands each raw answer (`HitTestAnswer`) to the policy and does what it says, so every one of
+  those cases is a recorded answer sequence in `HitTestPolicyTests`.
 - **How far a reader actually scrolled**: `Core/Zoom/Content/ReaderViewGeometry.cs` and `ScrollProfile.cs`
   decide, `Interop/Input/ReaderView.cs` reads the screen. Readers do not expose a scroll position, so the
   movement is measured by comparing a strip of the window before and after.
