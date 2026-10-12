@@ -4,6 +4,7 @@ using SmartZoom.App.Hosting;
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
 using SmartZoom.Core.Settings;
+using SmartZoom.Core.Windows;
 using SmartZoom.Core.Zoom;
 using SmartZoom.Core.Zoom.Content;
 using SmartZoom.Core.Zoom.Office;
@@ -26,6 +27,7 @@ internal static class PipelineFixtures
         new NoContentHitTester(),
         new AcceptingPinch(),
         new BlindScreen(),
+        new OneHundredPercent(),
         new EmptyReaderView(),
         new AcceptingInjector(),
         new NoWordAutomation(),
@@ -51,6 +53,11 @@ internal static class PipelineFixtures
     {
         public Task<ContentHit?> HitTestAsync(TargetInfo target, ScreenPoint point, CancellationToken cancellationToken) =>
             Task.FromResult<ContentHit?>(null);
+    }
+
+    private sealed class OneHundredPercent : IDisplayScale
+    {
+        public double ScaleAt(ScreenPoint point) => 1.0;
     }
 
     private sealed class BlindScreen : IScreenSampler

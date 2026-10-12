@@ -199,6 +199,182 @@ public sealed class PinchGeometryTests
     /// of 50 / 40 / 30 / 20 / 12 px reached x2.89 / 2.48 / 2.03 / 1.54 / 1.20, which all put the start of
     /// counting at a 61-65 px half span. Firefox reached x3.00 at every gap down to 14 px.
     /// </summary>
+    /// <summary>
+    /// Firefox keeps the page point under a pinch's centre where it is, even at the end of a zoom-out, where the
+    /// only way to do that is to scroll the page. Zooming out around any point but the one the zoom-in kept still
+    /// therefore leaves the page scrolled by (anchor - focus) * (1 - 1/scale), measured at 141-152 px near an edge,
+    /// where the contacts cannot straddle the anchor. Chromium clamps the view into the page at 1.0 instead, so it
+    /// is not affected. These tests drive a model of the Gecko behaviour.
+    /// </summary>
+    public sealed class Undoing_a_zoom_around_a_moved_focus
+    {
+        private const double Scale = 3;
+        private static readonly ScreenPoint Anchor = new(1560, 500);
+        private static readonly ScreenPoint Focus = new(1340, 500);
+
+        [Fact]
+        public void A_zoom_out_around_a_moved_focus_alone_leaves_the_page_scrolled()
+        {
+            var page = GeckoPage.ZoomedInAround(Anchor, Scale);
+
+            page.Pinch(Focus, 1 / Scale);
+
+            Assert.Equal((Anchor.X - Focus.X) * (1 - (1 / Scale)), page.Scroll, precision: 6);
+        }
+
+        [Fact]
+        public void Panning_back_first_brings_the_page_back_exactly()
+        {
+            var page = GeckoPage.ZoomedInAround(Anchor, Scale);
+
+            page.Drag(PinchGeometry.UndoPan(Anchor, Focus, Scale));
+            page.Pinch(Focus, 1 / Scale);
+
+            Assert.Equal(0, page.Scroll, precision: 0);
+        }
+
+        [Fact]
+        public void A_zoom_in_made_around_a_moved_focus_plus_a_pan_is_undone_the_same_way()
+        {
+            // How an edge zoom is made: a pinch around a focus with room, then a drag to where the anchor would be.
+            var page = new GeckoPage();
+            var zoomFocus = new ScreenPoint(1320, 500);
+            page.Pinch(zoomFocus, Scale);
+            page.Drag(new ScreenPoint((int)Math.Round((Anchor.X - zoomFocus.X) * (1 - Scale)), 0));
+
+            page.Drag(PinchGeometry.UndoPan(Anchor, Focus, Scale));
+            page.Pinch(Focus, 1 / Scale);
+
+            Assert.Equal(0, page.Scroll, precision: 0);
+        }
+
+        [Fact]
+        public void Nothing_is_panned_when_the_zoom_out_is_around_the_anchor_itself() =>
+            Assert.Equal(default, PinchGeometry.UndoPan(Anchor, Anchor, Scale));
+
+        [Fact]
+        public void Nothing_is_panned_when_the_page_is_not_zoomed() =>
+            Assert.Equal(default, PinchGeometry.UndoPan(Anchor, Focus, 1));
+
+        [Fact]
+        public void The_pan_back_is_the_zoom_ins_pan_reversed_when_the_focus_is_the_same()
+        {
+            var plan = PinchGeometry.Plan(new ScreenPoint(1568, 500), Scale, 23, PixelRect.FromSize(12, 12, 1544, 1000));
+
+            Assert.NotEqual(default, plan.Pan);
+            Assert.Equal(new ScreenPoint(-plan.Pan.X, -plan.Pan.Y), PinchGeometry.UndoPan(new ScreenPoint(1568, 500), plan.Focus, Scale));
+        }
+
+        /// <summary>
+        /// A page in Gecko, along one axis: the page's scroll, and the zoomed view's offset inside it. A pinch keeps
+        /// the page point under its centre still; at 1.0 the view is the page, so what is left goes to the scroll.
+        /// A drag while zoomed moves the view, and the content by the drag's length on screen.
+        /// </summary>
+        private sealed class GeckoPage
+        {
+            private double _scale = 1;
+            private double _view;
+
+            public double Scroll { get; private set; }
+
+            public static GeckoPage ZoomedInAround(ScreenPoint anchor, double scale)
+            {
+                var page = new GeckoPage();
+                page.Pinch(anchor, scale);
+                return page;
+            }
+
+            public void Pinch(ScreenPoint centre, double factor)
+            {
+                var held = Scroll + _view + (centre.X / _scale);
+                _scale *= factor;
+                if (_scale <= 1 + 1e-9)
+                {
+                    _scale = 1;
+                    _view = 0;
+                    Scroll = held - centre.X;
+                }
+                else
+                {
+                    _view = held - (centre.X / _scale) - Scroll;
+                }
+            }
+
+            public void Drag(ScreenPoint delta) => _view -= delta.X / _scale;
+        }
+    }
+
+    /// <summary>
+    /// Chromium moves a pinch's centre onto the viewport's edge when it is within 100 DIP of it. At the bottom
+    /// that snapped pinch leaked 4-6 px into the page's scroll on every zoom-in (measured at 100%: centres 32-90 px
+    /// from the bottom leaked, 100 px and more did not), which zooming out does not undo. A zoom-in centred just
+    /// above the zone and dragged down to the anchor lands exactly where it was aimed and leaks nothing.
+    /// </summary>
+    public sealed class Chromiums_bottom_snap
+    {
+        private static readonly PixelRect Viewport = PixelRect.FromSize(608, 387, 1569, 1105);
+        private static readonly PixelRect Bounds = new(620, 399, 2149, 1464);
+        private const double Zone = 100;
+
+        [Fact]
+        public void A_zoom_in_centred_in_the_zone_is_pinched_just_above_it_and_dragged_down()
+        {
+            var anchor = new ScreenPoint(1388, Viewport.Bottom - 32);
+
+            var bounds = PinchGeometry.KeepFocusAboveBottomSnap(anchor, 3, Bounds, Viewport.Bottom, Zone);
+            var plan = PinchGeometry.Plan(anchor, 3, 23, bounds, 125);
+
+            Assert.True(plan.Focus.Y < Viewport.Bottom - Zone, $"focus y {plan.Focus.Y}");
+            Assert.True(plan.Focus.Y >= Viewport.Bottom - Zone - 2, "the focus moves no further up than it has to");
+            Assert.Equal(anchor.X, plan.Focus.X);
+            Assert.Equal((int)Math.Round((anchor.Y - plan.Focus.Y) * (1 - 3.0)), plan.Pan.Y);
+        }
+
+        [Fact]
+        public void A_zoom_in_centred_above_the_zone_is_left_alone()
+        {
+            var anchor = new ScreenPoint(1388, Viewport.Bottom - 130);
+
+            Assert.Equal(Bounds, PinchGeometry.KeepFocusAboveBottomSnap(anchor, 3, Bounds, Viewport.Bottom, Zone));
+        }
+
+        [Fact]
+        public void A_zoom_out_is_left_alone()
+        {
+            // The page ends clamped at 1.0, so where a zoom-out is centred does not matter in Chromium.
+            var anchor = new ScreenPoint(1388, Viewport.Bottom - 32);
+
+            Assert.Equal(Bounds, PinchGeometry.KeepFocusAboveBottomSnap(anchor, 0.3, Bounds, Viewport.Bottom, Zone));
+        }
+
+        [Fact]
+        public void An_engine_without_the_snap_is_left_alone()
+        {
+            var anchor = new ScreenPoint(1388, Viewport.Bottom - 32);
+
+            Assert.Equal(Bounds, PinchGeometry.KeepFocusAboveBottomSnap(anchor, 3, Bounds, Viewport.Bottom, 0));
+        }
+
+        [Fact]
+        public void A_viewport_shorter_than_the_zone_keeps_its_contact_area()
+        {
+            // Nowhere is out of the zone; a contact area squeezed to nothing would be worse than the leak.
+            var small = new PixelRect(620, 1400, 2149, 1464);
+            var anchor = new ScreenPoint(1388, Viewport.Bottom - 32);
+
+            Assert.Equal(small, PinchGeometry.KeepFocusAboveBottomSnap(anchor, 3, small, Viewport.Bottom, Zone));
+        }
+
+        [Theory]
+        [InlineData(GestureEngine.Chromium, 1.0, 100)]
+        [InlineData(GestureEngine.Chromium, 2.0, 200)]
+        [InlineData(GestureEngine.Chromium, 1.25, 125)]
+        [InlineData(GestureEngine.Gecko, 1.0, 0)]
+        [InlineData(GestureEngine.Windows, 1.0, 0)]
+        public void The_zone_is_chromiums_100_dip(GestureEngine engine, double dpiScale, double expected) =>
+            Assert.Equal(expected, RecognizerProfile.BottomSnapZone(engine, dpiScale));
+    }
+
     public sealed class Chromiums_minimum_scaling_span
     {
         /// <summary>Chromium's span slop at 100%: 23 DIP.</summary>
@@ -278,6 +454,18 @@ public sealed class PinchGeometryTests
                 Assert.InRange(leg.From.X, Viewport.Left, Viewport.Right - 1);
                 Assert.InRange(leg.To.X, Viewport.Left, Viewport.Right - 1);
             }
+        }
+
+        [Fact]
+        public void A_diagonal_drag_is_made_one_axis_at_a_time()
+        {
+            // Chromium locks a drag within about 20 degrees of an axis to that axis: in a bottom corner the
+            // (428, -136) drag moved the view sideways only, and the zoom fell short of the corner by 45 px.
+            var legs = PinchGeometry.PanLegs(new ScreenPoint(428, -136), Viewport, touchSlop: 16);
+
+            Assert.All(legs, leg => Assert.True(leg.From.X == leg.To.X || leg.From.Y == leg.To.Y, $"{leg} moves on both axes"));
+            Assert.Equal(428 + 16, legs.Where(l => l.From.Y == l.To.Y).Sum(l => l.To.X - l.From.X));
+            Assert.Equal(-136 - 16, legs.Where(l => l.From.X == l.To.X).Sum(l => l.To.Y - l.From.Y));
         }
 
         [Fact]

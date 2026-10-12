@@ -5,7 +5,8 @@ namespace SmartZoom.App.Ui.Pages;
 /// Nothing in this window holds its own copy of the settings. Every page reads
 /// <see cref="Settings.SettingsHolder.Current"/> when it is asked to, so a change made in the tray panel, in
 /// the tray menu, on another page or by hand in the file is visible the next time the window is looked at.
-/// The shell calls <see cref="Refresh"/> on every page whenever the window is shown.
+/// The shell calls <see cref="Refresh"/> on every page whenever the window is shown, and whenever the settings in
+/// force change while it is open.
 /// </remarks>
 internal interface IPageModel
 {

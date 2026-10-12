@@ -59,6 +59,22 @@ public static class RecognizerProfile
     /// </summary>
     public const double ChromiumMinimumScalingSpanPx = 125;
 
+    /// <summary>
+    /// How close to its viewport's edge, in DIPs, Chromium moves a pinch's centre onto the edge. Measured at 100%
+    /// on the bottom edge: centres 32-90 px from it snapped, 100 px and more did not.
+    /// </summary>
+    public const double ChromiumEdgeSnapDips = 100;
+
+    /// <summary>
+    /// The height of the band above the viewport's bottom edge, in physical pixels, where this engine snaps a
+    /// pinch's centre onto the edge and leaks into the page's scroll (see
+    /// <see cref="PinchGeometry.KeepFocusAboveBottomSnap"/>). Zero for an engine that does not.
+    /// </summary>
+    /// <param name="engine">The recognizer that will read the gesture.</param>
+    /// <param name="dpiScale">The display's scale factor.</param>
+    public static double BottomSnapZone(GestureEngine engine, double dpiScale) =>
+        engine == GestureEngine.Chromium ? Math.Ceiling(ChromiumEdgeSnapDips * dpiScale) : 0;
+
     /// <summary>The span, in physical pixels, below which this engine does not count a pinch's scaling.</summary>
     /// <param name="engine">The recognizer that will read the gesture.</param>
     /// <remarks>

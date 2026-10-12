@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 
 using SmartZoom.Core.Routing;
 using SmartZoom.Core.Settings;
+using SmartZoom.Core.Windows;
 using SmartZoom.Core.Zoom;
 using SmartZoom.Core.Zoom.Content;
 using SmartZoom.Core.Zoom.Office;
@@ -29,6 +30,7 @@ internal sealed class ZoomPipelineFactory(
     IContentHitTester hitTester,
     IPinchInjector pinch,
     IScreenSampler screen,
+    IDisplayScale display,
     IReaderView readerView,
     IInputInjector injector,
     IWordAutomation word,
@@ -64,7 +66,7 @@ internal sealed class ZoomPipelineFactory(
     private IReadOnlyList<IZoomAdapter> Adapters(ZoomSettings zoom) =>
     [
         new CtrlWheelAdapter(injector, zoom.CtrlWheel, time),
-        new BrowserAdapter(hitTester, pinch, screen, zoom, loggers.CreateLogger<BrowserAdapter>()),
+        new BrowserAdapter(hitTester, pinch, screen, display, zoom, loggers.CreateLogger<BrowserAdapter>()),
         Reader(zoom),
         new WordComAdapter(word, pinch, zoom, time, loggers.CreateLogger<WordComAdapter>()),
         new ExcelComAdapter(excel, zoom, loggers.CreateLogger<ExcelComAdapter>()),

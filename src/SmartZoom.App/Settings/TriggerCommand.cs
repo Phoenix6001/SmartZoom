@@ -165,7 +165,17 @@ internal static class TriggerCommand
 
         try
         {
-            var settings = store.Load();
+            // Not Load: it stands defaults in for a file it cannot read or parse, and writing those back would
+            // replace everything else the user had. Such a file is left alone and the installer told so. A file
+            // held for a moment (an antivirus scan of what setup just touched) is waited out, as at startup.
+            SmartZoomSettings settings;
+            if (store.TryLoad(out var existing, out _, out var failure, wait: true))
+                settings = existing;
+            else if (failure == SettingsReadFailure.Missing)
+                settings = new SmartZoomSettings();
+            else
+                return 1;
+
             if (settings.Triggers.Count > 0)
                 settings.Triggers[0] = trigger;
             else

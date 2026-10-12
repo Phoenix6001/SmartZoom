@@ -5,7 +5,9 @@ namespace SmartZoom.App.Settings;
 /// <summary>What came of trying to apply a set of settings.</summary>
 /// <param name="Outcome">Whether they are in force, and whether they were written down.</param>
 /// <param name="Problems">Everything found while checking them; warnings survive a successful apply.</param>
-/// <param name="Detail">Why the file could not be written, when that is what happened.</param>
+/// <param name="Detail">
+/// Why the settings were not written, when they were not: a phrase for the user that follows "Settings file: ".
+/// </param>
 internal sealed record SettingsApplyResult(SettingsApplyOutcome Outcome, IReadOnlyList<SettingsProblem> Problems, string? Detail = null)
 {
     public static SettingsApplyResult Applied(IReadOnlyList<SettingsProblem> problems) =>
