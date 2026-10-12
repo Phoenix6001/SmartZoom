@@ -131,6 +131,7 @@ Ui/Panel/     The tray panel: the same few facts, for someone who only wants to 
 Ui/Themes/    Light.xaml and Dark.xaml declare the same keys and nothing else names a colour, so
               ThemeManager swaps one for the other and the open window repaints
 Ui/Mvvm/      ObservableObject and RelayCommand; no MVVM framework
+Ui/Controls/  Switch (the on/off switch) and LiveRegion (text a screen reader reads out when it changes)
 ```
 
 Three rules hold the window together, and they are the reason it cannot drift out of step with the app:
@@ -155,6 +156,25 @@ every pixel would rebuild the zoom pipeline a hundred times on the way across.
 Removing the last trigger is refused in the page, with a message, rather than left to the validator: an
 application with no trigger cannot be started by anything, and a list that silently emptied itself would
 read as a bug.
+
+Every control a screen reader can reach has a name. WPF names an item of a list by its `ToString()` and a
+button by its text, so a row bound to a record, a button showing a glyph and a card made of several text
+blocks all reach a screen reader as code or as nothing. The rules:
+
+- A row of a list or combo box is named by an `AutomationProperties.Name` setter in its container style
+  (`Nav.Item`, `Combo.Item`).
+- A glyph button, a card and a repeated button (each trigger's Edit and Remove) set `AutomationProperties.Name`
+  to what it does, naming the thing it acts on: "Close", "Largest zoom: 3× bigger", "Remove XButton2 x1".
+- A slider, switch or combo box beside a row title points at that title with `AutomationProperties.LabeledBy`,
+  so the name and the visible text cannot drift apart. A slider also sets `ItemStatus` to the value as the row
+  shows it ("3× bigger"), not the bare number.
+- A switch is `Ui/Controls/Switch`, never a plain button, so it is announced as a toggle and says whether it is
+  on. Turning it from a screen reader runs the same command a click does.
+- Text that answers something the user just did (what the recorder caught, a refused change, "Copied") sets
+  `controls:LiveRegion.Announce`, so it is read out without the user having to go looking for it.
+
+To check a page, list its controls' names with UI Automation (the `Name` of every `Button`, `ComboBox`, `Edit`,
+`Slider` and `ListItem`); an empty name, or one that looks like code, is a bug.
 
 ## Adding support for an application
 

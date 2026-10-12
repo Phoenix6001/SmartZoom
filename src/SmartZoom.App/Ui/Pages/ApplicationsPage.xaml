@@ -83,6 +83,7 @@
                               VerticalAlignment="Top"
                               ItemTemplate="{StaticResource StrategyName}"
                               ItemsSource="{Binding DataContext.Strategies, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                              AutomationProperties.Name="{Binding Process, StringFormat=How to zoom {0}}"
                               SelectedItem="{Binding Strategy}"
                               ToolTip="{Binding Description}" />
 
@@ -92,6 +93,7 @@
                             Padding="16,0"
                             VerticalAlignment="Top"
                             Command="{Binding DataContext.RemoveApplication, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                            AutomationProperties.Name="{Binding Process, StringFormat=Remove {0}}"
                             CommandParameter="{Binding}"
                             Content="Remove" />
                 </Grid>
@@ -219,6 +221,7 @@
                     <StackPanel Grid.Column="0" Margin="0,0,16,0">
                         <Grid>
                             <ComboBox Style="{StaticResource Combo}"
+                                      AutomationProperties.Name="Choose an application you have open"
                                       ItemTemplate="{StaticResource RunningApplication}"
                                       ItemsSource="{Binding Running}"
                                       SelectedItem="{Binding SelectedRunning}"
@@ -243,6 +246,7 @@
                             </TextBlock>
                         </Grid>
                         <TextBox Style="{StaticResource Field}"
+                                 AutomationProperties.Name="Process name"
                                  Margin="0,8,0,0"
                                  Text="{Binding NewProcess, UpdateSourceTrigger=PropertyChanged}"
                                  ToolTip="The process name, with or without “.exe”." />
@@ -260,6 +264,7 @@
                               Style="{StaticResource Combo}"
                               Width="210"
                               VerticalAlignment="Top"
+                              AutomationProperties.Name="How to zoom it"
                               IsSynchronizedWithCurrentItem="False"
                               ItemTemplate="{StaticResource StrategyName}"
                               ItemsSource="{Binding Strategies}"

@@ -1,6 +1,7 @@
 <Window x:Class="SmartZoom.App.Ui.Recorder.TriggerRecorderWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:SmartZoom.App.Ui.Controls"
         x:ClassModifier="internal"
         Title="Trigger"
         Width="660"
@@ -57,6 +58,7 @@
                     <Button Grid.Column="2"
                             Style="{StaticResource Button.Close}"
                             Height="44"
+                            AutomationProperties.Name="Cancel"
                             Click="OnCancel"
                             Content="&#xE8BB;"
                             ToolTip="Cancel" />
@@ -76,6 +78,7 @@
                         MinHeight="112">
                     <StackPanel VerticalAlignment="Center">
                         <TextBlock x:Name="Captured"
+                                   controls:LiveRegion.Announce="True"
                                    Style="{StaticResource Text.Base}"
                                    HorizontalAlignment="Center"
                                    TextAlignment="Center"
@@ -85,6 +88,7 @@
                                    TextWrapping="Wrap"
                                    Text="Press a button or key combination…" />
                         <TextBlock x:Name="Caution"
+                                   controls:LiveRegion.Announce="True"
                                    Style="{StaticResource Text.Body}"
                                    Margin="0,10,0,0"
                                    HorizontalAlignment="Center"
@@ -132,6 +136,7 @@
                                VerticalAlignment="Center"
                                Text="within" />
                     <TextBox x:Name="WindowMs"
+                             AutomationProperties.Name="Double-tap within, in milliseconds"
                              Width="70"
                              Height="28"
                              VerticalContentAlignment="Center"

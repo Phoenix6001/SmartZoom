@@ -103,6 +103,7 @@
                                     </TextBlock.Style>
                                 </TextBlock>
                                 <TextBox x:Name="Search"
+                                         AutomationProperties.Name="Search settings"
                                          VerticalContentAlignment="Center"
                                          Background="Transparent"
                                          BorderThickness="0"
@@ -120,6 +121,7 @@
                             Style="{StaticResource Button.TitleGlyph}"
                             Margin="0,0,8,0"
                             VerticalAlignment="Center"
+                            AutomationProperties.Name="Appearance"
                             Command="{Binding CycleTheme}"
                             Content="{Binding ThemeGlyph}"
                             Tag="{Binding ThemeState}"
@@ -128,10 +130,14 @@
                     <StackPanel Grid.Column="3" Orientation="Horizontal">
                         <Button x:Name="MinimizeButton"
                                 Style="{StaticResource Button.Caption}"
+                                AutomationProperties.Name="Minimize"
                                 Click="OnMinimize"
                                 Content="&#xE921;"
                                 ToolTip="Minimize" />
-                        <Button x:Name="MaximizeButton" Click="OnMaximizeOrRestore" ToolTip="Maximize or restore">
+                        <Button x:Name="MaximizeButton"
+                                AutomationProperties.Name="Maximize or restore"
+                                Click="OnMaximizeOrRestore"
+                                ToolTip="Maximize or restore">
                             <Button.Style>
                                 <Style TargetType="Button" BasedOn="{StaticResource Button.Caption}">
                                     <Setter Property="Content" Value="&#xE922;" />
@@ -145,6 +151,7 @@
                         </Button>
                         <Button x:Name="CloseButton"
                                 Style="{StaticResource Button.Close}"
+                                AutomationProperties.Name="Close"
                                 Click="OnClose"
                                 Content="&#xE8BB;"
                                 ToolTip="Close. SmartZoom keeps running in the notification area." />
@@ -167,6 +174,7 @@
                         </Grid.RowDefinitions>
 
                         <ListBox Grid.Row="0"
+                                 AutomationProperties.Name="Settings pages"
                                  Style="{StaticResource Nav.List}"
                                  ItemContainerStyle="{StaticResource Nav.Item}"
                                  ItemsSource="{Binding Sections}"
@@ -177,6 +185,12 @@
                                 Command="{Binding ShowIssues}"
                                 IsEnabled="{Binding HasIssues}"
                                 ToolTip="Open the record of what did not work">
+                            <AutomationProperties.Name>
+                                <MultiBinding StringFormat="{}{0}. {1}">
+                                    <Binding Path="StatusHeadline" />
+                                    <Binding Path="StatusDetail" />
+                                </MultiBinding>
+                            </AutomationProperties.Name>
                             <StackPanel>
                                 <StackPanel Orientation="Horizontal">
                                     <Ellipse Width="9" Height="9" VerticalAlignment="Center">

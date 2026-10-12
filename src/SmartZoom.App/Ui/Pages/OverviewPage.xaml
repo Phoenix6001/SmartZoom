@@ -17,8 +17,15 @@
             <Button Style="{StaticResource Card.Button}"
                     Margin="0,0,14,0"
                     Padding="18,16,16,16"
+                    AutomationProperties.HelpText="{Binding Description}"
                     Command="{Binding DataContext.Navigate, RelativeSource={RelativeSource AncestorType=UserControl}}"
                     CommandParameter="{Binding Target}">
+                <AutomationProperties.Name>
+                    <MultiBinding StringFormat="{}{0}: {1}">
+                        <Binding Path="Title" />
+                        <Binding Path="Value" />
+                    </MultiBinding>
+                </AutomationProperties.Name>
                 <StackPanel>
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -65,6 +72,8 @@
             <Button Style="{StaticResource Card.Button}"
                     Margin="0,0,14,0"
                     Padding="18,16,16,16"
+                    AutomationProperties.Name="{Binding Title}"
+                    AutomationProperties.HelpText="{Binding Applications}"
                     Command="{Binding DataContext.Navigate, RelativeSource={RelativeSource AncestorType=UserControl}}"
                     CommandParameter="{Binding Target}">
                 <StackPanel>
@@ -463,6 +472,7 @@
             <Button Style="{StaticResource Button.Link}"
                     Margin="6,0,0,0"
                     VerticalAlignment="Center"
+                    AutomationProperties.Name="Open the settings file"
                     Command="{Binding OpenSettingsFile}"
                     Content="Open it" />
         </StackPanel>
