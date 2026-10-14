@@ -76,6 +76,11 @@ internal sealed partial class SettingsApplier(
     private int _appearancesAtMiss;
     private bool _recreateFailureLogged;
 
+    /// <summary>How many times the watcher has seen the file appear (or lost track); for tests to wait on.</summary>
+    /// <remarks>The watcher reports on its own thread, so a test that has just put a file in place must wait for this
+    /// to move rather than for a fixed time, which a busy machine can outlast.</remarks>
+    internal int FileAppearances => Volatile.Read(ref _appearances);
+
     /// <summary>
     /// Raised, at most once per state, when the settings in force are not being saved because the settings file
     /// is the user's and could not be put into force: when a change is first held back while the file cannot be

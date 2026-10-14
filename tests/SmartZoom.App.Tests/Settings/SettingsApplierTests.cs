@@ -515,9 +515,17 @@ public sealed class SettingsApplierTests
             File.Delete(harness.Paths.SettingsFile);
 
             Assert.False(await harness.Applier.RetryUnreadableFileAsync());
+            var appearances = harness.Applier.FileAppearances;
             File.WriteAllText(harness.Paths.SettingsFile, UsersFile);
             File.Delete(harness.Paths.SettingsFile);
-            await Task.Delay(500); // the watcher reports on its own thread
+
+            // The watcher reports on its own thread. A fixed wait for it was outlasted on a busy machine, and the
+            // retry then took the file as deleted; wait for the report itself.
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+            while (harness.Applier.FileAppearances == appearances && DateTime.UtcNow < deadline)
+                await Task.Delay(10);
+            Assert.True(harness.Applier.FileAppearances > appearances, "The watcher never reported the file appearing.");
+
             Assert.False(await harness.Applier.RetryUnreadableFileAsync());
 
             Assert.False(File.Exists(harness.Paths.SettingsFile));
