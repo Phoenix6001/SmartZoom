@@ -30,7 +30,7 @@ trigger and routes it to a per-application zoom strategy:
 
 > **Status:** early development. Smart zoom works in Chromium browsers, Firefox, Word, Excel and PDF readers;
 > Ctrl+wheel zoom with toggle-back works for IrfanView and anything routed to `CtrlWheel`. PowerPoint is not
-> supported yet. See [Roadmap](#roadmap).
+> supported. See [Roadmap](#roadmap).
 
 ## Requirements
 
@@ -306,9 +306,8 @@ says what "done" means and lists the issues in it.
   should, in every supported application and on any display (mixed DPI and multiple monitors included).
 - **[0.6.0 — Trusted to install](https://github.com/Phoenix6001/SmartZoom/milestone/2)**: code-signed
   releases, the Microsoft Store and winget.
-- **[1.0.0 — Stable](https://github.com/Phoenix6001/SmartZoom/milestone/3)**: PowerPoint, PDF readers that
-  fit the block under the cursor, unit-tested hit-test policy, a settings window that works with a screen
-  reader.
+- **[1.0.0 — Stable](https://github.com/Phoenix6001/SmartZoom/milestone/3)**: PDF readers that fit the block
+  under the cursor.
 - **[Future](https://github.com/Phoenix6001/SmartZoom/milestone/4)**: ideas not committed to a release yet,
   such as a touchpad trigger and Linux.
 

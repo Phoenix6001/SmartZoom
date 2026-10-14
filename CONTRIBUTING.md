@@ -37,7 +37,7 @@ instead.
 
 SmartZoom uses GitHub flow: `main` is always releasable, and everything reaches it through a pull request.
 
-- Branch from `main` and name the branch for the change: `fix/corner-slide-5`, `feat/powerpoint`,
+- Branch from `main` and name the branch for the change: `fix/corner-slide-5`, `feat/touchpad-trigger`,
   `docs/onboarding`, `ci/virustotal-scan`. One change per branch, kept short-lived.
 - Open the pull request against `main`. It merges once the `build` check passes and every review conversation
   is resolved; the branch is deleted on merge.

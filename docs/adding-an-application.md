@@ -48,12 +48,12 @@ Derive from `ZoomAdapter<TRestore>` in `src/SmartZoom.Core/Zoom/ZoomAdapter.cs`,
 whatever you need in order to undo a zoom:
 
 ```csharp
-public sealed class PowerPointComAdapter : ZoomAdapter<SlideViewState>
+public sealed class ContosoViewerAdapter : ZoomAdapter<ContosoViewState>
 {
-    public PowerPointComAdapter(...) : base(Descriptor) { }
+    public ContosoViewerAdapter(...) : base(Descriptor) { }
 
     protected override Task<ZoomInResult> ZoomInAsync(TargetInfo target, ScreenPoint point, CancellationToken ct);
-    protected override Task ZoomOutAsync(TargetInfo target, SlideViewState restoreState, CancellationToken ct);
+    protected override Task ZoomOutAsync(TargetInfo target, ContosoViewState restoreState, CancellationToken ct);
 }
 ```
 
@@ -66,10 +66,10 @@ the box, and enough prose for a settings UI to offer you.
 
 ```csharp
 public static AdapterDescriptor Descriptor { get; } = new(
-    "PowerPointCom",
-    ["POWERPNT"],
-    "Microsoft PowerPoint",
-    "Zooms the slide to the shape under the cursor through PowerPoint's object model.");
+    "ContosoViewer",
+    ["contosoview"],
+    "Contoso Viewer",
+    "Zooms the page to the figure under the cursor through Contoso Viewer's object model.");
 ```
 
 The static property is what tests, the composition root and your own `base(Descriptor)` call name. Two
@@ -136,12 +136,3 @@ than you asked, it refused the shortcut, the window went away mid-zoom.
 Run the manual checks in [testing.md](testing.md) for your application and for one browser, because the
 browser path shares the gesture code with everything else. `dotnet test` cannot tell you whether a zoom
 looked right.
-
-## PowerPoint, if you are looking for somewhere to start
-
-PowerPoint is not supported, and it is deliberately absent from the default routing: an application routed
-to a strategy with no adapter behind it is exactly the silent failure this design exists to prevent. The
-sketch:
-`AccessibleObjectFromWindow(OBJID_NATIVEOM)` on the slide window gives you a `DocumentWindow`, whose
-`View.Zoom` is the zoom and whose `Selection` reaches the shapes; the block is the shape under the cursor.
-`WordComAdapter` is the closest model to copy.
