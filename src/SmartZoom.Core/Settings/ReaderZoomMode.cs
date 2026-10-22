@@ -4,8 +4,8 @@ namespace SmartZoom.Core.Settings;
 public enum ReaderZoomMode
 {
     /// <summary>
-    /// An animated pinch around the cursor, the way browsers are zoomed: what you pointed at stays where it
-    /// is and grows. Needs a reader that accepts touch input, which Acrobat and Sumatra do.
+    /// An animated pinch, the way browsers are zoomed: what you pointed at grows and comes to the middle of the
+    /// reader. Needs a reader that accepts touch input, which Acrobat and Sumatra do.
     /// </summary>
     Pinch = 0,
 

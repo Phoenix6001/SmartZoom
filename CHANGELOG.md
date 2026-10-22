@@ -6,6 +6,16 @@ All notable changes to SmartZoom are recorded here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **A PDF zooms the way a browser does: what you pointed at comes to the middle**
+  ([#10](https://github.com/Phoenix6001/SmartZoom/issues/10)). Acrobat and SumatraPDF used to be magnified
+  around the pointer, which held the pixel under it still: a line pointed at low on the page stayed low, and
+  the screen filled with what was above it. The magnification is now placed the way the browsers place
+  theirs, bringing what you pointed at to the middle of the reader, or as close as the edge of the page area
+  allows. How much a press zooms is still the PDF readers' own setting on the Advanced page, and the second
+  press still lands on the reader's own fit-page zoom. PDFs opened in a browser already zoomed this way.
+
 ## [0.4.2] - 2026-10-12
 
 ### Fixed
