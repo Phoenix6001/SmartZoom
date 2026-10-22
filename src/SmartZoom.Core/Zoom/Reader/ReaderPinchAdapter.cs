@@ -3,13 +3,14 @@ using Microsoft.Extensions.Logging;
 using SmartZoom.Core.Input;
 using SmartZoom.Core.Routing;
 using SmartZoom.Core.Settings;
+using SmartZoom.Core.Zoom.Content;
 
 namespace SmartZoom.Core.Zoom.Reader;
 
 /// <summary>
-/// Zooms a document reader with the same animated pinch the browsers get: what you pointed at stays where it
-/// is and simply grows. The second press animates the magnification away and then lands on the reader's own
-/// "fit page" command, so a reader can be toggled all day without drifting.
+/// Zooms a document reader the way the browsers are zoomed: one animated pinch that brings what you pointed at
+/// to the middle of the reader as it grows. The second press animates the magnification away and then lands on
+/// the reader's own "fit page" command, so a reader can be toggled all day without drifting.
 /// </summary>
 /// <remarks>
 /// The closing gesture is for the eye, not for the arithmetic. Windows' recognizer keeps back a share of a
@@ -23,7 +24,7 @@ public sealed partial class ReaderPinchAdapter : ZoomAdapter<ReaderPinchAdapter.
     private readonly IPinchInjector _pinch;
     private readonly IReaderView _view;
     private readonly ShortcutSender _shortcuts;
-    private readonly double _scale;
+    private readonly SmartZoomPlanner _planner;
     private readonly TimeSpan _animation;
     private readonly KeyCombo _zoomOut;
     private readonly ILogger<ReaderPinchAdapter> _logger;
@@ -47,7 +48,8 @@ public sealed partial class ReaderPinchAdapter : ZoomAdapter<ReaderPinchAdapter.
         _view = view ?? throw new ArgumentNullException(nameof(view));
         _shortcuts = shortcuts ?? throw new ArgumentNullException(nameof(shortcuts));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _scale = settings.Magnification;
+        // The reader's own amount, planned exactly as the browsers plan theirs.
+        _planner = new SmartZoomPlanner(MaxScale: settings.Magnification);
         _animation = animation;
         _zoomOut = KeyCombo.Parse(settings.ZoomOutKeys);
     }
@@ -57,7 +59,8 @@ public sealed partial class ReaderPinchAdapter : ZoomAdapter<ReaderPinchAdapter.
     {
         ArgumentNullException.ThrowIfNull(target);
 
-        if (_view.Bounds(target) is not { } bounds || !bounds.Contains(point))
+        if (_view.Bounds(target) is not { } bounds || !bounds.Contains(point)
+            || _planner.Magnify(bounds, point) is not { } plan)
         {
             LogNoContentArea(target.ProcessName);
             return ZoomInResult.Unhandled;
@@ -66,14 +69,17 @@ public sealed partial class ReaderPinchAdapter : ZoomAdapter<ReaderPinchAdapter.
         // Where the view sits now, so the gesture's own imprecision can be taken out on the way back.
         var mark = _view.Snapshot(target);
 
-        LogPinching(target.ProcessName, _scale, point.X, point.Y);
-        if (!await _pinch.PinchAsync(point, _scale, _animation, bounds, cancellationToken).ConfigureAwait(false))
+        // The pinch goes around the point that brings the cursor to the middle, not around the cursor itself:
+        // held still, a line pointed at low on the page stays low and the screen fills with what was above it.
+        // Near an edge the zoomed view stops at the content area's edge, and the line lands off-centre.
+        LogPinching(target.ProcessName, plan.Scale, plan.Anchor.X, plan.Anchor.Y, point.X, point.Y);
+        if (!await _pinch.PinchAsync(plan.Anchor, plan.Scale, _animation, bounds, cancellationToken).ConfigureAwait(false))
         {
             LogGestureRejected(target.ProcessName);
             return ZoomInResult.Unhandled;
         }
 
-        return Applied(new RestoreState(point, mark));
+        return Applied(new RestoreState(plan.Anchor, mark));
     }
 
     /// <inheritdoc />
@@ -86,7 +92,7 @@ public sealed partial class ReaderPinchAdapter : ZoomAdapter<ReaderPinchAdapter.
         {
             var x = Math.Clamp(anchor.X, bounds.Left, bounds.Right - 1);
             var y = Math.Clamp(anchor.Y, bounds.Top, bounds.Bottom - 1);
-            if (!await _pinch.PinchAsync(new ScreenPoint(x, y), 1 / _scale, _animation, bounds, cancellationToken).ConfigureAwait(false))
+            if (!await _pinch.PinchAsync(new ScreenPoint(x, y), 1 / _planner.MaxScale, _animation, bounds, cancellationToken).ConfigureAwait(false))
                 LogGestureRejected(target.ProcessName);
         }
 
@@ -113,8 +119,8 @@ public sealed partial class ReaderPinchAdapter : ZoomAdapter<ReaderPinchAdapter.
     /// <param name="Mark">How the view looked beforehand, or null when the screen could not be read.</param>
     public sealed record RestoreState(ScreenPoint Anchor, ReaderViewMark? Mark);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Smart zoom ({Process}): pinching x{Scale} around ({X}, {Y}).")]
-    private partial void LogPinching(string? process, double scale, int x, int y);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Smart zoom ({Process}): pinching x{Scale} around ({X}, {Y}) for the cursor at ({CursorX}, {CursorY}).")]
+    private partial void LogPinching(string? process, double scale, int x, int y, int cursorX, int cursorY);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "The gesture was rejected in {Process}; nothing was zoomed.")]
     private partial void LogGestureRejected(string? process);
