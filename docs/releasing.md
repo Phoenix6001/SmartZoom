@@ -12,10 +12,10 @@ until a person reads the draft and clicks **Publish release**.
   under **Settings → Secrets and variables → Actions**. Without it the release still works, and the notes
   say the files were not scanned.
 - Code signing is not in place yet. Every asset the workflow produces is unsigned, so Windows SmartScreen
-  warns about an unknown publisher on first run, and the README says so. The plan is free signing through
-  [SignPath Foundation](https://signpath.org/), under the
-  [code signing policy](../README.md#code-signing-policy) in the README; the signing steps join the workflow
-  once the application is accepted ([#8](https://github.com/Phoenix6001/SmartZoom/issues/8)).
+  warns about an unknown publisher on first run, and the README says so. SignPath Foundation's free
+  programme for open-source projects turned the project down in November 2026 as not yet widely enough used,
+  and invited a new application later; the options are tracked in
+  [#8](https://github.com/Phoenix6001/SmartZoom/issues/8).
 
 ## Cutting a release
 
