@@ -209,7 +209,7 @@
                              Content="Pinch around the cursor"
                              GroupName="ReaderMode"
                              IsChecked="{Binding ReaderPinch}" />
-                <TextBlock Style="{StaticResource RowNote}" Margin="27,3,0,0" Text="What you pointed at stays where it is and grows, the way a browser zooms. Needs a reader that accepts touch, which Acrobat and Sumatra do." />
+                <TextBlock Style="{StaticResource RowNote}" Margin="27,3,0,0" Text="What you pointed at grows and comes to the middle, the way a browser zooms. Needs a reader that accepts touch, which Acrobat and Sumatra do." />
                 <RadioButton Style="{StaticResource Radio}"
                              Margin="0,14,0,0"
                              Content="Use the reader's own fit-width shortcut"

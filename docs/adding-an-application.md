@@ -19,7 +19,7 @@ The strategies you can name are the ids the adapters in your build declare:
 | Id | What it does |
 |---|---|
 | `Browser` | Accessibility hit-test plus a touch pinch: Chromium-based browsers and Firefox |
-| `Reader` | Animated pinch around the cursor, landing on the reader's own fit-page zoom: PDF readers |
+| `Reader` | Animated pinch that brings what you pointed at to the middle, landing on the reader's own fit-page zoom: PDF readers |
 | `WordCom` | Word's own object model |
 | `ExcelCom` | Excel's own object model |
 | `CtrlWheel` | Synthesized Ctrl+wheel ticks: anything that zooms with the wheel |
