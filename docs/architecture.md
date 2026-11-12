@@ -63,7 +63,7 @@ and the processes it claims by default in an `AdapterDescriptor`.
 | Adapter | For | How |
 |---|---|---|
 | `BrowserAdapter` | Chromium and Gecko browsers | Finds the block under the cursor in the accessibility tree, then pinches with synthetic touch. No extension needed |
-| `ReaderPinchAdapter` | PDF readers | An animated pinch around the cursor, landing on the reader's own fit-page command |
+| `ReaderPinchAdapter` | PDF readers | An animated pinch placed the way the browsers place theirs, so what you pointed at comes to the middle, landing on the reader's own fit-page command |
 | `ReaderShortcutAdapter` | PDF readers that ignore touch | The reader's own fit-width and fit-page shortcuts, with the cursor's content scrolled to the top first. `Zoom.Reader.Mode` chooses between the two; both answer to the id `Reader` |
 | `WordComAdapter` | Word | The object model: paragraph, table or picture under the cursor, zoomed in steps |
 | `ExcelComAdapter` | Excel | The object model: the surrounding island of filled cells, or the cells a chart covers |

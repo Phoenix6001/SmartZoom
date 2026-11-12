@@ -15,5 +15,5 @@ public static class ReaderStrategy
         "Reader",
         ["Acrobat", "AcroRd32", "SumatraPDF"],
         "Document readers",
-        "Magnifies a PDF around the cursor, and comes back to the reader's own fit-page zoom. Tuned under \"Zoom.Reader\".");
+        "Magnifies a PDF, bringing what you pointed at to the middle, and comes back to the reader's own fit-page zoom. Tuned under \"Zoom.Reader\".");
 }

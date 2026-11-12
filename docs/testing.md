@@ -41,6 +41,7 @@ trigger, look, press again, look.
 | Excel | A cell low in a large table | The cell you pointed at is on screen afterwards, not the top of the table |
 | | A chart | The chart fills the pane; your cell selection is unchanged |
 | Acrobat | A paragraph mid-page | Magnifies around the cursor; five toggles return the page to the same place |
+| | A line near the bottom of the window | The line comes up towards the middle instead of staying low; the second press puts the page back |
 
 "Returns exactly" has a precise meaning for browsers: a screenshot before and after should differ by 0.0% of
 pixels. Anything else is a bug, not rounding.

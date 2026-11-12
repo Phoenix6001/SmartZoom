@@ -24,7 +24,7 @@ trigger and routes it to a per-application zoom strategy:
 | Firefox | Native smart zoom, the same way, through a synthetic touch device that Firefox accepts as a touch screen | Centred on what you aimed at, visual zoom (no reflow), exact restore |
 | Word | Smart zoom through Word's object model: the paragraph, table or picture under the cursor is zoomed to fill the document pane; the previous zoom and scroll position are restored exactly | Element-aware, exact restore |
 | Excel | Smart zoom through Excel's object model: the block of data under the cursor — the surrounding island of filled cells, or the cells a chart or picture covers — is zoomed to fill the worksheet pane, and the view is scrolled to the row you pointed at | Element-aware, exact restore |
-| Acrobat, Acrobat Reader, SumatraPDF | An animated pinch around the cursor, the same gesture the browsers get: what you pointed at stays where it is and grows. The second press animates the magnification away and lands on the reader's own "fit page" | Animated, follows the cursor, never drifts |
+| Acrobat, Acrobat Reader, SumatraPDF | An animated pinch, the same gesture the browsers get: what you pointed at grows and comes to the middle of the reader. The second press animates the magnification away and lands on the reader's own "fit page" | Animated, centred on what you aimed at, never drifts |
 | IrfanView (and anything you route to `CtrlWheel`) | Synthesized Ctrl+wheel centered on the cursor | Approximate |
 | Everything else | Ignored | — |
 
