@@ -92,8 +92,8 @@ The installer carries its own copy of .NET, so there is nothing to install first
 Uninstall from **Apps & Features** like anything else. Your settings and logs are kept unless you say
 otherwise, so reinstalling does not cost you your triggers.
 
-> The installer is not code-signed, so Windows SmartScreen will warn that the publisher is unknown. Choose
-> **More info → Run anyway**.
+> The installer is not code-signed yet, so Windows SmartScreen will warn that the publisher is unknown. Choose
+> **More info → Run anyway**. See the [Code signing policy](#code-signing-policy) for what is planned.
 
 ## Configuration
 
@@ -324,6 +324,26 @@ no code at all.
 
 Everyone taking part is expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md). Security issues go
 through [SECURITY.md](SECURITY.md) rather than a public issue.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by
+[SignPath Foundation](https://signpath.org/).
+
+Signing is not in place yet: every release so far is unsigned, and SmartZoom is applying to SignPath
+Foundation's programme for open-source projects. From the first release after the application is accepted,
+the installer and `SmartZoom.exe` will carry a signature whose publisher reads "SignPath Foundation". This
+section is the policy those signatures are issued under.
+
+- **What is signed.** Only the files the [release workflow](.github/workflows/release.yml) builds from a
+  version tag in this repository, on GitHub's own runners. Nothing built on anyone's machine is signed.
+- **Committers and reviewers:** [Phoenix6001](https://github.com/Phoenix6001). A change from anyone else
+  arrives as a pull request and is reviewed before it is merged.
+- **Approvers:** [Phoenix6001](https://github.com/Phoenix6001). Every signing request is approved by hand,
+  and a release stays a draft until it has been read and published ([docs/releasing.md](docs/releasing.md)).
+- **Privacy.** SmartZoom will not transfer any information to other networked systems unless specifically
+  requested by the user or the person installing or operating it. It makes no network connections at all;
+  [SECURITY.md](SECURITY.md#privacy) says what it reads and what stays on your machine.
 
 ## License
 
