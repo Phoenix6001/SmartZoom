@@ -11,9 +11,11 @@ until a person reads the draft and clicks **Publish release**.
   secret is `VT_API_KEY`, a free [VirusTotal](https://www.virustotal.com) API key (your profile → API key),
   under **Settings → Secrets and variables → Actions**. Without it the release still works, and the notes
   say the files were not scanned.
-- Decide about code signing. Every asset the workflow produces is unsigned, so Windows SmartScreen warns
-  about an unknown publisher on first run. That is acceptable for an early open-source release and the
-  README says so; a certificate (or Azure Trusted Signing) can be added to the workflow as one step later.
+- Code signing is not in place yet. Every asset the workflow produces is unsigned, so Windows SmartScreen
+  warns about an unknown publisher on first run, and the README says so. The plan is free signing through
+  [SignPath Foundation](https://signpath.org/), under the
+  [code signing policy](../README.md#code-signing-policy) in the README; the signing steps join the workflow
+  once the application is accepted ([#8](https://github.com/Phoenix6001/SmartZoom/issues/8)).
 
 ## Cutting a release
 
